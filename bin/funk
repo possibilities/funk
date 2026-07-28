@@ -27,6 +27,7 @@ Usage: funk <command>
 Commands:
   update             Install or upgrade packages declared by Funk
   install-updater    Install and load Funk's daily user LaunchAgent
+  install-editor     Install Funk's Neovim configuration
   configure-macos    Apply Funk's user-level macOS preferences
   configure-system   Apply Funk's privileged machine-wide settings
   harden <action>    Show status or reapply the travel firewall posture
@@ -50,6 +51,10 @@ case "$command_name" in
     install-updater)
         shift
         exec "$FUNK_ROOT/libexec/install-update-agent" "$@"
+        ;;
+    install-editor)
+        shift
+        exec "$FUNK_ROOT/libexec/install-editor" "$@"
         ;;
     configure-macos)
         shift

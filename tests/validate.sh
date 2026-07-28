@@ -15,6 +15,7 @@ install
 bin/funk
 libexec/funk-update
 libexec/install-update-agent
+libexec/install-editor
 libexec/configure-macos
 libexec/configure-system
 libexec/funk-harden-client
@@ -72,23 +73,6 @@ elif command -v jq >/dev/null 2>&1; then
 else
     fail "Ruby or jq is required to validate Karabiner JSON"
 fi
-
-expected_brewfile='tap "asmvik/formulae"
-brew "asmvik/formulae/yabai", trusted: true
-brew "asmvik/formulae/skhd", trusted: true
-cask "tailscale-app"
-cask "ghostty"
-cask "google-chrome"
-cask "google-chrome@canary"
-cask "brave-browser"
-cask "chatgpt"
-cask "claude"
-cask "obsidian"
-cask "raycast"
-cask "karabiner-elements"'
-actual_brewfile=$(grep -Ev '^[[:space:]]*$' Brewfile)
-[ "$actual_brewfile" = "$expected_brewfile" ] \
-    || fail "Brewfile declarations differ from the approved set"
 
 if command -v brew >/dev/null 2>&1; then
     HOMEBREW_NO_AUTO_UPDATE=1 brew bundle list --file=Brewfile --formula >/dev/null

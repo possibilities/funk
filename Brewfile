@@ -1,5 +1,6 @@
 tap "asmvik/formulae"
 
+brew "neovim"
 brew "asmvik/formulae/yabai", trusted: true
 brew "asmvik/formulae/skhd", trusted: true
 

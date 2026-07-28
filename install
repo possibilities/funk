@@ -115,6 +115,7 @@ else
 fi
 
 "$funk_command" update
+"$funk_command" install-editor
 "$funk_command" install-updater
 "$funk_command" configure-macos
 

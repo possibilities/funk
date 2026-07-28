@@ -1,0 +1,43 @@
+#!/bin/bash
+
+set -euo pipefail
+
+die() {
+    printf 'funk install-editor: %s\n' "$*" >&2
+    exit 1
+}
+
+install_config() {
+    local source_file="$1"
+    local relative_path="${source_file#"$source_root"/}"
+    local target_file="$target_root/$relative_path"
+    local target_dir
+
+    [ -f "$source_file" ] || die "missing source config: $source_file"
+    target_dir=$(dirname "$target_file")
+    mkdir -p "$target_dir"
+    [ ! -L "$target_file" ] || die "refusing to replace symlink: $target_file"
+    if [ -e "$target_file" ] && ! cmp -s "$source_file" "$target_file"; then
+        die "refusing to replace existing config: $target_file"
+    fi
+    /usr/bin/install -m 0644 "$source_file" "$target_file"
+}
+
+if [ "$#" -ne 0 ]; then
+    printf 'Usage: funk install-editor\n' >&2
+    exit 64
+fi
+[ "$(uname -s)" = Darwin ] || die "macOS is required"
+[ "$(id -u)" -ne 0 ] || die "run as the target user, not root"
+
+funk_root=${FUNK_ROOT:?FUNK_ROOT is not set}
+source_root="$funk_root/config/nvim"
+target_root="$HOME/.config/nvim"
+[ -f "$source_root/init.lua" ] || die "missing Neovim configuration: $source_root"
+[ ! -L "$target_root" ] || die "refusing to replace symlinked config directory: $target_root"
+
+while IFS= read -r -d '' source_file; do
+    install_config "$source_file"
+done < <(/usr/bin/find "$source_root" -type f -print0)
+
+printf 'Neovim configuration installed in %s\n' "$target_root"

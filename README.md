@@ -7,6 +7,7 @@ project, not a port of the old dotfiles repository.
 
 The Brewfile declares only:
 
+- Neovim, with the focused configuration retained from the old dotfiles
 - Tailscale, Ghostty, Google Chrome, Chrome Canary, Brave
 - ChatGPT, Claude, Obsidian, Raycast
 - Yabai, skhd, and the narrowly justified Karabiner-Elements layer
@@ -39,7 +40,8 @@ Run from the checked-out repository as the new account, never with `sudo`:
 ```
 
 This installs Homebrew when absent, runs `brew bundle install`, links `funk`
-into the active Homebrew `bin` directory, and installs the daily updater.
+into the active Homebrew `bin` directory, installs the Neovim configuration,
+and installs the daily updater.
 Optional system layers are explicit:
 
 ```sh
