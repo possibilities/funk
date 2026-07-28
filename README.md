@@ -6,14 +6,31 @@ forward the old repository's Stow-based, fix-forward configuration workflow.
 
 ## What it installs
 
-The Brewfile declares the applications and command-line tools required by the
-managed configuration:
+The default installer applies the Brewfile plus the vendor-supported AI tool
+installers:
 
 - Tailscale, Ghostty, Google Chrome, Chrome Canary, Brave
-- ChatGPT, Claude, Obsidian, Raycast
+- ChatGPT, Claude Desktop, Orca, Obsidian, Raycast
+- GitHub CLI, Claude Code, Codex CLI, OpenCode, and Pi
 - Yabai, skhd, and the narrowly justified Karabiner-Elements layer
 - Git Delta, Neovim, tmux, Tinty, Starship, btop, GNU Stow, and supporting
   shell/development tools
+
+`libexec/install-ai-tools` uses the official shell installers for
+[Claude Code](https://code.claude.com/docs/en/terminal-guide),
+[Codex CLI](https://github.com/openai/codex#installing-and-running-codex-cli),
+[OpenCode](https://opencode.ai/docs/), and [Pi](https://pi.dev/docs/latest).
+ChatGPT and Claude Desktop use their Homebrew casks because their normal
+personal macOS downloads do not provide unattended installer commands. Orca
+uses the cask documented by the [Orca project](https://github.com/stablyai/orca).
+Run `libexec/install-ai-tools --check` to inspect the exact plan without making
+changes.
+
+GitHub CLI is intentionally installed twice: once through the main Brewfile and
+again by the AI tool installer. The latter preserves an existing login and can
+adopt an old `/Users/mike/.config/gh/hosts.yml` only when no current host config
+exists and the old file contains a portable token. Keyring-backed credentials
+cannot be transferred by copying that file.
 
 Karabiner has exactly two paired rules: global Cmd+1…8 becomes F13…F20 and
 Cmd+9 becomes F12 for Yabai Space focus, while Ctrl+1…9 becomes the normal
@@ -79,8 +96,8 @@ Run from the checked-out repository as the new account, never with `sudo`:
 
 This installs Homebrew when absent, runs `brew bundle install`, stows every user
 configuration package, initializes Tinty, tmux-fzf, the pinned Node runtime, and
-shell-gpt, links `funk` into the active Homebrew `bin` directory, and installs
-the daily updater.
+shell-gpt, installs the AI tools listed above, links `funk` into the active
+Homebrew `bin` directory, and installs the daily updater.
 Optional system layers are explicit:
 
 ```sh
@@ -114,6 +131,10 @@ The user LaunchAgent runs it daily at 10:00 local time and appends stdout/stderr
 to `~/Library/Logs/Funk/update.log`. Failures retain their exit status. Funk
 never performs bundle cleanup, uninstalls, quarantine removal, HEAD refreshes,
 notifications, or privileged post-update hooks.
+
+AI tools are intentionally outside the daily Brewfile update: their vendor
+installers and application updaters own upgrades. Re-running `./install` also
+reapplies their supported installation methods.
 
 After a Yabai upgrade, run `funk yabai maintain` manually. This refreshes the
 digest-pinned `yabai --load-sa` sudo rule, loads the current scripting addition,

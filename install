@@ -13,6 +13,7 @@ Usage: ./install [--with-hardening] [--with-windows] [--with-system-settings] [-
 Default installation:
   - installs Homebrew when missing
   - applies Funk's Brewfile
+  - installs AI desktop applications and command-line tools
   - stows all user configuration packages into the target user's home
   - links the funk command into the active Homebrew bin directory
   - installs and loads the daily 10:00 update LaunchAgent
@@ -118,6 +119,7 @@ fi
 "$funk_command" update
 "$funk_command" stow
 "$funk_root/libexec/initialize-configs"
+"$funk_root/libexec/install-ai-tools"
 "$funk_command" install-updater
 "$funk_command" configure-macos
 

@@ -1,0 +1,191 @@
+#!/bin/bash
+
+set -euo pipefail
+
+check_only=0
+
+usage() {
+    cat <<'EOF'
+Usage: install-ai-tools [--check]
+
+Install the AI desktop applications and command-line tools managed by Funk.
+
+Options:
+  --check  Print the installation plan without changing the system
+EOF
+}
+
+die() {
+    printf 'Funk AI tools installer: %s\n' "$*" >&2
+    exit 1
+}
+
+find_brew() {
+    if command -v brew >/dev/null 2>&1; then
+        command -v brew
+        return
+    fi
+    for candidate in /opt/homebrew/bin/brew /usr/local/bin/brew; do
+        if [ -x "$candidate" ]; then
+            printf '%s\n' "$candidate"
+            return
+        fi
+    done
+    return 1
+}
+
+install_official() {
+    local name="$1"
+    local url="$2"
+    local interpreter="$3"
+    shift 3
+
+    printf 'Installing %s with its official installer.\n' "$name"
+    /usr/bin/curl -fsSL "$url" | "$interpreter" "$@"
+}
+
+migrate_gh_credentials() {
+    local old_home
+    local old_hosts
+    local target_dir="$HOME/.config/gh"
+    local target_hosts="$target_dir/hosts.yml"
+    local target_group
+    local staged_hosts
+
+    old_home=$(
+        /usr/bin/dscacheutil -q user -a name mike 2>/dev/null \
+            | /usr/bin/awk '$1 == "dir:" { print $2; exit }'
+    )
+    if [ -z "$old_home" ]; then
+        printf 'No old mike account found for GitHub CLI credential migration.\n'
+        return
+    fi
+    old_hosts="$old_home/.config/gh/hosts.yml"
+
+    if [ -e "$target_hosts" ] || [ -L "$target_hosts" ]; then
+        printf 'Preserving existing GitHub CLI credentials at %s.\n' "$target_hosts"
+        return
+    fi
+    if [ ! -f "$old_hosts" ]; then
+        printf 'No old GitHub CLI host configuration found to migrate.\n'
+        return
+    fi
+
+    mkdir -p "$target_dir"
+    chmod 0700 "$target_dir"
+    staged_hosts=$(mktemp "$target_dir/.hosts.yml.XXXXXX")
+    target_group=$(id -gn)
+
+    if [ -r "$old_hosts" ]; then
+        /usr/bin/install -m 0600 "$old_hosts" "$staged_hosts"
+    else
+        printf 'Checking the protected old GitHub CLI configuration for a portable credential.\n'
+        if ! /usr/bin/sudo /usr/bin/install -m 0600 \
+            -o "$(id -un)" -g "$target_group" \
+            "$old_hosts" "$staged_hosts"; then
+            rm -f "$staged_hosts"
+            die "could not stage the old GitHub CLI configuration"
+        fi
+    fi
+
+    # Modern gh releases normally store tokens in the macOS keyring. Such a
+    # token belongs to the old login keychain and cannot be migrated by copying
+    # hosts.yml. Only adopt the file when it contains a portable token itself.
+    if grep -Eq '^[[:space:]]*oauth_token:' "$staged_hosts"; then
+        chmod 0600 "$staged_hosts"
+        mv "$staged_hosts" "$target_hosts"
+        printf 'Migrated portable GitHub CLI credentials to %s.\n' "$target_hosts"
+    else
+        rm -f "$staged_hosts"
+        printf 'Old GitHub CLI authentication is keyring-backed; no portable credential was copied.\n'
+    fi
+}
+
+case "${1:-}" in
+    "")
+        ;;
+    --check)
+        check_only=1
+        ;;
+    -h|--help)
+        usage
+        exit 0
+        ;;
+    *)
+        usage >&2
+        exit 64
+        ;;
+esac
+[ "$#" -le 1 ] || {
+    usage >&2
+    exit 64
+}
+
+if [ "$check_only" -eq 1 ]; then
+    cat <<'EOF'
+Desktop applications:
+  brew install --cask claude
+  brew install --cask chatgpt
+  brew install --cask stablyai/orca/orca
+
+Command-line tools:
+  brew install gh  # intentional duplicate of the Brewfile
+  curl -fsSL https://claude.ai/install.sh | bash
+  curl -fsSL https://chatgpt.com/codex/install.sh | CODEX_NON_INTERACTIVE=1 sh
+  curl -fsSL https://opencode.ai/install | bash -s -- --no-modify-path
+  curl -fsSL https://pi.dev/install.sh | sh
+EOF
+    exit 0
+fi
+
+[ "$(uname -s)" = Darwin ] || die "macOS is required"
+[ "$(id -u)" -ne 0 ] || die "run as the target user, not root"
+
+brew_bin=$(find_brew) || die "Homebrew is not installed"
+brew_prefix=$("$brew_bin" --prefix)
+brew_owner=$(stat -f '%Su' "$brew_prefix")
+[ "$brew_owner" = "$(id -un)" ] \
+    || die "Homebrew prefix $brew_prefix is owned by $brew_owner, not $(id -un)"
+
+# Funk already owns these PATH entries in its Stow-managed zsh configuration.
+# Supplying them here prevents vendor installers from appending equivalent lines
+# to shell startup files during this run.
+export PATH="$HOME/.local/bin:$HOME/.opencode/bin:$brew_prefix/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+
+printf 'Installing GitHub CLI with Homebrew (intentional duplicate of the Brewfile).\n'
+"$brew_bin" install gh
+migrate_gh_credentials
+
+printf 'Installing AI desktop applications with their supported Homebrew casks.\n'
+"$brew_bin" install --cask claude
+"$brew_bin" install --cask chatgpt
+"$brew_bin" install --cask stablyai/orca/orca
+
+install_official "Claude Code" \
+    https://claude.ai/install.sh \
+    /bin/bash
+
+printf 'Installing Codex CLI with its official installer.\n'
+/usr/bin/curl -fsSL https://chatgpt.com/codex/install.sh \
+    | CODEX_NON_INTERACTIVE=1 /bin/sh
+
+install_official "OpenCode" \
+    https://opencode.ai/install \
+    /bin/bash -s -- --no-modify-path
+
+# Pi requires Node.js 22.19 or newer. The main Funk installer initializes the
+# pinned NVM default before reaching this script; load that default into this
+# subprocess so Pi's official installer can use it.
+nvm_script="$brew_prefix/opt/nvm/nvm.sh"
+if [ -s "$nvm_script" ]; then
+    export NVM_DIR="$HOME/.nvm"
+    # shellcheck disable=SC1090
+    source "$nvm_script" --no-use
+    if nvm version default >/dev/null 2>&1; then
+        nvm use --silent default
+    fi
+fi
+
+install_official "Pi" \
+    https://pi.dev/install.sh \
+    /bin/sh

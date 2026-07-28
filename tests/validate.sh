@@ -16,6 +16,7 @@ bin/funk
 libexec/funk-update
 libexec/stow-config
 libexec/initialize-configs
+libexec/install-ai-tools
 libexec/install-update-agent
 libexec/configure-macos
 libexec/configure-system
@@ -109,8 +110,6 @@ cask "ghostty"
 cask "google-chrome"
 cask "google-chrome@canary"
 cask "brave-browser"
-cask "chatgpt"
-cask "claude"
 cask "obsidian"
 cask "raycast"
 cask "karabiner-elements"
@@ -163,10 +162,35 @@ grep -F "\"\$funk_command\" stow" install >/dev/null \
     || fail "default install does not stow user configuration"
 grep -F "\"\$funk_root/libexec/initialize-configs\"" install >/dev/null \
     || fail "default install does not initialize config dependencies"
+grep -F "\"\$funk_root/libexec/install-ai-tools\"" install >/dev/null \
+    || fail "default install does not install AI tools"
 grep -F 'tmux-fzf.git' libexec/initialize-configs >/dev/null \
     || fail "tmux-fzf is not initialized"
 grep -F 'tinty apply base16-catppuccin-mocha' libexec/initialize-configs >/dev/null \
     || fail "Tinty default theme is not initialized"
+
+ai_install_plan=$(libexec/install-ai-tools --check)
+for required_ai_install in \
+    'brew install gh  # intentional duplicate of the Brewfile' \
+    'brew install --cask claude' \
+    'brew install --cask chatgpt' \
+    'brew install --cask stablyai/orca/orca' \
+    'curl -fsSL https://claude.ai/install.sh | bash' \
+    'curl -fsSL https://chatgpt.com/codex/install.sh | CODEX_NON_INTERACTIVE=1 sh' \
+    'curl -fsSL https://opencode.ai/install | bash -s -- --no-modify-path' \
+    'curl -fsSL https://pi.dev/install.sh | sh'; do
+    printf '%s\n' "$ai_install_plan" | grep -F "$required_ai_install" >/dev/null \
+        || fail "AI installation plan is missing: $required_ai_install"
+done
+grep -F "\"\$brew_bin\" install gh" libexec/install-ai-tools >/dev/null \
+    || fail "AI installer does not deliberately duplicate the GitHub CLI install"
+grep -F '^[[:space:]]*oauth_token:' libexec/install-ai-tools >/dev/null \
+    || fail "GitHub CLI migration does not require a portable token"
+grep -F 'Preserving existing GitHub CLI credentials' libexec/install-ai-tools >/dev/null \
+    || fail "GitHub CLI migration does not preserve an existing login"
+if grep -Eq '^cask "(chatgpt|claude)"$|stablyai/orca/orca' Brewfile; then
+    fail "AI desktop application leaked back into the bootstrap Brewfile"
+fi
 
 for required_setting in \
     'com.apple.dock autohide -bool true' \
