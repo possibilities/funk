@@ -1,0 +1,61 @@
+#!/bin/bash
+
+export PATH=/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
+
+if ! yabai_bin=$(command -v yabai); then
+    printf '%s\n' 'Funk: yabai is not available on PATH.' >&2
+    exit 1
+fi
+
+# The digest-pinned sudo rule is installed by `funk yabai maintain`.
+# Until that deliberate step is complete, the non-SA tiling core still starts.
+if /usr/bin/sudo -n "$yabai_bin" --load-sa >/dev/null 2>&1; then
+    scripting_addition=ready
+    yabai -m signal --add event=dock_did_restart \
+        action="/usr/bin/sudo -n $yabai_bin --load-sa"
+else
+    scripting_addition=unavailable
+    printf '%s\n' \
+        'Funk: Yabai scripting addition unavailable; run funk yabai maintain after configuring SIP.' >&2
+fi
+
+yabai -m config layout                stack
+yabai -m config auto_balance          on
+yabai -m config focus_follows_mouse   off
+yabai -m config mouse_follows_focus   off
+yabai -m config mouse_modifier        ctrl
+yabai -m config mouse_action1         move
+yabai -m config mouse_action2         resize
+yabai -m config window_placement      second_child
+yabai -m config top_padding           0
+yabai -m config bottom_padding        0
+yabai -m config left_padding          0
+yabai -m config right_padding         0
+yabai -m config window_gap            0
+
+# Space creation requires the scripting addition. Converge to nine Spaces with
+# a strict attempt bound so a permission or OS mismatch cannot loop forever.
+if [ "$scripting_addition" = ready ]; then
+    attempts=0
+    while ! yabai -m query --spaces --space 9 >/dev/null 2>&1; do
+        if [ "$attempts" -ge 9 ]; then
+            printf '%s\n' 'Funk: could not converge Yabai to nine Spaces.' >&2
+            break
+        fi
+        if ! yabai -m space --create; then
+            printf '%s\n' 'Funk: Yabai Space creation failed; check SIP and scripting-addition support.' >&2
+            break
+        fi
+        attempts=$((attempts + 1))
+    done
+fi
+
+yabai -m rule --add app="^Google Chrome$" title="^Picture in Picture$" manage=off
+yabai -m rule --add app="^System Settings$" manage=off
+yabai -m rule --add app="^Tailscale$" manage=off
+yabai -m rule --add app="^Karabiner-Elements$" manage=off
+yabai -m rule --add app="^Karabiner-EventViewer$" manage=off
+yabai -m rule --add app="^Activity Monitor$" manage=off
+yabai -m rule --add app="^Calculator$" manage=off
+yabai -m rule --add app="^Archive Utility$" manage=off
+yabai -m rule --add app="^Installer$" manage=off

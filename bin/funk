@@ -29,6 +29,8 @@ Commands:
   install-updater    Install and load Funk's daily user LaunchAgent
   harden <action>    Show status or reapply the travel firewall posture
   install-hardening  Install the root-owned hardening service
+  yabai <action>     Show or maintain the Yabai scripting-addition layer
+  install-windows    Install and start the Yabai/skhd/Karabiner stack
   help               Show this help
 EOF
 }
@@ -54,6 +56,14 @@ case "$command_name" in
     install-hardening)
         shift
         exec "$FUNK_ROOT/libexec/install-hardening" "$@"
+        ;;
+    yabai)
+        shift
+        exec "$FUNK_ROOT/libexec/funk-yabai" "$@"
+        ;;
+    install-windows)
+        shift
+        exec "$FUNK_ROOT/libexec/install-window-manager" "$@"
         ;;
     help|-h|--help)
         usage

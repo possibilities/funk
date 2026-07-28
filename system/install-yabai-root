@@ -1,0 +1,100 @@
+#!/bin/bash
+
+set -euo pipefail
+export PATH=/usr/bin:/bin:/usr/sbin:/sbin
+umask 022
+
+helper_target=/usr/local/libexec/funk-yabai-maintain
+config_dir=/etc/funk
+config_target="$config_dir/yabai.conf"
+
+die() {
+    printf 'funk Yabai installer: %s\n' "$*" >&2
+    exit 1
+}
+
+guard_root_directory() {
+    local directory="$1"
+    local owner
+    local mode
+
+    [ -d "$directory" ] && [ ! -L "$directory" ] \
+        || die "invalid root directory: $directory"
+    owner=$(stat -f '%Su' "$directory")
+    mode=$(stat -f '%Lp' "$directory")
+    [ "$owner" = root ] || die "$directory must be root-owned"
+    [ $((8#$mode & 8#022)) -eq 0 ] \
+        || die "$directory must not be group/world-writable"
+}
+
+target_user=
+yabai_binary=
+source_root=
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --user)
+            [ "$#" -ge 2 ] || die "--user requires a value"
+            target_user="$2"
+            shift 2
+            ;;
+        --binary)
+            [ "$#" -ge 2 ] || die "--binary requires a value"
+            yabai_binary="$2"
+            shift 2
+            ;;
+        --source-root)
+            [ "$#" -ge 2 ] || die "--source-root requires a value"
+            source_root="$2"
+            shift 2
+            ;;
+        *)
+            die "unknown argument: $1"
+            ;;
+    esac
+done
+
+[ "$(id -u)" -eq 0 ] || die "must run as root"
+[ -n "$target_user" ] || die "--user is required"
+[ -n "$yabai_binary" ] || die "--binary is required"
+[ -n "$source_root" ] || die "--source-root is required"
+printf '%s\n' "$target_user" | grep -Eq '^[A-Za-z_][A-Za-z0-9._-]*$' \
+    || die "invalid user name: $target_user"
+target_uid=$(id -u "$target_user" 2>/dev/null) || die "user does not exist: $target_user"
+[ "$target_uid" -ge 500 ] || die "refusing system account: $target_user"
+
+case "$yabai_binary" in
+    /*/bin/yabai) ;;
+    *) die "invalid Yabai binary path: $yabai_binary" ;;
+esac
+printf '%s\n' "$yabai_binary" | grep -Eq '^/[A-Za-z0-9._+/-]+$' \
+    || die "Yabai binary path contains unsupported characters"
+[ -x "$yabai_binary" ] || die "Yabai binary is not executable: $yabai_binary"
+yabai_owner=$(stat -f '%Su' "$yabai_binary")
+[ "$yabai_owner" = "$target_user" ] \
+    || die "Yabai binary must be owned by $target_user (found $yabai_owner)"
+
+source_root=$(cd -P -- "$source_root" && pwd)
+helper_source="$source_root/system/funk-yabai-maintain"
+[ -f "$helper_source" ] && [ ! -L "$helper_source" ] \
+    || die "invalid helper source: $helper_source"
+
+if [ ! -e /usr/local/libexec ]; then
+    /usr/bin/install -d -o root -g wheel -m 0755 /usr/local/libexec
+fi
+guard_root_directory /usr/local/libexec
+if [ ! -e "$config_dir" ]; then
+    /usr/bin/install -d -o root -g wheel -m 0755 "$config_dir"
+fi
+guard_root_directory "$config_dir"
+
+tmpdir=$(mktemp -d /private/tmp/funk-yabai-install.XXXXXX)
+trap 'rm -rf "$tmpdir"' EXIT
+config_candidate="$tmpdir/yabai.conf"
+printf 'user=%s\nbinary=%s\n' "$target_user" "$yabai_binary" > "$config_candidate"
+
+/usr/bin/install -o root -g wheel -m 0755 "$helper_source" "$helper_target"
+/usr/bin/install -o root -g wheel -m 0644 "$config_candidate" "$config_target"
+"$helper_target" --check
+
+printf 'Installed %s and root-owned configuration for %s.\n' "$helper_target" "$target_user"
+printf 'No SIP, sudoers, TCC, scripting-addition, or service state was changed.\n'

@@ -1,0 +1,77 @@
+#!/bin/bash
+
+set -euo pipefail
+
+helper=/usr/local/libexec/funk-yabai-maintain
+
+find_binary() {
+    local name="$1"
+    local candidate
+
+    if command -v "$name" >/dev/null 2>&1; then
+        command -v "$name"
+        return
+    fi
+    for candidate in "/opt/homebrew/bin/$name" "/usr/local/bin/$name"; do
+        if [ -x "$candidate" ]; then
+            printf '%s\n' "$candidate"
+            return
+        fi
+    done
+    return 1
+}
+
+usage() {
+    cat <<'EOF'
+Usage: funk yabai <status|maintain>
+
+  status    Report SIP, boot-argument, Yabai, and nine-Space readiness
+  maintain  Refresh the digest-pinned scripting addition after install/upgrade
+EOF
+}
+
+if [ "$#" -ne 1 ]; then
+    usage >&2
+    exit 64
+fi
+
+case "$1" in
+    status)
+        yabai_bin=$(find_binary yabai) || {
+            printf 'Yabai: not installed\n'
+            exit 1
+        }
+        "$yabai_bin" --version
+        /usr/bin/csrutil status
+        if [ "$(uname -m)" = arm64 ]; then
+            /usr/sbin/nvram boot-args 2>&1 || true
+        fi
+        if "$yabai_bin" -m query --spaces --space 9 >/dev/null 2>&1; then
+            printf 'Numbered Spaces: ready through Space 9\n'
+        else
+            printf 'Numbered Spaces: Space 9 unavailable\n'
+            exit 1
+        fi
+        ;;
+    maintain)
+        yabai_bin=$(find_binary yabai) || {
+            printf 'funk yabai: Yabai is not installed\n' >&2
+            exit 69
+        }
+        [ -x "$helper" ] || {
+            printf 'funk yabai: root helper is not installed; run funk install-windows first\n' >&2
+            exit 69
+        }
+        /usr/bin/sudo "$helper"
+
+        # Homebrew upgrades move the Cellar binary. Recreate Yabai's generated
+        # user service so launchd points at the current version.
+        "$yabai_bin" --uninstall-service >/dev/null 2>&1 || true
+        "$yabai_bin" --start-service
+        printf 'Yabai scripting addition and user service reconciled.\n'
+        ;;
+    *)
+        usage >&2
+        exit 64
+        ;;
+esac

@@ -1,0 +1,86 @@
+#!/bin/bash
+
+set -euo pipefail
+
+die() {
+    printf 'funk install-windows: %s\n' "$*" >&2
+    exit 1
+}
+
+find_brew() {
+    if command -v brew >/dev/null 2>&1; then
+        command -v brew
+        return
+    fi
+    for candidate in /opt/homebrew/bin/brew /usr/local/bin/brew; do
+        if [ -x "$candidate" ]; then
+            printf '%s\n' "$candidate"
+            return
+        fi
+    done
+    return 1
+}
+
+install_config() {
+    local source_file="$1"
+    local target_file="$2"
+    local target_dir
+
+    target_dir=$(dirname "$target_file")
+    mkdir -p "$target_dir"
+    [ ! -L "$target_file" ] || die "refusing to replace symlink: $target_file"
+    if [ -e "$target_file" ] && ! cmp -s "$source_file" "$target_file"; then
+        die "refusing to replace existing config: $target_file"
+    fi
+    /usr/bin/install -m 0644 "$source_file" "$target_file"
+}
+
+if [ "$#" -ne 0 ]; then
+    printf 'Usage: funk install-windows\n' >&2
+    exit 64
+fi
+[ "$(uname -s)" = Darwin ] || die "macOS is required"
+[ "$(id -u)" -ne 0 ] || die "run as the target user, not root"
+
+funk_root=${FUNK_ROOT:?FUNK_ROOT is not set}
+brew_bin=$(find_brew) || die "Homebrew is not installed"
+brew_prefix=$("$brew_bin" --prefix)
+yabai_bin="$brew_prefix/bin/yabai"
+skhd_bin="$brew_prefix/bin/skhd"
+root_installer="$funk_root/system/install-yabai-root"
+
+[ -x "$yabai_bin" ] || die "Yabai is not installed from Funk's Brewfile"
+[ -x "$skhd_bin" ] || die "skhd is not installed from Funk's Brewfile"
+[ -x "$root_installer" ] || die "root installer is missing: $root_installer"
+[ -d /Applications/Karabiner-Elements.app ] \
+    || die "Karabiner-Elements is not installed from Funk's Brewfile"
+
+brew_owner=$(stat -f '%Su' "$brew_prefix")
+[ "$brew_owner" = "$(id -un)" ] \
+    || die "Homebrew prefix $brew_prefix is owned by $brew_owner, not $(id -un)"
+
+install_config "$funk_root/config/yabai/yabairc" "$HOME/.config/yabai/yabairc"
+install_config "$funk_root/config/skhd/skhdrc" "$HOME/.config/skhd/skhdrc"
+install_config "$funk_root/config/karabiner/karabiner.json" "$HOME/.config/karabiner/karabiner.json"
+
+printf 'Installing the root-owned Yabai maintenance helper (no SIP change or SA load yet).\n'
+/usr/bin/sudo "$root_installer" \
+    --user "$(id -un)" \
+    --binary "$yabai_bin" \
+    --source-root "$funk_root"
+
+export PATH="$brew_prefix/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+"$yabai_bin" --start-service || printf 'Yabai start needs Accessibility approval; retry after granting it.\n' >&2
+"$skhd_bin" --start-service || printf 'skhd start needs Accessibility approval; retry after granting it.\n' >&2
+/usr/bin/open -a Karabiner-Elements \
+    || printf 'Open Karabiner-Elements manually to approve its requested permissions.\n' >&2
+
+cat <<'EOF'
+Window configuration installed.
+
+Next:
+  1. Complete the documented Recovery/SIP and Apple Silicon boot-argument steps.
+  2. Grant Accessibility to yabai and skhd, and approve Karabiner permissions.
+  3. Run: funk yabai maintain
+  4. Verify: funk yabai status
+EOF

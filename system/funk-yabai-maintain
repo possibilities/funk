@@ -1,0 +1,214 @@
+#!/bin/bash
+
+set -euo pipefail
+export PATH=/usr/bin:/bin:/usr/sbin:/sbin
+umask 022
+
+config_dir=/etc/funk
+config_file="$config_dir/yabai.conf"
+
+log() {
+    printf '[funk yabai] %s %s\n' "$(date '+%Y-%m-%dT%H:%M:%S%z')" "$*" >&2
+}
+
+die() {
+    log "FAILED: $*"
+    exit 1
+}
+
+guard() {
+    local seconds="$1"
+    shift
+    /usr/bin/perl -e 'alarm shift; exec { $ARGV[0] } @ARGV or exit 127' \
+        "$seconds" "$@"
+}
+
+guard_root_path() {
+    local path="$1"
+    local kind="$2"
+    local owner
+    local mode
+
+    [ ! -L "$path" ] || die "refusing symlink: $path"
+    case "$kind" in
+        directory) [ -d "$path" ] || die "missing directory: $path" ;;
+        file) [ -f "$path" ] || die "missing file: $path" ;;
+        *) die "internal path-kind error" ;;
+    esac
+    owner=$(stat -f '%Su' "$path")
+    mode=$(stat -f '%Lp' "$path")
+    [ "$owner" = root ] || die "$path must be root-owned"
+    [ $((8#$mode & 8#022)) -eq 0 ] \
+        || die "$path must not be group/world-writable"
+}
+
+resolve_link() {
+    local source_path="$1"
+    local source_dir
+    local target
+
+    while [ -L "$source_path" ]; do
+        source_dir=$(cd -P -- "$(dirname -- "$source_path")" && pwd)
+        target=$(readlink "$source_path")
+        case "$target" in
+            /*) source_path="$target" ;;
+            *) source_path="$source_dir/$target" ;;
+        esac
+    done
+    source_dir=$(cd -P -- "$(dirname -- "$source_path")" && pwd)
+    printf '%s/%s\n' "$source_dir" "$(basename -- "$source_path")"
+}
+
+read_config() {
+    local key
+    local value
+    local seen_user=0
+    local seen_binary=0
+
+    guard_root_path "$config_dir" directory
+    guard_root_path "$config_file" file
+    target_user=
+    yabai_binary=
+    while IFS='=' read -r key value; do
+        case "$key" in
+            user)
+                [ "$seen_user" -eq 0 ] || die "duplicate user in $config_file"
+                target_user="$value"
+                seen_user=1
+                ;;
+            binary)
+                [ "$seen_binary" -eq 0 ] || die "duplicate binary in $config_file"
+                yabai_binary="$value"
+                seen_binary=1
+                ;;
+            *) die "unknown key in $config_file: $key" ;;
+        esac
+    done < "$config_file"
+
+    [ "$seen_user" -eq 1 ] && [ "$seen_binary" -eq 1 ] \
+        || die "incomplete $config_file"
+}
+
+validate_install() {
+    local binary_owner
+    local prefix
+    local resolved_owner
+
+    printf '%s\n' "$target_user" | grep -Eq '^[A-Za-z_][A-Za-z0-9._-]*$' \
+        || die "invalid configured user"
+    target_uid=$(id -u "$target_user" 2>/dev/null) || die "configured user does not exist"
+    [ "$target_uid" -ge 500 ] || die "configured user is a system account"
+
+    case "$yabai_binary" in
+        /*/bin/yabai) ;;
+        *) die "invalid configured Yabai path: $yabai_binary" ;;
+    esac
+    printf '%s\n' "$yabai_binary" | grep -Eq '^/[A-Za-z0-9._+/-]+$' \
+        || die "configured Yabai path contains unsupported characters"
+    [ -x "$yabai_binary" ] || die "configured Yabai binary is not executable"
+
+    resolved_binary=$(resolve_link "$yabai_binary")
+    [ -f "$resolved_binary" ] && [ -x "$resolved_binary" ] \
+        || die "resolved Yabai binary is invalid: $resolved_binary"
+    prefix=${yabai_binary%/bin/yabai}
+    case "$resolved_binary" in
+        "$prefix"/Cellar/yabai/*/bin/yabai) ;;
+        *) die "Yabai link resolves outside its Homebrew Cellar: $resolved_binary" ;;
+    esac
+
+    binary_owner=$(stat -f '%Su' "$yabai_binary")
+    resolved_owner=$(stat -f '%Su' "$resolved_binary")
+    [ "$binary_owner" = "$target_user" ] \
+        || die "Yabai link is not owned by $target_user"
+    [ "$resolved_owner" = "$target_user" ] \
+        || die "Yabai binary is not owned by $target_user"
+    guard 30 /usr/bin/codesign --verify "$resolved_binary" >/dev/null 2>&1 \
+        || die "Yabai binary signature verification failed"
+}
+
+validate_platform() {
+    local sip_status
+    local boot_args
+
+    sip_status=$(guard 15 /usr/bin/csrutil status 2>&1) || true
+    printf '%s\n' "$sip_status" >&2
+    case "$sip_status" in
+        *disabled*|*unknown*|*"Custom Configuration"*)
+            ;;
+        *enabled*)
+            die "SIP is fully enabled; complete Yabai's documented partial-SIP step first"
+            ;;
+        *)
+            die "could not determine SIP status"
+            ;;
+    esac
+
+    if [ "$(uname -m)" = arm64 ]; then
+        boot_args=$(guard 15 /usr/sbin/nvram boot-args 2>&1) || true
+        case "$boot_args" in
+            *-arm64e_preview_abi*) ;;
+            *) die "Apple Silicon requires the -arm64e_preview_abi boot argument and a reboot" ;;
+        esac
+    fi
+}
+
+install_sudoers_and_load() {
+    local digest
+    local had_previous=0
+    local sudoers_target
+    local tmpdir
+    local candidate
+    local previous
+
+    guard_root_path /etc/sudoers.d directory
+    digest=$(guard 30 /usr/bin/shasum -a 256 "$yabai_binary" | awk '{print $1}')
+    [ -n "$digest" ] || die "could not hash Yabai binary"
+
+    tmpdir=$(mktemp -d /private/tmp/funk-yabai-maintain.XXXXXX)
+    trap 'rm -rf "$tmpdir"' EXIT
+    candidate="$tmpdir/sudoers"
+    previous="$tmpdir/previous"
+    sudoers_target="/etc/sudoers.d/funk-yabai-$target_uid"
+
+    printf '%s ALL=(root) NOPASSWD: sha256:%s %s --load-sa\n' \
+        "$target_user" "$digest" "$yabai_binary" > "$candidate"
+    /bin/chmod 0440 "$candidate"
+    guard 20 /usr/sbin/visudo -cf "$candidate" >/dev/null \
+        || die "generated Yabai sudoers rule failed validation"
+
+    if [ -e "$sudoers_target" ]; then
+        guard_root_path "$sudoers_target" file
+        cp "$sudoers_target" "$previous"
+        had_previous=1
+    fi
+    /usr/bin/install -o root -g wheel -m 0440 "$candidate" "$sudoers_target"
+
+    if ! guard 45 "$yabai_binary" --load-sa; then
+        if [ "$had_previous" -eq 1 ]; then
+            /usr/bin/install -o root -g wheel -m 0440 "$previous" "$sudoers_target"
+        else
+            /bin/rm -f "$sudoers_target"
+        fi
+        die "Yabai scripting-addition load failed; previous sudoers state restored"
+    fi
+
+    log "installed digest-pinned sudoers rule and loaded the scripting addition"
+}
+
+[ "$(id -u)" -eq 0 ] || die "must run as root"
+read_config
+validate_install
+
+case "${1:-}" in
+    "")
+        validate_platform
+        install_sudoers_and_load
+        ;;
+    --check)
+        [ "$#" -eq 1 ] || die "--check takes no additional arguments"
+        log "root-owned configuration and Yabai binary validated"
+        ;;
+    *)
+        die "takes no arguments"
+        ;;
+esac

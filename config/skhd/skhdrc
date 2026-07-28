@@ -1,0 +1,44 @@
+# Focus windows.
+cmd - h : yabai -m window --focus west
+cmd - j : yabai -m window --focus south
+cmd - k : yabai -m window --focus north
+cmd - l : yabai -m window --focus east
+
+# Move windows within the layout.
+cmd + shift - h : yabai -m window --warp west
+cmd + shift - j : yabai -m window --warp south
+cmd + shift - k : yabai -m window --warp north
+cmd + shift - l : yabai -m window --warp east
+
+# Toggle layout, floating, and rebalance.
+cmd - space : if yabai -m query --spaces --space | /usr/bin/grep -Eq '"type"[[:space:]]*:[[:space:]]*"bsp"'; then yabai -m space --layout stack; else yabai -m space --layout bsp; fi
+cmd + shift - f : yabai -m window --toggle float
+ctrl + cmd + shift - g : yabai -m space --balance
+
+# Karabiner maps Cmd+1…9 to F13…F21. Keeping this indirection here lets
+# Ctrl+1…9 become ordinary browser Cmd+number shortcuts without recursion.
+f13 : yabai -m space --focus 1
+f14 : yabai -m space --focus 2
+f15 : yabai -m space --focus 3
+f16 : yabai -m space --focus 4
+f17 : yabai -m space --focus 5
+f18 : yabai -m space --focus 6
+f19 : yabai -m space --focus 7
+f20 : yabai -m space --focus 8
+f21 : yabai -m space --focus 9
+
+# Moving windows between Spaces requires Yabai's scripting addition.
+cmd + shift - 1 : yabai -m window --space 1
+cmd + shift - 2 : yabai -m window --space 2
+cmd + shift - 3 : yabai -m window --space 3
+cmd + shift - 4 : yabai -m window --space 4
+cmd + shift - 5 : yabai -m window --space 5
+cmd + shift - 6 : yabai -m window --space 6
+cmd + shift - 7 : yabai -m window --space 7
+cmd + shift - 8 : yabai -m window --space 8
+cmd + shift - 9 : yabai -m window --space 9
+
+# Additional screenshot bindings; stock macOS shortcuts remain untouched.
+ctrl + shift - 3 : /usr/sbin/screencapture -c
+ctrl + shift - 4 : /usr/sbin/screencapture -i -c
+ctrl + shift - 5 : /usr/sbin/screencapture -i "$HOME/Desktop/screenshot-$(date +\%Y\%m\%d-\%H\%M\%S).png"
