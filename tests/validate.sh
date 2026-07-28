@@ -130,6 +130,11 @@ for required_setting in \
 done
 grep -F 'black-wallpaper.ppm' libexec/configure-macos >/dev/null \
     || fail "black wallpaper is not configured"
+grep -F '$.NSWorkspace.sharedWorkspace' libexec/configure-macos >/dev/null \
+    || fail "black wallpaper does not use the AppKit desktop-image API"
+if grep -F 'tell application "System Events"' libexec/configure-macos >/dev/null; then
+    fail "black wallpaper requires an Apple Events Automation grant"
+fi
 if grep -Eq 'mdutil|nvram|launchctl disable|pmset' \
     libexec/configure-macos; then
     fail "machine-wide setting found in user-level macOS preferences"
