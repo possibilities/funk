@@ -1,0 +1,172 @@
+#!/bin/bash
+
+set -euo pipefail
+
+die() {
+    printf 'funk configure-orca: %s\n' "$*" >&2
+    exit 1
+}
+
+usage() {
+    cat <<'EOF'
+Usage: funk configure-orca [--check]
+
+Apply Funk's Stow-managed Orca settings overlay without adopting Orca's
+generated state, credentials, projects, worktrees, or session data.
+
+Options:
+  --check  Validate the overlay and report whether the active profile converges
+EOF
+}
+
+find_jq() {
+    if command -v jq >/dev/null 2>&1; then
+        command -v jq
+        return
+    fi
+    for candidate in /opt/homebrew/bin/jq /usr/local/bin/jq; do
+        if [ -x "$candidate" ]; then
+            printf '%s\n' "$candidate"
+            return
+        fi
+    done
+    return 1
+}
+
+orca_is_running() {
+    if [ -n "${FUNK_TEST_ORCA_RUNNING:-}" ]; then
+        [ "$FUNK_TEST_ORCA_RUNNING" = 1 ]
+        return
+    fi
+    /usr/bin/pgrep -x Orca >/dev/null 2>&1
+}
+
+check_only=0
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --check) check_only=1 ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        *)
+            usage >&2
+            exit 64
+            ;;
+    esac
+    shift
+done
+
+[ "$(id -u)" -ne 0 ] || die "run as the target user, not root"
+[ -n "${HOME:-}" ] && [ -d "$HOME" ] || die "HOME is not an existing directory"
+
+jq_bin=$(find_jq) || die "jq is not installed; run ./install or brew install jq"
+settings_file="$HOME/.config/orca/settings.json"
+[ -f "$settings_file" ] || die "settings overlay is missing; run funk stow orca"
+
+"$jq_bin" -e '
+  type == "object" and
+  ((keys - [
+    "defaultTuiAgent",
+    "notifications",
+    "terminalFontFamily",
+    "terminalFontSize",
+    "terminalMacOptionAsAlt",
+    "terminalPaddingX",
+    "terminalPaddingY",
+    "theme"
+  ]) | length == 0) and
+  (.defaultTuiAgent | . == null or . == "blank" or
+    . == "antigravity" or . == "claude" or . == "codex" or
+    . == "command-code" or . == "copilot" or . == "cursor-agent" or
+    . == "devin" or . == "droid" or . == "gemini" or . == "grok" or
+    . == "hermes" or . == "kimi" or . == "kilo" or . == "minimax" or
+    . == "opencode" or . == "openclaude" or . == "pi" or . == "qwen") and
+  (.notifications | type == "object" and keys == ["terminalBell"]) and
+  (.notifications.terminalBell | type == "boolean") and
+  (.terminalFontFamily | type == "string" and length > 0) and
+  (.terminalFontSize | type == "number" and . >= 6 and . <= 72) and
+  (.terminalMacOptionAsAlt |
+    . == "auto" or . == "true" or . == "false" or . == "left" or . == "right") and
+  (.terminalPaddingX | type == "number" and . >= 0 and . <= 64) and
+  (.terminalPaddingY | type == "number" and . >= 0 and . <= 64) and
+  (.theme | . == "system" or . == "dark" or . == "light")
+' "$settings_file" >/dev/null || die "settings overlay is invalid or contains unmanaged keys"
+
+desired=$("$jq_bin" -c '
+  . + if has("terminalMacOptionAsAlt")
+      then {terminalMacOptionAsAltMigrated: true}
+      else {}
+      end
+' "$settings_file")
+
+user_data_dir="$HOME/Library/Application Support/orca"
+profile_index="$user_data_dir/orca-profile-index.json"
+if [ -e "$profile_index" ]; then
+    active_profile=$(
+        "$jq_bin" -er '
+          .activeProfileId |
+          select(type == "string" and test("^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$"))
+        ' "$profile_index"
+    ) || die "active Orca profile index is invalid: $profile_index"
+    data_file="$user_data_dir/profiles/$active_profile/orca-data.json"
+else
+    data_file="$user_data_dir/orca-data.json"
+fi
+
+converged=0
+if [ -f "$data_file" ]; then
+    [ ! -L "$data_file" ] \
+        || die "Orca state must remain a regular generated file, not a Stow symlink: $data_file"
+    "$jq_bin" -e '
+      type == "object" and ((.settings // {}) | type == "object")
+    ' "$data_file" >/dev/null || die "Orca state is not a valid settings object: $data_file"
+    # shellcheck disable=SC2016 # $desired is a jq variable, not a shell expansion.
+    if "$jq_bin" -e --argjson desired "$desired" '
+      (.settings // {}) as $current |
+      $current | contains($desired)
+    ' "$data_file" >/dev/null; then
+        converged=1
+    fi
+fi
+
+if [ "$check_only" -eq 1 ]; then
+    if [ "$converged" -eq 1 ]; then
+        printf 'Orca settings are converged: %s\n' "$data_file"
+    else
+        printf 'Orca settings would be updated: %s\n' "$data_file"
+    fi
+    exit 0
+fi
+
+if [ "$converged" -eq 1 ]; then
+    printf 'Orca settings already converged: %s\n' "$data_file"
+    exit 0
+fi
+
+if orca_is_running; then
+    die "Orca is running and its settings differ; quit Orca, then rerun funk configure-orca"
+fi
+
+data_dir=$(dirname "$data_file")
+mkdir -p "$data_dir"
+tmp_file=$(mktemp "$data_dir/.funk-settings.XXXXXX")
+cleanup() {
+    rm -f "$tmp_file"
+}
+trap cleanup EXIT
+
+if [ -f "$data_file" ]; then
+    # shellcheck disable=SC2016 # $desired is a jq variable, not a shell expansion.
+    "$jq_bin" --argjson desired "$desired" \
+        '.settings = ((.settings // {}) * $desired)' \
+        "$data_file" >"$tmp_file"
+else
+    # shellcheck disable=SC2016 # $desired is a jq variable, not a shell expansion.
+    "$jq_bin" -n --argjson desired "$desired" '{settings: $desired}' >"$tmp_file"
+fi
+chmod 0600 "$tmp_file"
+mv -f "$tmp_file" "$data_file"
+trap - EXIT
+
+printf 'Applied Orca settings: %s\n' "$data_file"
