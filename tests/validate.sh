@@ -16,6 +16,7 @@ bin/funk
 libexec/funk-update
 libexec/stow-config
 libexec/initialize-configs
+libexec/configure-orca
 libexec/install-ai-tools
 libexec/install-update-agent
 libexec/configure-macos
@@ -217,13 +218,61 @@ HOME="$stow_home" "$root/bin/funk" stow
     || fail "browser address-bar helper was not stowed"
 [ -L "$stow_home/Library/Application Support/io.datasette.llm/extra-openai-models.yaml" ] \
     || fail "LLM package was not stowed"
+[ -L "$stow_home/.config/orca" ] && [ -f "$stow_home/.config/orca/settings.json" ] \
+    || fail "Orca settings overlay was not stowed with normal directory folding"
 HOME="$stow_home" "$root/bin/funk" stow --check >/dev/null 2>&1
+orca_state="$stow_home/Library/Application Support/orca/orca-data.json"
+mkdir -p "$(dirname "$orca_state")"
+printf '%s\n' \
+    '{"repos":[{"id":"preserve-me"}],"settings":{"showMenuBarIcon":false,"notifications":{"enabled":false}}}' \
+    >"$orca_state"
+HOME="$stow_home" FUNK_TEST_ORCA_RUNNING=0 "$root/bin/funk" configure-orca >/dev/null
+jq -e '
+  .repos == [{"id":"preserve-me"}] and
+  .settings.showMenuBarIcon == false and
+  .settings.notifications.enabled == false and
+  .settings.defaultTuiAgent == "codex" and
+  .settings.terminalFontFamily == "0xProto Nerd Font" and
+  .settings.terminalFontSize == 20 and
+  .settings.terminalMacOptionAsAlt == "true" and
+  .settings.terminalMacOptionAsAltMigrated == true and
+  .settings.notifications.terminalBell == true and
+  .settings.theme == "dark"
+' "$orca_state" >/dev/null || fail "Orca settings overlay did not preserve unrelated state"
+HOME="$stow_home" FUNK_TEST_ORCA_RUNNING=1 "$root/bin/funk" configure-orca >/dev/null
+orca_state_tmp="$orca_state.tmp"
+jq '.settings.theme = "system"' "$orca_state" >"$orca_state_tmp"
+mv "$orca_state_tmp" "$orca_state"
+set +e
+orca_running_output=$(
+    HOME="$stow_home" FUNK_TEST_ORCA_RUNNING=1 \
+        "$root/bin/funk" configure-orca 2>&1
+)
+orca_running_status=$?
+set -e
+[ "$orca_running_status" -ne 0 ] \
+    || fail "Orca settings reconciliation raced a running divergent profile"
+printf '%s\n' "$orca_running_output" | grep -F 'quit Orca' >/dev/null \
+    || fail "Orca running-profile guard did not explain how to reconcile"
+HOME="$stow_home" FUNK_TEST_ORCA_RUNNING=0 "$root/bin/funk" configure-orca >/dev/null
+jq -e '.settings.theme == "dark"' "$orca_state" >/dev/null \
+    || fail "Orca settings did not reconcile after the running-profile guard cleared"
+mv "$orca_state" "$orca_state.merged-test"
+HOME="$stow_home" FUNK_TEST_ORCA_RUNNING=0 "$root/bin/funk" configure-orca >/dev/null
+jq -e '
+  .settings.defaultTuiAgent == "codex" and
+  .settings.terminalMacOptionAsAltMigrated == true and
+  .settings.notifications == {"terminalBell":true}
+' "$orca_state" >/dev/null || fail "Orca settings did not seed a fresh profile"
+HOME="$stow_home" "$root/bin/funk" configure-orca --check >/dev/null
 grep -F "\"\$funk_command\" stow" install >/dev/null \
     || fail "default install does not stow user configuration"
 grep -F "\"\$funk_root/libexec/initialize-configs\"" install >/dev/null \
     || fail "default install does not initialize config dependencies"
 grep -F "\"\$funk_root/libexec/install-ai-tools\"" install >/dev/null \
     || fail "default install does not install AI tools"
+grep -F "\"\$funk_command\" configure-orca" install >/dev/null \
+    || fail "default install does not reconcile Orca settings"
 grep -F 'with_windows=1' install >/dev/null \
     || fail "default install does not enable the window stack"
 grep -F -- '--without-windows) with_windows=0' install >/dev/null \

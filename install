@@ -123,6 +123,7 @@ fi
 "$funk_command" stow
 "$funk_root/libexec/initialize-configs"
 "$funk_root/libexec/install-ai-tools"
+"$funk_command" configure-orca
 "$funk_command" install-updater
 "$funk_command" configure-macos
 

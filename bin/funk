@@ -28,6 +28,7 @@ Commands:
   update             Install or upgrade packages declared by Funk
   stow [options]     Link Funk's user configuration packages into HOME
   install-updater    Install and load Funk's daily user LaunchAgent
+  configure-orca     Apply Funk's Stow-managed Orca settings overlay
   configure-macos    Apply Funk's user-level macOS preferences
   configure-system   Apply Funk's privileged machine-wide settings
   harden <action>    Show status or reapply the travel firewall posture
@@ -55,6 +56,10 @@ case "$command_name" in
     install-updater)
         shift
         exec "$FUNK_ROOT/libexec/install-update-agent" "$@"
+        ;;
+    configure-orca)
+        shift
+        exec "$FUNK_ROOT/libexec/configure-orca" "$@"
         ;;
     configure-macos)
         shift

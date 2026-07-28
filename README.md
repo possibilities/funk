@@ -78,11 +78,21 @@ target account. Funk owns the union of the useful packages from both projects:
 | `starship` | `~/.config/starship.toml` | no |
 | `btop` | `~/.config/btop/` | no |
 | `llm` | `~/Library/Application Support/io.datasette.llm/` | yes |
+| `orca` | `~/.config/orca/settings.json` | no |
 
 Funk's current Yabai, skhd, and reviewed Karabiner configurations take
 precedence where the two repositories overlapped. Privileged helpers,
 LaunchAgents, generated application state, credentials, and remote Termux
 configuration are intentionally not Stow-linked.
+
+Orca does not expose a standalone global preferences file: its settings share
+`orca-data.json` with projects, worktrees, sessions, account metadata, and
+other generated state, and Orca atomically replaces that file when saving.
+Funk therefore stows a credential-free settings overlay at
+`~/.config/orca/settings.json` and `funk configure-orca` reconciles only those
+keys into the active profile. If Orca is open and the profile differs, the
+command stops instead of racing Orca's writer; quit Orca and rerun it. The
+default installer runs this reconciliation after installing Orca.
 
 Run `funk stow` after changing or adding a package. Existing target files are
 never silently replaced: inspect a dry run with `funk stow --check`, then use

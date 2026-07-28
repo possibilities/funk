@@ -1,0 +1,12 @@
+{
+  "defaultTuiAgent": "codex",
+  "notifications": {
+    "terminalBell": true
+  },
+  "terminalFontFamily": "0xProto Nerd Font",
+  "terminalFontSize": 20,
+  "terminalMacOptionAsAlt": "true",
+  "terminalPaddingX": 0,
+  "terminalPaddingY": 0,
+  "theme": "dark"
+}
