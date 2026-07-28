@@ -127,6 +127,7 @@ Desktop applications:
   brew install --cask claude
   brew install --cask chatgpt
   brew install --cask stablyai/orca/orca
+  "$(brew --prefix)/bin/orca" agent hooks off --json
 
 Command-line tools:
   brew install gh  # intentional duplicate of the Brewfile
@@ -160,6 +161,10 @@ printf 'Installing AI desktop applications with their supported Homebrew casks.\
 "$brew_bin" install --cask claude
 "$brew_bin" install --cask chatgpt
 "$brew_bin" install --cask stablyai/orca/orca
+orca_cli="$brew_prefix/bin/orca"
+[ -x "$orca_cli" ] || die "Orca cask did not install its CLI at $orca_cli"
+printf 'Disabling Orca-managed agent hooks before first launch.\n'
+"$orca_cli" agent hooks off --json
 
 install_official "Claude Code" \
     https://claude.ai/install.sh \
