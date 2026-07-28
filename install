@@ -1,0 +1,127 @@
+#!/bin/bash
+
+set -euo pipefail
+
+with_hardening=0
+with_windows=0
+
+usage() {
+    cat <<'EOF'
+Usage: ./install [--with-hardening] [--with-windows] [--all]
+
+Default installation:
+  - installs Homebrew when missing
+  - applies Funk's Brewfile
+  - links the funk command into the active Homebrew bin directory
+  - installs and loads the daily 10:00 update LaunchAgent
+
+Options:
+  --with-hardening  Also install and immediately apply boot-time travel hardening
+  --with-windows    Also install/start Yabai, skhd, and Karabiner configuration
+  --all             Enable both optional system layers
+EOF
+}
+
+die() {
+    printf 'Funk installer: %s\n' "$*" >&2
+    exit 1
+}
+
+resolve_self() {
+    local source_path="$1"
+    local source_dir
+    local target
+
+    while [ -L "$source_path" ]; do
+        source_dir=$(cd -P -- "$(dirname -- "$source_path")" && pwd)
+        target=$(readlink "$source_path")
+        case "$target" in
+            /*) source_path="$target" ;;
+            *) source_path="$source_dir/$target" ;;
+        esac
+    done
+    source_dir=$(cd -P -- "$(dirname -- "$source_path")" && pwd)
+    printf '%s/%s\n' "$source_dir" "$(basename -- "$source_path")"
+}
+
+find_brew() {
+    if command -v brew >/dev/null 2>&1; then
+        command -v brew
+        return
+    fi
+    for candidate in /opt/homebrew/bin/brew /usr/local/bin/brew; do
+        if [ -x "$candidate" ]; then
+            printf '%s\n' "$candidate"
+            return
+        fi
+    done
+    return 1
+}
+
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --with-hardening) with_hardening=1 ;;
+        --with-windows) with_windows=1 ;;
+        --all)
+            with_hardening=1
+            with_windows=1
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        *)
+            usage >&2
+            exit 64
+            ;;
+    esac
+    shift
+done
+
+[ "$(uname -s)" = Darwin ] || die "macOS is required"
+[ "$(id -u)" -ne 0 ] || die "run as the target user, not root"
+
+self=$(resolve_self "$0")
+funk_root=$(cd -P -- "$(dirname -- "$self")" && pwd)
+funk_command="$funk_root/bin/funk"
+[ -x "$funk_command" ] || die "missing command: $funk_command"
+
+if ! brew_bin=$(find_brew); then
+    printf 'Homebrew is missing; running Homebrew'\''s official installer.\n'
+    /bin/bash -c \
+        "$(/usr/bin/curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+    brew_bin=$(find_brew) || die "Homebrew installer completed but brew is unavailable"
+fi
+
+brew_prefix=$("$brew_bin" --prefix)
+brew_owner=$(stat -f '%Su' "$brew_prefix")
+[ "$brew_owner" = "$(id -un)" ] \
+    || die "Homebrew prefix $brew_prefix is owned by $brew_owner, not $(id -un); resolve ownership before using Funk"
+export PATH="$brew_prefix/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+
+cli_dir="$brew_prefix/bin"
+cli_path="$cli_dir/funk"
+if [ -e "$cli_path" ] || [ -L "$cli_path" ]; then
+    [ -L "$cli_path" ] && [ "$cli_path" -ef "$funk_command" ] \
+        || die "refusing to replace existing command: $cli_path"
+else
+    ln -s "$funk_command" "$cli_path"
+fi
+
+"$funk_command" update
+"$funk_command" install-updater
+
+if [ "$with_hardening" -eq 1 ]; then
+    "$funk_command" install-hardening
+fi
+if [ "$with_windows" -eq 1 ]; then
+    "$funk_command" install-windows
+fi
+
+cat <<EOF
+Funk installation complete.
+
+Command: $cli_path
+Repository: $funk_root
+Daily log: $HOME/Library/Logs/Funk/update.log
+EOF

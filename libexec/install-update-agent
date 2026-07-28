@@ -9,10 +9,21 @@ die() {
     exit 1
 }
 
-if [ "$#" -ne 0 ]; then
-    printf 'Usage: funk install-updater\n' >&2
-    exit 64
-fi
+check_only=0
+case "${1:-}" in
+    "") ;;
+    --check)
+        [ "$#" -eq 1 ] || {
+            printf 'Usage: funk install-updater [--check]\n' >&2
+            exit 64
+        }
+        check_only=1
+        ;;
+    *)
+        printf 'Usage: funk install-updater [--check]\n' >&2
+        exit 64
+        ;;
+esac
 
 [ "$(uname -s)" = Darwin ] || die "macOS is required"
 [ "$(id -u)" -ne 0 ] || die "run this command as the target user, not root"
@@ -29,7 +40,6 @@ domain="gui/$(id -u)"
 [ -f "$template" ] || die "template not found: $template"
 [ -x "$funk_executable" ] || die "funk executable is missing or not executable: $funk_executable"
 
-mkdir -p "$agent_dir" "$log_dir"
 tmpdir=$(mktemp -d "${TMPDIR:-/tmp}/funk-update-agent.XXXXXX")
 trap 'rm -rf "$tmpdir"' EXIT
 rendered="$tmpdir/$label.plist"
@@ -40,6 +50,12 @@ cp "$template" "$rendered"
 /usr/bin/plutil -replace StandardErrorPath -string "$log_path" "$rendered"
 /usr/bin/plutil -lint "$rendered" >/dev/null
 
+if [ "$check_only" -eq 1 ]; then
+    printf 'Update LaunchAgent renders and validates successfully.\n'
+    exit 0
+fi
+
+mkdir -p "$agent_dir" "$log_dir"
 if [ -L "$agent_path" ]; then
     die "refusing to replace symlink: $agent_path"
 fi

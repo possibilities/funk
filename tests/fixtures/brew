@@ -1,0 +1,8 @@
+#!/bin/bash
+
+set -u
+
+printf 'brew-stub'
+printf ' <%s>' "$@"
+printf '\n'
+exit "${FUNK_TEST_BREW_EXIT:-0}"
