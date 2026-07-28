@@ -22,8 +22,7 @@ installers:
 [OpenCode](https://opencode.ai/docs/), and [Pi](https://pi.dev/docs/latest).
 ChatGPT and Claude Desktop use their Homebrew casks because their normal
 personal macOS downloads do not provide unattended installer commands. Orca
-uses the cask documented by the [Orca project](https://github.com/stablyai/orca)
-and disables its managed agent hooks before first launch.
+uses the cask documented by the [Orca project](https://github.com/stablyai/orca).
 Run `libexec/install-ai-tools --check` to inspect the exact plan without making
 changes.
 

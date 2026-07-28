@@ -264,13 +264,11 @@ if grep -F 'Run: funk yabai maintain' libexec/install-window-manager >/dev/null;
 fi
 
 ai_install_plan=$(libexec/install-ai-tools --check)
-# shellcheck disable=SC2016 # Match the literal dry-run commands.
 for required_ai_install in \
     'brew install gh  # intentional duplicate of the Brewfile' \
     'brew install --cask claude' \
     'brew install --cask chatgpt' \
     'brew install --cask stablyai/orca/orca' \
-    '"$(brew --prefix)/bin/orca" agent hooks off --json' \
     'curl -fsSL https://claude.ai/install.sh | bash' \
     'curl -fsSL https://chatgpt.com/codex/install.sh | CODEX_NON_INTERACTIVE=1 sh' \
     'curl -fsSL https://opencode.ai/install | bash -s -- --no-modify-path' \
@@ -278,9 +276,6 @@ for required_ai_install in \
     printf '%s\n' "$ai_install_plan" | grep -F "$required_ai_install" >/dev/null \
         || fail "AI installation plan is missing: $required_ai_install"
 done
-# shellcheck disable=SC2016 # Match the literal installer variable.
-grep -F '"$orca_cli" agent hooks off --json' libexec/install-ai-tools >/dev/null \
-    || fail "AI installer does not disable Orca-managed hooks before first launch"
 grep -F "\"\$brew_bin\" install gh" libexec/install-ai-tools >/dev/null \
     || fail "AI installer does not deliberately duplicate the GitHub CLI install"
 grep -F '^[[:space:]]*oauth_token:' libexec/install-ai-tools >/dev/null \
