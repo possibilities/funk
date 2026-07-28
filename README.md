@@ -10,7 +10,7 @@ The default installer applies the Brewfile plus the vendor-supported AI tool
 installers:
 
 - Tailscale, Ghostty, Google Chrome, Chrome Canary, Brave, Firefox
-- ChatGPT, Claude Desktop, Orca, Obsidian, Raycast
+- ChatGPT, Claude Desktop, Codiff, Orca, Obsidian, Raycast
 - GitHub CLI, Claude Code, Codex CLI, OpenCode, and Pi
 - Yabai, skhd, and the narrowly justified Karabiner-Elements layer
 - Git Delta, Neovim, tmux, Starship, btop, GNU Stow, and supporting
@@ -21,8 +21,11 @@ installers:
 [Codex CLI](https://github.com/openai/codex#installing-and-running-codex-cli),
 [OpenCode](https://opencode.ai/docs/), and [Pi](https://pi.dev/docs/latest).
 ChatGPT and Claude Desktop use their Homebrew casks because their normal
-personal macOS downloads do not provide unattended installer commands. Orca
-uses the cask documented by the [Orca project](https://github.com/stablyai/orca).
+personal macOS downloads do not provide unattended installer commands.
+[Codiff](https://github.com/nkzw-tech/codiff) and
+[Orca](https://github.com/stablyai/orca) use the casks documented by their
+respective projects. Funk narrowly trusts Codiff's cask rather than its entire
+third-party tap.
 Run `libexec/install-ai-tools --check` to inspect the exact plan without making
 changes.
 
