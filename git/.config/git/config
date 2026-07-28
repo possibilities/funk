@@ -1,0 +1,52 @@
+[user]
+    name = Mike Bannister
+    email = notimpossiblemike@gmail.com
+[alias]
+    st = status
+    ci = commit
+    cp = cherry-pick
+    br = branch -v
+    df = diff
+    dfc = diff --cached
+    dfh = diff HEAD
+    co = checkout
+    pl = log --pretty=oneline
+    pls = log --pretty=oneline -5
+    plm = log --pretty=oneline -10
+    pll = log --pretty=oneline -20
+    tree = log --graph --pretty=oneline --decorate
+    amend = commit --amend -C HEAD
+    s = stash --include-untracked
+    sa = stash apply
+    sk = stash --include-untracked --keep-index
+
+    l  = log --pretty='format:%C(yellow)%h%Cblue%d%Creset %s %C(white) %an, %ar%Creset'
+    lg = log --pretty='format:%C(yellow)%h%Cblue%d%Creset %s %C(white) %an, %ar%Creset' --graph
+    lga = log --pretty='format:%C(yellow)%h%Cblue%d%Creset %s %C(white) %an, %ar%Creset' --graph --all
+    r = rev-parse
+    rs = rev-parse --short
+    brl = for-each-ref --sort=committerdate refs/heads/ --format='%(HEAD) %(color:yellow)%(refname:short)%(color:reset) - %(color:red)%(objectname:short)%(color:reset) - %(contents:subject) - %(authorname) (%(color:green)%(committerdate:relative)%(color:reset))'
+    t = ls-tree -r HEAD --name-only
+[core]
+    pager = delta
+[interactive]
+    diffFilter = delta --color-only
+[delta]
+    navigate = true
+    side-by-side = false
+    line-numbers = true
+    syntax-theme = base16
+[push]
+    default = simple
+[github]
+  user = possibilities
+[init]
+	defaultBranch = main
+[pull]
+	rebase = true
+[credential "https://github.com"]
+	helper =
+	helper = !/opt/homebrew/bin/gh auth git-credential
+[credential "https://gist.github.com"]
+	helper =
+	helper = !/opt/homebrew/bin/gh auth git-credential

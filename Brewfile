@@ -1,5 +1,25 @@
 tap "asmvik/formulae"
+tap "oven-sh/bun"
+tap "tinted-theming/tinted"
 
+brew "git-delta"
+brew "bat"
+brew "neovim"
+brew "tmux"
+brew "nvm"
+brew "gh"
+brew "jq"
+brew "yq"
+brew "ripgrep"
+brew "fzf"
+brew "btop"
+brew "uv"
+brew "starship"
+brew "stow"
+brew "pnpm"
+brew "oven-sh/bun/bun", trusted: true
+brew "tinted-theming/tinted/tinty", trusted: true
+brew "llm"
 brew "asmvik/formulae/yabai", trusted: true
 brew "asmvik/formulae/skhd", trusted: true
 
@@ -13,3 +33,4 @@ cask "claude"
 cask "obsidian"
 cask "raycast"
 cask "karabiner-elements"
+cask "font-0xproto-nerd-font"

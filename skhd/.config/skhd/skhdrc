@@ -16,8 +16,8 @@ cmd + shift - f : yabai -m window --toggle float
 ctrl + cmd + shift - g : yabai -m space --balance
 
 # Karabiner maps Cmd+1…8 to F13…F20 and Cmd+9 to F12. Keeping this
-# indirection here lets Ctrl+1…9 become ordinary browser Cmd+number shortcuts
-# without recursion.
+# indirection here lets
+# Ctrl+1…9 become ordinary browser Cmd+number shortcuts without recursion.
 f13 : yabai -m space --focus 1
 f14 : yabai -m space --focus 2
 f15 : yabai -m space --focus 3

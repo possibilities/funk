@@ -1,15 +1,19 @@
 # Funk
 
-Funk is Arthack's deliberately small macOS setup. It is a new configuration
-project, not a port of the old dotfiles repository.
+Funk is Arthack's reproducible macOS setup and the successor to the old
+dotfiles repository. It keeps Funk's narrower security model while carrying
+forward the old repository's Stow-based, fix-forward configuration workflow.
 
 ## What it installs
 
-The Brewfile declares only:
+The Brewfile declares the applications and command-line tools required by the
+managed configuration:
 
 - Tailscale, Ghostty, Google Chrome, Chrome Canary, Brave
 - ChatGPT, Claude, Obsidian, Raycast
 - Yabai, skhd, and the narrowly justified Karabiner-Elements layer
+- Git Delta, Neovim, tmux, Tinty, Starship, btop, GNU Stow, and supporting
+  shell/development tools
 
 Karabiner has exactly two paired rules: global Cmd+1…8 becomes F13…F20 and
 Cmd+9 becomes F12 for Yabai Space focus, while Ctrl+1…9 becomes the normal
@@ -32,6 +36,39 @@ disables SMB and removes the current user's Public Folder share, and sets AC
 display sleep to five minutes. The obsolete Ctrl+F2/F3/F4 and screenshot
 shortcut mutations remain omitted because Funk does not claim those keys.
 
+## Stow-managed configuration
+
+User-owned configuration is stored in GNU Stow packages and linked into the
+target account. Funk owns the union of the useful packages from both projects:
+
+| Package | Target | `--no-folding` |
+| --- | --- | --- |
+| `git` | `~/.config/git/` | no |
+| `ssh` | `~/.ssh/` | yes |
+| `ghostty` | `~/.config/ghostty/` | yes |
+| `nvim` | `~/.config/nvim/` | no |
+| `skhd` | `~/.config/skhd/` | no |
+| `tmux` | `~/.config/tmux/` | yes |
+| `tinty` | `~/.config/tinted-theming/tinty/` | no |
+| `zsh` | `~/.zshenv`, `~/.zshrc`, `~/.zsh/` | yes |
+| `yabai` | `~/.config/yabai/` | no |
+| `karabiner` | `~/.config/karabiner/` | yes |
+| `tmuxctl` | `~/.config/tmuxctl/` | yes |
+| `bin` | `~/.local/bin/` | yes |
+| `starship` | `~/.config/starship.toml` | no |
+| `btop` | `~/.config/btop/` | no |
+| `llm` | `~/Library/Application Support/io.datasette.llm/` | yes |
+
+Funk's current Yabai, skhd, and deliberately minimal Karabiner configurations
+take precedence where the two repositories overlapped. Privileged helpers,
+LaunchAgents, generated application state, credentials, and remote Termux
+configuration are intentionally not Stow-linked.
+
+Run `funk stow` after changing or adding a package. Existing target files are
+never silently replaced: inspect a dry run with `funk stow --check`, then use
+`funk stow --adopt <package>` only when you deliberately want to move the
+existing target into Funk and review the resulting Git diff.
+
 ## Install
 
 Run from the checked-out repository as the new account, never with `sudo`:
@@ -40,8 +77,10 @@ Run from the checked-out repository as the new account, never with `sudo`:
 ./install
 ```
 
-This installs Homebrew when absent, runs `brew bundle install`, links `funk`
-into the active Homebrew `bin` directory, and installs the daily updater.
+This installs Homebrew when absent, runs `brew bundle install`, stows every user
+configuration package, initializes Tinty, tmux-fzf, the pinned Node runtime, and
+shell-gpt, links `funk` into the active Homebrew `bin` directory, and installs
+the daily updater.
 Optional system layers are explicit:
 
 ```sh
@@ -52,8 +91,9 @@ Optional system layers are explicit:
 ```
 
 `--with-hardening` immediately loads the travel firewall posture.
-`--with-windows` installs user configs and starts the app-provided user services,
-but it does not change SIP or create the scripting-addition sudo rule.
+`--with-windows` restows the Yabai, skhd, and Karabiner packages and starts the
+app-provided user services, but it does not change SIP or create the
+scripting-addition sudo rule.
 `--with-system-settings` applies the privileged machine-wide settings described
 above and prompts for administrator authentication. `--all` enables all three
 optional layers.

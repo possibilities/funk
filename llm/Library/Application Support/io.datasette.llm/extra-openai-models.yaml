@@ -1,0 +1,34 @@
+# Models not yet in llm's hardcoded list.
+# Remove entries as they land in upstream releases.
+
+# GPT-5.3 (2026-03-03)
+- model_id: gpt-5.3
+  model_name: gpt-5.3
+  vision: true
+  supports_tools: true
+  supports_schema: true
+
+- model_id: gpt-5.3-chat-latest
+  model_name: gpt-5.3-chat-latest
+  vision: true
+  supports_tools: true
+  supports_schema: true
+
+# GPT-5.4 (2026-03-05)
+- model_id: gpt-5.4
+  model_name: gpt-5.4
+  vision: true
+  supports_tools: true
+  supports_schema: true
+
+- model_id: gpt-5.4-2026-03-05
+  model_name: gpt-5.4-2026-03-05
+  vision: true
+  supports_tools: true
+  supports_schema: true
+
+- model_id: gpt-5.4-mini
+  model_name: gpt-5.4-mini
+  vision: true
+  supports_tools: true
+  supports_schema: true

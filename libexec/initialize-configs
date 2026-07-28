@@ -1,0 +1,56 @@
+#!/bin/bash
+
+set -euo pipefail
+
+die() {
+    printf 'Funk config initializer: %s\n' "$*" >&2
+    exit 1
+}
+
+find_brew() {
+    if command -v brew >/dev/null 2>&1; then
+        command -v brew
+        return
+    fi
+    for candidate in /opt/homebrew/bin/brew /usr/local/bin/brew; do
+        if [ -x "$candidate" ]; then
+            printf '%s\n' "$candidate"
+            return
+        fi
+    done
+    return 1
+}
+
+[ "$#" -eq 0 ] || {
+    printf 'Usage: initialize-configs\n' >&2
+    exit 64
+}
+[ "$(uname -s)" = Darwin ] || die "macOS is required"
+[ "$(id -u)" -ne 0 ] || die "run as the target user, not root"
+
+brew_bin=$(find_brew) || die "Homebrew is not installed"
+brew_prefix=$("$brew_bin" --prefix)
+export PATH="$brew_prefix/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+
+chmod 0700 "$HOME/.ssh" "$HOME/.config/karabiner"
+
+tmux_fzf_dir="$HOME/.config/tmux/plugins/tmux-fzf"
+if [ ! -d "$tmux_fzf_dir/.git" ]; then
+    mkdir -p "$(dirname "$tmux_fzf_dir")"
+    git clone https://github.com/sainnhe/tmux-fzf.git "$tmux_fzf_dir"
+fi
+
+mkdir -p "$HOME/.config/ghostty/themes"
+tinty install
+tinty apply base16-catppuccin-mocha
+
+node_version=v24.16.0
+export NVM_DIR="$HOME/.nvm"
+mkdir -p "$NVM_DIR"
+# shellcheck disable=SC1091
+source "$brew_prefix/opt/nvm/nvm.sh" --no-use
+nvm install "$node_version"
+nvm alias default "$node_version"
+nvm use "$node_version"
+
+uv tool install shell-gpt

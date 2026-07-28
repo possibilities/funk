@@ -14,6 +14,8 @@ shell_files="
 install
 bin/funk
 libexec/funk-update
+libexec/stow-config
+libexec/initialize-configs
 libexec/install-update-agent
 libexec/configure-macos
 libexec/configure-system
@@ -26,7 +28,9 @@ system/install-hardening-root
 system/funk-yabai-maintain
 system/install-yabai-root
 system/apply-system-settings
-config/yabai/yabairc
+yabai/.config/yabai/yabairc
+bin/.local/bin/tmux-cycle-session
+bin/.local/bin/tmux-move-window
 tests/fixtures/brew
 tests/validate.sh
 "
@@ -65,19 +69,39 @@ if command -v ruby >/dev/null 2>&1; then
       focus_keys = rules.fetch(1).fetch("manipulators").map { |m| m.fetch("to").fetch(0).fetch("key_code") }
       abort "unexpected Karabiner Space focus keys" unless focus_keys == %w[f13 f14 f15 f16 f17 f18 f19 f20 f12]
     ' \
-        config/karabiner/karabiner.json
+        karabiner/.config/karabiner/karabiner.json
 elif command -v jq >/dev/null 2>&1; then
     jq -e '
       (.profiles[0].complex_modifications.rules | length) == 2 and
       ([.profiles[0].complex_modifications.rules[].manipulators | length] == [9, 9]) and
       ([.profiles[0].complex_modifications.rules[1].manipulators[].to[0].key_code] ==
         ["f13", "f14", "f15", "f16", "f17", "f18", "f19", "f20", "f12"])
-    ' config/karabiner/karabiner.json >/dev/null
+    ' karabiner/.config/karabiner/karabiner.json >/dev/null
 else
     fail "Ruby or jq is required to validate Karabiner JSON"
 fi
 
 expected_brewfile='tap "asmvik/formulae"
+tap "oven-sh/bun"
+tap "tinted-theming/tinted"
+brew "git-delta"
+brew "bat"
+brew "neovim"
+brew "tmux"
+brew "nvm"
+brew "gh"
+brew "jq"
+brew "yq"
+brew "ripgrep"
+brew "fzf"
+brew "btop"
+brew "uv"
+brew "starship"
+brew "stow"
+brew "pnpm"
+brew "oven-sh/bun/bun", trusted: true
+brew "tinted-theming/tinted/tinty", trusted: true
+brew "llm"
 brew "asmvik/formulae/yabai", trusted: true
 brew "asmvik/formulae/skhd", trusted: true
 cask "tailscale-app"
@@ -89,7 +113,8 @@ cask "chatgpt"
 cask "claude"
 cask "obsidian"
 cask "raycast"
-cask "karabiner-elements"'
+cask "karabiner-elements"
+cask "font-0xproto-nerd-font"'
 actual_brewfile=$(grep -Ev '^[[:space:]]*$' Brewfile)
 [ "$actual_brewfile" = "$expected_brewfile" ] \
     || fail "Brewfile declarations differ from the approved set"
@@ -119,6 +144,29 @@ PATH="$root/tests/fixtures:/usr/bin:/bin:/usr/sbin:/sbin" \
     "$root/bin/funk" update >/dev/null
 "$root/bin/funk" install-updater --check >/dev/null
 "$root/bin/funk" configure-macos --check
+
+stow_home=$(mktemp -d "${TMPDIR:-/tmp}/funk-stow-test.XXXXXX")
+trap 'rm -rf "$stow_home"' EXIT
+HOME="$stow_home" "$root/bin/funk" stow
+[ -L "$stow_home/.config/git/config" ] || fail "git package was not stowed"
+[ -L "$stow_home/.ssh/config" ] || fail "ssh config was not stowed"
+[ -d "$stow_home/.ssh" ] && [ ! -L "$stow_home/.ssh" ] \
+    || fail "ssh package did not use --no-folding"
+[ -L "$stow_home/.config/ghostty/config" ] \
+    || fail "Ghostty config was not stowed with room for generated themes"
+[ -L "$stow_home/.local/bin/tmux-cycle-session" ] && [ ! -L "$stow_home/.local" ] \
+    || fail "bin package did not use --no-folding"
+[ -L "$stow_home/Library/Application Support/io.datasette.llm/extra-openai-models.yaml" ] \
+    || fail "LLM package was not stowed"
+HOME="$stow_home" "$root/bin/funk" stow --check >/dev/null 2>&1
+grep -F "\"\$funk_command\" stow" install >/dev/null \
+    || fail "default install does not stow user configuration"
+grep -F "\"\$funk_root/libexec/initialize-configs\"" install >/dev/null \
+    || fail "default install does not initialize config dependencies"
+grep -F 'tmux-fzf.git' libexec/initialize-configs >/dev/null \
+    || fail "tmux-fzf is not initialized"
+grep -F 'tinty apply base16-catppuccin-mocha' libexec/initialize-configs >/dev/null \
+    || fail "Tinty default theme is not initialized"
 
 for required_setting in \
     'com.apple.dock autohide -bool true' \
@@ -165,17 +213,17 @@ if grep -F '/Users/mike' system/apply-system-settings >/dev/null; then
     fail "old account leaked into system settings"
 fi
 
-[ "$(grep -Ec '^f(13|14|15|16|17|18|19|20) : yabai -m space --focus [1-8]$' config/skhd/skhdrc)" -eq 8 ] \
+[ "$(grep -Ec '^f(13|14|15|16|17|18|19|20) : yabai -m space --focus [1-8]$' skhd/.config/skhd/skhdrc)" -eq 8 ] \
     || fail "skhd numbered-Space 1-8 focus bindings are incomplete"
-grep -Fx 'f12 : yabai -m space --focus 9' config/skhd/skhdrc >/dev/null \
+grep -Fx 'f12 : yabai -m space --focus 9' skhd/.config/skhd/skhdrc >/dev/null \
     || fail "skhd Space 9 focus binding is missing"
-[ "$(grep -Ec '^cmd \+ shift - [1-9] : yabai -m window --space [1-9]$' config/skhd/skhdrc)" -eq 9 ] \
+[ "$(grep -Ec '^cmd \+ shift - [1-9] : yabai -m window --space [1-9]$' skhd/.config/skhd/skhdrc)" -eq 9 ] \
     || fail "skhd numbered-Space move bindings are incomplete"
 grep -F 'cmd + shift - v : /usr/bin/open "raycast://extensions/raycast/clipboard-history/clipboard-history"' \
-    config/skhd/skhdrc >/dev/null \
+    skhd/.config/skhd/skhdrc >/dev/null \
     || fail "Raycast Clipboard History shortcut is missing"
 if grep -Eq 'right_option|left_command|left_option|Swap .*Command|hjkl to arrow' \
-    config/karabiner/karabiner.json; then
+    karabiner/.config/karabiner/karabiner.json; then
     fail "unapproved Karabiner rules found"
 fi
 
@@ -185,8 +233,8 @@ if grep -Eqi 'bundle cleanup|uninstall|quarantine|fetch-head|telegram|notify|sud
     fail "daily updater contains a prohibited operation"
 fi
 
-if grep -R -E '/Users/[A-Za-z0-9._-]+|greybird|home.router|telegram|agentnotify|TCC\.db|security import|yabai-cert' \
-    Brewfile bin config launchd libexec system >/dev/null; then
+if grep -R -E '/Users/[A-Za-z0-9._-]+|home.router|telegram|agentnotify|TCC\.db|security import|yabai-cert' \
+    Brewfile bin launchd libexec system yabai skhd karabiner >/dev/null; then
     fail "old-account or prohibited privileged machinery leaked into Funk"
 fi
 

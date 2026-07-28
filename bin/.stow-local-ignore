@@ -1,0 +1,22 @@
+# Default stow ignores (must re-specify since .stow-local-ignore replaces defaults)
+RCS
+.+,v
+CVS
+\.\#.+
+\.cvsignore
+\.svn
+_darcs
+\.hg
+\.git
+\.gitignore
+\.gitmodules
+\.bzr
+\.bzrignore
+
+# Claude Code project files (anchored to package root only)
+/CLAUDE\.md
+/AGENTS\.md
+
+# Funk's dispatcher is linked into Homebrew's bin by ./install. Only .local
+# helper commands are part of this Stow package.
+/funk

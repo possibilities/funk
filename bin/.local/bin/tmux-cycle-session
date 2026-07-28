@@ -1,0 +1,33 @@
+#!/bin/bash
+# Cycle tmux sessions
+# Usage: tmux-cycle-session [next|prev]
+
+direction="${1:-next}"
+
+sessions=$(tmux list-sessions -F '#{session_name}:#{session_id}' | sort)
+count=$(echo "$sessions" | wc -l | tr -d ' ')
+current=$(tmux display-message -p '#{session_id}')
+
+# Find current session index
+index=0
+found=-1
+while IFS=: read -r _session session_id; do
+    if [ "$session_id" = "$current" ]; then
+        found=$index
+        break
+    fi
+    ((index++))
+done <<< "$sessions"
+
+if [ "$found" -eq -1 ]; then
+    target=$(echo "$sessions" | head -1)
+else
+    if [ "$direction" = "next" ]; then
+        next_index=$(( (found + 1) % count ))
+    else
+        next_index=$(( (found - 1 + count) % count ))
+    fi
+    target=$(echo "$sessions" | sed -n "$((next_index + 1))p")
+fi
+
+tmux switch-client -t "${target##*:}"

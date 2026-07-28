@@ -1,0 +1,30 @@
+#!/bin/bash
+# Move the current tmux window left or right.
+# At boundaries, wraps around with shift semantics (not swap).
+# Usage: tmux-move-window left|right
+
+dir="$1"
+cur=$(tmux display-message -p '#{window_index}')
+first=$(tmux list-windows -F '#{window_index}' | head -1)
+last=$(tmux list-windows -F '#{window_index}' | tail -1)
+
+# swap-window -d keeps the moved window focused in a single server op —
+# a separate select-window after the swap redraws twice (visible flicker)
+case "$dir" in
+  left)
+    if [ "$cur" = "$first" ]; then
+      tmux move-window -a -t ':$'
+      tmux movew -r
+    else
+      tmux swap-window -d -t -1
+    fi
+    ;;
+  right)
+    if [ "$cur" = "$last" ]; then
+      tmux move-window -b -t ':^'
+      tmux movew -r
+    else
+      tmux swap-window -d -t +1
+    fi
+    ;;
+esac

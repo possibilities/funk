@@ -1,0 +1,114 @@
+#!/bin/bash
+
+set -euo pipefail
+
+die() {
+    printf 'funk stow: %s\n' "$*" >&2
+    exit 1
+}
+
+usage() {
+    cat <<'EOF'
+Usage: funk stow [--adopt] [--check] [package ...]
+
+With no package names, link every Funk user-configuration package into HOME.
+
+Options:
+  --adopt  Move conflicting target files into Funk before linking them
+  --check  Simulate the requested Stow operations without changing files
+
+--adopt intentionally changes the repository. Review the resulting git diff.
+EOF
+}
+
+find_stow() {
+    if [ -n "${FUNK_STOW_BIN:-}" ]; then
+        [ -x "$FUNK_STOW_BIN" ] || die "FUNK_STOW_BIN is not executable: $FUNK_STOW_BIN"
+        printf '%s\n' "$FUNK_STOW_BIN"
+        return
+    fi
+    if command -v stow >/dev/null 2>&1; then
+        command -v stow
+        return
+    fi
+    for candidate in /opt/homebrew/bin/stow /usr/local/bin/stow; do
+        if [ -x "$candidate" ]; then
+            printf '%s\n' "$candidate"
+            return
+        fi
+    done
+    return 1
+}
+
+all_packages='git ssh ghostty nvim skhd tmux tinty zsh yabai karabiner tmuxctl bin starship btop llm'
+
+known_package() {
+    case "$1" in
+        git|ssh|ghostty|nvim|skhd|tmux|tinty|zsh|yabai|karabiner|tmuxctl|bin|starship|btop|llm)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+needs_no_folding() {
+    case "$1" in
+        ssh|ghostty|tmux|zsh|karabiner|tmuxctl|bin|llm)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+adopt=0
+check_only=0
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --adopt) adopt=1 ;;
+        --check) check_only=1 ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        --)
+            shift
+            break
+            ;;
+        -*)
+            usage >&2
+            exit 64
+            ;;
+        *)
+            break
+            ;;
+    esac
+    shift
+done
+
+[ "$(id -u)" -ne 0 ] || die "run as the target user, not root"
+[ -n "${HOME:-}" ] && [ -d "$HOME" ] || die "HOME is not an existing directory"
+
+funk_root=${FUNK_ROOT:?FUNK_ROOT is not set}
+stow_bin=$(find_stow) || die "GNU Stow is not installed; run ./install or brew install stow"
+packages=${*:-$all_packages}
+
+for package in $packages; do
+    known_package "$package" || die "unknown package: $package"
+    [ -d "$funk_root/$package" ] || die "package directory is missing: $funk_root/$package"
+
+    set -- --dir "$funk_root" --target "$HOME" --restow
+    if needs_no_folding "$package"; then
+        set -- "$@" --no-folding
+    fi
+    if [ "$adopt" -eq 1 ]; then
+        set -- "$@" --adopt
+    fi
+    if [ "$check_only" -eq 1 ]; then
+        set -- "$@" --simulate --verbose=1
+    fi
+    "$stow_bin" "$@" "$package"
+done

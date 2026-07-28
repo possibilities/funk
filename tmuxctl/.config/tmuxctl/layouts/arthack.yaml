@@ -1,0 +1,4 @@
+name: arthack
+windows:
+  - name: work
+    command: cd ~/code/arthack && clear

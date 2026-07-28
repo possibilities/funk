@@ -1,0 +1,19 @@
+auto-update-channel = tip
+working-directory = home
+window-inherit-working-directory = true
+window-save-state = never
+font-size = 20
+font-family = "0xProto Nerd Font"
+copy-on-select = clipboard
+window-decoration = none
+window-padding-x = 0
+window-padding-y = 0
+window-padding-balance = true
+theme = tinted-theming
+bell-features = no-attention,no-title,no-system,no-audio,no-border
+# Send an unambiguous CSI-u Shift+Enter. Legacy ESC+CR is also Alt+Enter
+# in tmux, which pi reserves for follow-up messages.
+keybind = shift+enter=text:\x1b[13;2u
+macos-option-as-alt = true
+keybind = alt+1=text:\x1b\x31
+keybind = alt+2=text:\x1b\x32
