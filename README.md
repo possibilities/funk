@@ -13,7 +13,7 @@ installers:
 - ChatGPT, Claude Desktop, Orca, Obsidian, Raycast
 - GitHub CLI, Claude Code, Codex CLI, OpenCode, and Pi
 - Yabai, skhd, and the narrowly justified Karabiner-Elements layer
-- Git Delta, Neovim, tmux, Tinty, Starship, btop, GNU Stow, and supporting
+- Git Delta, Neovim, tmux, Starship, btop, GNU Stow, and supporting
   shell/development tools
 
 `libexec/install-ai-tools` uses the official shell installers for
@@ -44,12 +44,12 @@ skhd restores Ctrl+L as the address-bar shortcut in Funk's four browsers and
 Cmd+Shift+V as a direct Raycast Clipboard History shortcut.
 
 The default install also applies the personal macOS preferences retained from
-the old dotfiles: dark mode and a black wallpaper, an empty auto-hidden Dock and
-menu bar, quiet UI, hidden desktop items, column-view Finder, fast key repeat,
-Yabai-friendly window and Space behavior, Raycast-friendly Spotlight shortcuts,
-Cmd+D as the Raycast launcher with first-run onboarding dismissed, disabled
-AirPlay Receiver and Handoff, disabled iCloud Desktop/Documents syncing, and the
-compact 12-hour menu-bar clock. Run `funk configure-macos` to reapply them.
+the old dotfiles: dark mode, an empty auto-hidden Dock and menu bar, quiet UI,
+hidden desktop items, column-view Finder, fast key repeat, Yabai-friendly
+window and Space behavior, Raycast-friendly Spotlight shortcuts, Cmd+D as the
+Raycast launcher with first-run onboarding dismissed, disabled AirPlay Receiver
+and Handoff, disabled iCloud Desktop/Documents syncing, and the compact 12-hour
+menu-bar clock. Run `funk configure-macos` to reapply them.
 
 The old machine-wide settings are available through the explicit
 `funk configure-system` command: it disables Spotlight indexing on all mounted
@@ -71,7 +71,6 @@ target account. Funk owns the union of the useful packages from both projects:
 | `nvim` | `~/.config/nvim/` | no |
 | `skhd` | `~/.config/skhd/` | no |
 | `tmux` | `~/.config/tmux/` | yes |
-| `tinty` | `~/.config/tinted-theming/tinty/` | no |
 | `zsh` | `~/.zshenv`, `~/.zshrc`, `~/.zsh/` | yes |
 | `yabai` | `~/.config/yabai/` | no |
 | `karabiner` | `~/.config/karabiner/` | yes |
@@ -100,7 +99,7 @@ Run from the checked-out repository as the new account, never with `sudo`:
 ```
 
 This installs Homebrew when absent, runs `brew bundle install`, stows every user
-configuration package, initializes Tinty, tmux-fzf, the pinned Node runtime, and
+configuration package, initializes tmux-fzf, the pinned Node runtime, and
 shell-gpt, installs the AI tools listed above, links `funk` into the active
 Homebrew `bin` directory, installs the daily updater, starts the Yabai/skhd/
 Karabiner stack, and converges Yabai Spaces 1–9.

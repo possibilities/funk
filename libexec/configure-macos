@@ -12,10 +12,6 @@ if [ "$#" -gt 1 ] || { [ "$#" -eq 1 ] && [ "$1" != "--check" ]; }; then
     exit 64
 fi
 
-funk_root=${FUNK_ROOT:?FUNK_ROOT is not set}
-wallpaper_source="$funk_root/assets/black-wallpaper.ppm"
-[ -f "$wallpaper_source" ] || die "missing wallpaper source: $wallpaper_source"
-
 if [ "${1:-}" = "--check" ]; then
     exit 0
 fi
@@ -124,47 +120,6 @@ write_default com.apple.loginwindow TALLogoutSavesState -bool false
 write_default com.apple.menuextra.clock ShowAMPM -bool true
 write_default com.apple.menuextra.clock ShowDayOfWeek -bool true
 write_default com.apple.menuextra.clock ShowDate -int 0
-
-# Generate a PNG outside the repository so the source asset remains a
-# reviewable text file.
-wallpaper_dir="$HOME/Library/Application Support/Funk"
-wallpaper_path="$wallpaper_dir/black-wallpaper.png"
-/bin/mkdir -p "$wallpaper_dir"
-/bin/chmod 0700 "$wallpaper_dir"
-/usr/bin/sips -s format png "$wallpaper_source" --out "$wallpaper_path" >/dev/null
-/bin/chmod 0600 "$wallpaper_path"
-
-# Use AppKit's desktop-image API directly. Unlike Apple Events sent to Finder
-# or System Events, this does not require an Automation privacy grant.
-if ! /usr/bin/osascript -l JavaScript - "$wallpaper_path" <<'JXA'
-ObjC.import('AppKit');
-
-function run(arguments) {
-    const wallpaperURL = $.NSURL.fileURLWithPath(arguments[0]);
-    const workspace = $.NSWorkspace.sharedWorkspace;
-    const screens = $.NSScreen.screens;
-
-    if (screens.count === 0) {
-        throw new Error('No displays are available');
-    }
-
-    for (let index = 0; index < screens.count; index++) {
-        const error = Ref();
-        const changed = workspace.setDesktopImageURLForScreenOptionsError(
-            wallpaperURL,
-            screens.objectAtIndex(index),
-            $(),
-            error
-        );
-        if (!changed) {
-            throw new Error(ObjC.unwrap(error[0].localizedDescription));
-        }
-    }
-}
-JXA
-then
-    printf 'Could not set the black wallpaper; rerun: funk configure-macos\n' >&2
-fi
 
 # Relaunch only preference-owning user processes. Missing processes are normal
 # on a headless login and should not turn an otherwise successful run into an

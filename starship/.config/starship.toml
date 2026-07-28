@@ -15,4 +15,3 @@ disabled = false
 only_detached = false
 tag_disabled = true
 format = '[\($hash\)]($style) '
-style = 'green'

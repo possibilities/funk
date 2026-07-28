@@ -32,8 +32,8 @@ the next machine.
 - Preserve common Emacs/readline movement, history, cutting, and yanking
   bindings when changing shell or terminal input behavior.
 - Reload an affected application after changing its live config when possible:
-  source tmux's config, restart Yabai/skhd services, and reapply Tinty themes.
-  Karabiner reloads its configuration automatically.
+  source tmux's config and restart Yabai/skhd services. Karabiner reloads its
+  configuration automatically.
 
 Packages using `--no-folding` are `ssh`, `ghostty`, `tmux`, `zsh`, `karabiner`,
 `tmuxctl`, `bin`, and `llm`. This keeps their target directories available for

@@ -40,10 +40,6 @@ if [ ! -d "$tmux_fzf_dir/.git" ]; then
     git clone https://github.com/sainnhe/tmux-fzf.git "$tmux_fzf_dir"
 fi
 
-mkdir -p "$HOME/.config/ghostty/themes"
-tinty install
-tinty apply base16-catppuccin-mocha
-
 node_version=v24.16.0
 export NVM_DIR="$HOME/.nvm"
 mkdir -p "$NVM_DIR"

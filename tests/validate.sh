@@ -141,7 +141,6 @@ fi
 
 expected_brewfile='tap "asmvik/formulae"
 tap "oven-sh/bun"
-tap "tinted-theming/tinted"
 brew "git-delta"
 brew "bat"
 brew "neovim"
@@ -158,7 +157,6 @@ brew "starship"
 brew "stow"
 brew "pnpm"
 brew "oven-sh/bun/bun", trusted: true
-brew "tinted-theming/tinted/tinty", trusted: true
 brew "llm"
 brew "asmvik/formulae/yabai", trusted: true
 brew "asmvik/formulae/skhd", trusted: true
@@ -210,7 +208,7 @@ HOME="$stow_home" "$root/bin/funk" stow
 [ -d "$stow_home/.ssh" ] && [ ! -L "$stow_home/.ssh" ] \
     || fail "ssh package did not use --no-folding"
 [ -L "$stow_home/.config/ghostty/config" ] \
-    || fail "Ghostty config was not stowed with room for generated themes"
+    || fail "Ghostty config was not stowed"
 [ -L "$stow_home/.local/bin/tmux-cycle-session" ] && [ ! -L "$stow_home/.local" ] \
     || fail "bin package did not use --no-folding"
 [ -L "$stow_home/.local/bin/focus-address-bar" ] \
@@ -230,8 +228,18 @@ grep -F -- '--without-windows) with_windows=0' install >/dev/null \
     || fail "default window stack has no explicit opt-out"
 grep -F 'tmux-fzf.git' libexec/initialize-configs >/dev/null \
     || fail "tmux-fzf is not initialized"
-grep -F 'tinty apply base16-catppuccin-mocha' libexec/initialize-configs >/dev/null \
-    || fail "Tinty default theme is not initialized"
+if grep -R -Eqi \
+    'tinty|tinted-theming|catppuccin|base16|base24|syntax-theme|color_theme|theme_background' \
+    Brewfile README.md AGENTS.md libexec ghostty nvim tmux zsh btop starship git; then
+    fail "managed configuration contains a prohibited theme or theme manager"
+fi
+if grep -R -Eq \
+    "%C\\(|%C[a-z]|%\\(color:|fg=colour|bg=colour|style = '(black|red|green|yellow|blue|magenta|cyan|white)'" \
+    ghostty nvim tmux zsh btop starship git; then
+    fail "managed configuration contains a theme-specific named color"
+fi
+grep -F 'save_config_on_exit = false' btop/.config/btop/btop.conf >/dev/null \
+    || fail "btop can rewrite theme defaults into its managed config"
 # shellcheck disable=SC2016 # Match the literal shell variable in the script.
 grep -F '"$funk_root/bin/funk" yabai maintain' libexec/install-window-manager >/dev/null \
     || fail "window installer does not reconcile the Yabai scripting addition"
@@ -241,6 +249,16 @@ grep -F 'wait_for_numbered_spaces "$yabai_bin"' libexec/funk-yabai >/dev/null \
 # shellcheck disable=SC2016 # Match the literal shell variable in the script.
 grep -F '"$yabai_bin" -m query --spaces --space 9' libexec/funk-yabai >/dev/null \
     || fail "Yabai maintenance does not verify Space 9"
+grep -F 'trap cleanup EXIT' system/funk-yabai-maintain >/dev/null \
+    || fail "Yabai root maintenance does not register stable temporary-file cleanup"
+# shellcheck disable=SC2016 # Match the literal shell expression in the script.
+grep -F 'cleanup_tmpdir=$(mktemp -d /private/tmp/funk-yabai-maintain.XXXXXX)' \
+    system/funk-yabai-maintain >/dev/null \
+    || fail "Yabai root maintenance cleanup does not retain its temporary directory"
+# shellcheck disable=SC2016 # Match the literal function-local shell variable.
+if grep -F 'trap '\''rm -rf "$tmpdir"'\'' EXIT' system/funk-yabai-maintain >/dev/null; then
+    fail "Yabai root maintenance cleanup references a function-local variable at exit"
+fi
 if grep -F 'Run: funk yabai maintain' libexec/install-window-manager >/dev/null; then
     fail "window installer still delegates initial Yabai maintenance to the user"
 fi
@@ -274,6 +292,7 @@ if grep -Eq '^cask "(chatgpt|claude)"$|stablyai/orca/orca' Brewfile; then
 fi
 
 for required_setting in \
+    'NSGlobalDomain AppleInterfaceStyle -string "Dark"' \
     'com.apple.dock autohide -bool true' \
     'com.apple.dock persistent-apps -array' \
     'com.apple.WindowManager HideDesktop -bool true' \
@@ -289,12 +308,8 @@ for required_setting in \
 done
 grep -F '/usr/bin/killall Raycast' libexec/configure-macos >/dev/null \
     || fail "Raycast is not stopped before its hotkey preference is written"
-grep -F 'black-wallpaper.ppm' libexec/configure-macos >/dev/null \
-    || fail "black wallpaper is not configured"
-grep -F '$.NSWorkspace.sharedWorkspace' libexec/configure-macos >/dev/null \
-    || fail "black wallpaper does not use the AppKit desktop-image API"
-if grep -F 'tell application "System Events"' libexec/configure-macos >/dev/null; then
-    fail "black wallpaper requires an Apple Events Automation grant"
+if grep -Eqi 'wallpaper|desktop-image|DesktopImageURL' libexec/configure-macos; then
+    fail "user-level macOS preferences still enforce a wallpaper"
 fi
 if grep -Eq 'mdutil|nvram|launchctl disable|pmset' \
     libexec/configure-macos; then

@@ -6,6 +6,13 @@ umask 022
 
 config_dir=/etc/funk
 config_file="$config_dir/yabai.conf"
+cleanup_tmpdir=
+
+cleanup() {
+    [ -z "$cleanup_tmpdir" ] || /bin/rm -rf "$cleanup_tmpdir"
+}
+
+trap cleanup EXIT
 
 log() {
     printf '[funk yabai] %s %s\n' "$(date '+%Y-%m-%dT%H:%M:%S%z')" "$*" >&2
@@ -164,8 +171,8 @@ install_sudoers_and_load() {
     digest=$(guard 30 /usr/bin/shasum -a 256 "$yabai_binary" | awk '{print $1}')
     [ -n "$digest" ] || die "could not hash Yabai binary"
 
-    tmpdir=$(mktemp -d /private/tmp/funk-yabai-maintain.XXXXXX)
-    trap 'rm -rf "$tmpdir"' EXIT
+    cleanup_tmpdir=$(mktemp -d /private/tmp/funk-yabai-maintain.XXXXXX)
+    tmpdir="$cleanup_tmpdir"
     candidate="$tmpdir/sudoers"
     previous="$tmpdir/previous"
     sudoers_target="/etc/sudoers.d/funk-yabai-$target_uid"

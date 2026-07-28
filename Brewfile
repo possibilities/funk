@@ -1,6 +1,5 @@
 tap "asmvik/formulae"
 tap "oven-sh/bun"
-tap "tinted-theming/tinted"
 
 brew "git-delta"
 brew "bat"
@@ -18,7 +17,6 @@ brew "starship"
 brew "stow"
 brew "pnpm"
 brew "oven-sh/bun/bun", trusted: true
-brew "tinted-theming/tinted/tinty", trusted: true
 brew "llm"
 brew "asmvik/formulae/yabai", trusted: true
 brew "asmvik/formulae/skhd", trusted: true

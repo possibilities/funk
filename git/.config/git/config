@@ -20,12 +20,12 @@
     sa = stash apply
     sk = stash --include-untracked --keep-index
 
-    l  = log --pretty='format:%C(yellow)%h%Cblue%d%Creset %s %C(white) %an, %ar%Creset'
-    lg = log --pretty='format:%C(yellow)%h%Cblue%d%Creset %s %C(white) %an, %ar%Creset' --graph
-    lga = log --pretty='format:%C(yellow)%h%Cblue%d%Creset %s %C(white) %an, %ar%Creset' --graph --all
+    l  = log --pretty='format:%h%d %s %an, %ar'
+    lg = log --pretty='format:%h%d %s %an, %ar' --graph
+    lga = log --pretty='format:%h%d %s %an, %ar' --graph --all
     r = rev-parse
     rs = rev-parse --short
-    brl = for-each-ref --sort=committerdate refs/heads/ --format='%(HEAD) %(color:yellow)%(refname:short)%(color:reset) - %(color:red)%(objectname:short)%(color:reset) - %(contents:subject) - %(authorname) (%(color:green)%(committerdate:relative)%(color:reset))'
+    brl = for-each-ref --sort=committerdate refs/heads/ --format='%(HEAD) %(refname:short) - %(objectname:short) - %(contents:subject) - %(authorname) (%(committerdate:relative))'
     t = ls-tree -r HEAD --name-only
 [core]
     pager = delta
@@ -35,7 +35,6 @@
     navigate = true
     side-by-side = false
     line-numbers = true
-    syntax-theme = base16
 [push]
     default = simple
 [github]

@@ -9,7 +9,6 @@ window-decoration = none
 window-padding-x = 0
 window-padding-y = 0
 window-padding-balance = true
-theme = tinted-theming
 bell-features = no-attention,no-title,no-system,no-audio,no-border
 # Send an unambiguous CSI-u Shift+Enter. Legacy ESC+CR is also Alt+Enter
 # in tmux, which pi reserves for follow-up messages.

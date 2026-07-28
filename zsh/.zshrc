@@ -46,7 +46,6 @@ if command -v starship >/dev/null 2>&1; then
 fi
 if command -v fzf >/dev/null 2>&1; then
   export FZF_DEFAULT_OPTS="--popup center,60%,40%"
-  [[ -f ~/.local/share/tinted-theming/tinty/fzf-colors.sh ]] && source ~/.local/share/tinted-theming/tinty/fzf-colors.sh
   source <(fzf --zsh)
   bindkey '^R' fzf-history-widget
 fi
