@@ -1,0 +1,53 @@
+#!/bin/bash
+
+set -uo pipefail
+
+log() {
+    printf '[funk update] %s %s\n' "$(date '+%Y-%m-%dT%H:%M:%S%z')" "$*"
+}
+
+find_brew() {
+    if command -v brew >/dev/null 2>&1; then
+        command -v brew
+        return
+    fi
+
+    for candidate in /opt/homebrew/bin/brew /usr/local/bin/brew; do
+        if [ -x "$candidate" ]; then
+            printf '%s\n' "$candidate"
+            return
+        fi
+    done
+
+    return 1
+}
+
+if [ "$#" -ne 0 ]; then
+    printf 'Usage: funk update\n' >&2
+    exit 64
+fi
+
+funk_root=${FUNK_ROOT:?FUNK_ROOT is not set}
+brewfile="$funk_root/Brewfile"
+
+if [ ! -f "$brewfile" ]; then
+    log "FAILED: Brewfile not found at $brewfile" >&2
+    exit 66
+fi
+
+if ! brew_bin=$(find_brew); then
+    log "FAILED: Homebrew is not installed" >&2
+    exit 127
+fi
+
+log "starting: $brew_bin bundle install --file=$brewfile"
+"$brew_bin" bundle install --file="$brewfile"
+status=$?
+
+if [ "$status" -eq 0 ]; then
+    log "complete"
+else
+    log "FAILED with exit status $status" >&2
+fi
+
+exit "$status"

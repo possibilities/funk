@@ -1,0 +1,56 @@
+#!/bin/bash
+
+set -euo pipefail
+
+resolve_self() {
+    local source_path="$1"
+    local source_dir
+    local link_target
+
+    while [ -L "$source_path" ]; do
+        source_dir=$(cd -P -- "$(dirname -- "$source_path")" && pwd)
+        link_target=$(readlink "$source_path")
+        case "$link_target" in
+            /*) source_path="$link_target" ;;
+            *) source_path="$source_dir/$link_target" ;;
+        esac
+    done
+
+    source_dir=$(cd -P -- "$(dirname -- "$source_path")" && pwd)
+    printf '%s/%s\n' "$source_dir" "$(basename -- "$source_path")"
+}
+
+usage() {
+    cat <<'EOF'
+Usage: funk <command>
+
+Commands:
+  update             Install or upgrade packages declared by Funk
+  install-updater    Install and load Funk's daily user LaunchAgent
+  help               Show this help
+EOF
+}
+
+self=$(resolve_self "$0")
+FUNK_ROOT=$(cd -P -- "$(dirname -- "$self")/.." && pwd)
+export FUNK_ROOT
+
+command_name=${1:-help}
+case "$command_name" in
+    update)
+        shift
+        exec "$FUNK_ROOT/libexec/funk-update" "$@"
+        ;;
+    install-updater)
+        shift
+        exec "$FUNK_ROOT/libexec/install-update-agent" "$@"
+        ;;
+    help|-h|--help)
+        usage
+        ;;
+    *)
+        printf 'funk: unknown command: %s\n\n' "$command_name" >&2
+        usage >&2
+        exit 64
+        ;;
+esac

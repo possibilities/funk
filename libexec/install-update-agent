@@ -1,0 +1,58 @@
+#!/bin/bash
+
+set -euo pipefail
+
+label=com.arthack.funk.update
+
+die() {
+    printf 'funk install-updater: %s\n' "$*" >&2
+    exit 1
+}
+
+if [ "$#" -ne 0 ]; then
+    printf 'Usage: funk install-updater\n' >&2
+    exit 64
+fi
+
+[ "$(uname -s)" = Darwin ] || die "macOS is required"
+[ "$(id -u)" -ne 0 ] || die "run this command as the target user, not root"
+
+funk_root=${FUNK_ROOT:?FUNK_ROOT is not set}
+template="$funk_root/launchd/$label.plist.in"
+funk_executable="$funk_root/bin/funk"
+agent_dir="$HOME/Library/LaunchAgents"
+agent_path="$agent_dir/$label.plist"
+log_dir="$HOME/Library/Logs/Funk"
+log_path="$log_dir/update.log"
+domain="gui/$(id -u)"
+
+[ -f "$template" ] || die "template not found: $template"
+[ -x "$funk_executable" ] || die "funk executable is missing or not executable: $funk_executable"
+
+mkdir -p "$agent_dir" "$log_dir"
+tmpdir=$(mktemp -d "${TMPDIR:-/tmp}/funk-update-agent.XXXXXX")
+trap 'rm -rf "$tmpdir"' EXIT
+rendered="$tmpdir/$label.plist"
+
+cp "$template" "$rendered"
+/usr/bin/plutil -replace ProgramArguments.0 -string "$funk_executable" "$rendered"
+/usr/bin/plutil -replace StandardOutPath -string "$log_path" "$rendered"
+/usr/bin/plutil -replace StandardErrorPath -string "$log_path" "$rendered"
+/usr/bin/plutil -lint "$rendered" >/dev/null
+
+if [ -L "$agent_path" ]; then
+    die "refusing to replace symlink: $agent_path"
+fi
+
+if [ -e "$agent_path" ]; then
+    existing_label=$(/usr/libexec/PlistBuddy -c 'Print :Label' "$agent_path" 2>/dev/null || true)
+    [ "$existing_label" = "$label" ] \
+        || die "refusing to replace unrelated file: $agent_path"
+fi
+
+/usr/bin/install -m 0644 "$rendered" "$agent_path"
+/bin/launchctl bootout "$domain/$label" 2>/dev/null || true
+/bin/launchctl bootstrap "$domain" "$agent_path"
+
+printf 'Installed %s (daily at 10:00 local time)\n' "$agent_path"
+printf 'Logs append to %s\n' "$log_path"
