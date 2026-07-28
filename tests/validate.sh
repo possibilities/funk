@@ -15,6 +15,8 @@ install
 bin/funk
 libexec/funk-update
 libexec/install-update-agent
+libexec/configure-macos
+libexec/configure-system
 libexec/funk-harden-client
 libexec/install-hardening
 libexec/funk-yabai
@@ -23,6 +25,7 @@ system/funk-harden
 system/install-hardening-root
 system/funk-yabai-maintain
 system/install-yabai-root
+system/apply-system-settings
 config/yabai/yabairc
 tests/fixtures/brew
 tests/validate.sh
@@ -111,6 +114,43 @@ PATH="$root/tests/fixtures:/usr/bin:/bin:/usr/sbin:/sbin" \
     FUNK_TEST_BREW_EXIT=0 \
     "$root/bin/funk" update >/dev/null
 "$root/bin/funk" install-updater --check >/dev/null
+"$root/bin/funk" configure-macos --check
+
+for required_setting in \
+    'com.apple.dock autohide -bool true' \
+    'com.apple.dock persistent-apps -array' \
+    'com.apple.WindowManager HideDesktop -bool true' \
+    'com.apple.finder FXICloudDriveDesktop -bool false' \
+    'com.apple.finder FXICloudDriveDocuments -bool false' \
+    'NSGlobalDomain com.apple.swipescrolldirection -bool false' \
+    'com.apple.symbolichotkeys AppleSymbolicHotKeys -dict-add 64' \
+    'com.apple.ControlCenter AirplayRecieverEnabled -bool false'; do
+    grep -F "$required_setting" libexec/configure-macos >/dev/null \
+        || fail "required macOS setting is missing: $required_setting"
+done
+grep -F 'black-wallpaper.ppm' libexec/configure-macos >/dev/null \
+    || fail "black wallpaper is not configured"
+if grep -Eq 'mdutil|nvram|launchctl disable|pmset' \
+    libexec/configure-macos; then
+    fail "machine-wide setting found in user-level macOS preferences"
+fi
+
+"$root/bin/funk" configure-system --check
+# Literal dollar signs below verify that the root helper passes its validated
+# runtime values instead of embedding an account name or boot-argument string.
+# shellcheck disable=SC2016
+for required_system_setting in \
+    '/usr/bin/mdutil -i off -a' \
+    '/usr/bin/pmset -c displaysleep 5' \
+    '/bin/launchctl disable system/com.apple.smbd' \
+    '/usr/sbin/sharing -r "$share_name"' \
+    '/usr/sbin/nvram "boot-args=$desired_boot_args"'; do
+    grep -F "$required_system_setting" system/apply-system-settings >/dev/null \
+        || fail "required system setting is missing: $required_system_setting"
+done
+if grep -F '/Users/mike' system/apply-system-settings >/dev/null; then
+    fail "old account leaked into system settings"
+fi
 
 [ "$(grep -Ec '^f(13|14|15|16|17|18|19|20|21) : yabai -m space --focus [1-9]$' config/skhd/skhdrc)" -eq 9 ] \
     || fail "skhd numbered-Space focus bindings are incomplete"
@@ -127,7 +167,7 @@ if grep -Eqi 'bundle cleanup|uninstall|quarantine|fetch-head|telegram|notify|sud
     fail "daily updater contains a prohibited operation"
 fi
 
-if grep -R -E '/Users/[^/]+|greybird|home.router|telegram|agentnotify|TCC\.db|security import|yabai-cert' \
+if grep -R -E '/Users/[A-Za-z0-9._-]+|greybird|home.router|telegram|agentnotify|TCC\.db|security import|yabai-cert' \
     Brewfile bin config launchd libexec system >/dev/null; then
     fail "old-account or prohibited privileged machinery leaked into Funk"
 fi

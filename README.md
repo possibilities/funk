@@ -15,6 +15,21 @@ Karabiner has exactly two paired rules: global Cmd+1…9 becomes F13…F21 for
 Yabai Space focus, while Ctrl+1…9 becomes the normal Cmd+number tab shortcut in
 Chrome, Chrome Canary, and Brave. No modifier swaps or Option-hjkl rules survive.
 
+The default install also applies the personal macOS preferences retained from
+the old dotfiles: dark mode and a black wallpaper, an empty auto-hidden Dock and
+menu bar, quiet UI, hidden desktop items, column-view Finder, fast key repeat,
+Yabai-friendly window and Space behavior, Raycast-friendly Spotlight shortcuts,
+disabled AirPlay Receiver and Handoff, disabled iCloud Desktop/Documents syncing,
+and the compact 12-hour menu-bar clock. Run `funk configure-macos` to reapply
+them.
+
+The old machine-wide settings are available through the explicit
+`funk configure-system` command: it disables Spotlight indexing on all mounted
+volumes, adds `serverperfmode=1` while preserving other NVRAM boot arguments,
+disables SMB and removes the current user's Public Folder share, and sets AC
+display sleep to five minutes. The obsolete Ctrl+F2/F3/F4 and screenshot
+shortcut mutations remain omitted because Funk does not claim those keys.
+
 ## Install
 
 Run from the checked-out repository as the new account, never with `sudo`:
@@ -30,12 +45,16 @@ Optional system layers are explicit:
 ```sh
 ./install --with-hardening
 ./install --with-windows
+./install --with-system-settings
 ./install --all
 ```
 
 `--with-hardening` immediately loads the travel firewall posture.
 `--with-windows` installs user configs and starts the app-provided user services,
 but it does not change SIP or create the scripting-addition sudo rule.
+`--with-system-settings` applies the privileged machine-wide settings described
+above and prompts for administrator authentication. `--all` enables all three
+optional layers.
 
 Homebrew is single-prefix software. Funk refuses to operate if the detected
 Homebrew prefix belongs to another macOS account; resolve that ownership choice
@@ -133,5 +152,6 @@ tests/validate.sh
 
 The checks parse shell/config files, verify the exact Brewfile and minimal
 Karabiner rule set, exercise updater success/failure with a stub Homebrew
-command, render the LaunchAgent, and dry-parse the PF rules. They do not install
-packages, load services, change firewall state, or require accounts or secrets.
+command, validate the macOS-preference command without applying it, render the
+LaunchAgent, and dry-parse the PF rules. They do not install packages, load
+services, change preferences or firewall state, or require accounts or secrets.

@@ -1,0 +1,36 @@
+#!/bin/bash
+
+set -euo pipefail
+
+if [ "$#" -gt 1 ] || { [ "$#" -eq 1 ] && [ "$1" != "--check" ]; }; then
+    printf 'Usage: funk configure-system [--check]\n' >&2
+    exit 64
+fi
+
+funk_root=${FUNK_ROOT:?FUNK_ROOT is not set}
+root_helper="$funk_root/system/apply-system-settings"
+
+if [ ! -x "$root_helper" ]; then
+    printf 'funk configure-system: root helper is missing or not executable: %s\n' \
+        "$root_helper" >&2
+    exit 1
+fi
+
+if [ "${1:-}" = "--check" ]; then
+    exec "$root_helper" --check
+fi
+
+if [ "$(uname -s)" != Darwin ]; then
+    printf 'funk configure-system: macOS is required\n' >&2
+    exit 1
+fi
+if [ "$(id -u)" -eq 0 ]; then
+    printf 'funk configure-system: run as the target user, not root\n' >&2
+    exit 1
+fi
+
+cat <<'EOF'
+This disables Spotlight indexing and SMB sharing, enables the server-performance
+boot argument, and sets AC display sleep to five minutes. sudo will prompt once.
+EOF
+exec /usr/bin/sudo "$root_helper" --user "$(id -un)"

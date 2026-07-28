@@ -1,0 +1,124 @@
+#!/bin/bash
+
+set -euo pipefail
+export PATH=/usr/bin:/bin:/usr/sbin:/sbin
+umask 077
+
+die() {
+    printf 'funk system settings: %s\n' "$*" >&2
+    exit 1
+}
+
+target_user=
+check_only=0
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --user)
+            [ "$#" -ge 2 ] || die "--user requires a value"
+            target_user="$2"
+            shift 2
+            ;;
+        --check)
+            check_only=1
+            shift
+            ;;
+        *)
+            die "unknown argument: $1"
+            ;;
+    esac
+done
+
+if [ "$check_only" -eq 1 ]; then
+    [ -z "$target_user" ] || die "--check cannot be combined with --user"
+    exit 0
+fi
+
+[ "$(uname -s)" = Darwin ] || die "macOS is required"
+[ "$(id -u)" -eq 0 ] || die "must run as root"
+[ -n "$target_user" ] || die "--user is required"
+printf '%s\n' "$target_user" | grep -Eq '^[A-Za-z_][A-Za-z0-9._-]*$' \
+    || die "invalid user name: $target_user"
+target_uid=$(id -u "$target_user" 2>/dev/null) \
+    || die "user does not exist: $target_user"
+[ "$target_uid" -ge 500 ] || die "refusing system account: $target_user"
+home_record=$(/usr/bin/dscl . -read "/Users/$target_user" NFSHomeDirectory) \
+    || die "could not read home directory for $target_user"
+target_home=${home_record#NFSHomeDirectory:}
+target_home=${target_home#"${target_home%%[![:space:]]*}"}
+case "$target_home" in
+    /*) ;;
+    *) die "invalid home directory for $target_user: $target_home" ;;
+esac
+[ "$target_home" != / ] || die "refusing root directory as user home"
+
+printf 'Disabling Spotlight indexing on all mounted volumes.\n'
+/usr/bin/mdutil -i off -a
+
+printf 'Setting AC display sleep to five minutes.\n'
+/usr/bin/pmset -c displaysleep 5
+
+printf 'Disabling SMB and removing %s'\''s Public Folder share when present.\n' \
+    "$target_user"
+/bin/launchctl disable system/com.apple.smbd
+
+tmpdir=$(mktemp -d /private/tmp/funk-system-settings.XXXXXX)
+trap 'rm -rf "$tmpdir"' EXIT
+share_list="$tmpdir/shares"
+/usr/sbin/sharing -l > "$share_list"
+
+share_name=
+while IFS= read -r line; do
+    case "$line" in
+        name:*)
+            share_name=${line#name:}
+            share_name=${share_name#"${share_name%%[![:space:]]*}"}
+            ;;
+        path:*)
+            share_path=${line#path:}
+            share_path=${share_path#"${share_path%%[![:space:]]*}"}
+            if [ "$share_path" = "$target_home/Public" ]; then
+                [ -n "$share_name" ] || die "Public Folder share has no name"
+                /usr/sbin/sharing -r "$share_name"
+                break
+            fi
+            ;;
+    esac
+done < "$share_list"
+
+# Preserve every unrelated boot argument, while replacing any earlier
+# serverperfmode value with the requested one.
+boot_args=
+if boot_args_output=$(/usr/sbin/nvram boot-args 2>/dev/null); then
+    case "$boot_args_output" in
+        *"	"*) boot_args=${boot_args_output#*"	"} ;;
+        *) boot_args= ;;
+    esac
+fi
+
+preserved_args=
+for boot_arg in $boot_args; do
+    case "$boot_arg" in
+        serverperfmode=*) ;;
+        *)
+            if [ -n "$preserved_args" ]; then
+                preserved_args="$preserved_args $boot_arg"
+            else
+                preserved_args="$boot_arg"
+            fi
+            ;;
+    esac
+done
+desired_boot_args="serverperfmode=1"
+if [ -n "$preserved_args" ]; then
+    desired_boot_args="$desired_boot_args $preserved_args"
+fi
+
+if [ "$boot_args" != "$desired_boot_args" ]; then
+    printf 'Enabling server performance mode while preserving other boot arguments.\n'
+    /usr/sbin/nvram "boot-args=$desired_boot_args"
+    printf 'Restart macOS for the server-performance boot argument to take effect.\n'
+else
+    printf 'Server performance mode is already enabled.\n'
+fi
+
+printf 'Funk system settings applied.\n'

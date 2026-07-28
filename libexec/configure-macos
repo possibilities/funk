@@ -1,0 +1,139 @@
+#!/bin/bash
+
+set -euo pipefail
+
+die() {
+    printf 'funk configure-macos: %s\n' "$*" >&2
+    exit 1
+}
+
+if [ "$#" -gt 1 ] || { [ "$#" -eq 1 ] && [ "$1" != "--check" ]; }; then
+    printf 'Usage: funk configure-macos [--check]\n' >&2
+    exit 64
+fi
+
+funk_root=${FUNK_ROOT:?FUNK_ROOT is not set}
+wallpaper_source="$funk_root/assets/black-wallpaper.ppm"
+[ -f "$wallpaper_source" ] || die "missing wallpaper source: $wallpaper_source"
+
+if [ "${1:-}" = "--check" ]; then
+    exit 0
+fi
+
+[ "$(uname -s)" = Darwin ] || die "macOS is required"
+[ "$(id -u)" -ne 0 ] || die "run as the target user, not root"
+
+write_default() {
+    /usr/bin/defaults write "$@"
+}
+
+printf 'Applying Funk macOS preferences.\n'
+
+# Appearance and interface.
+write_default NSGlobalDomain AppleInterfaceStyle -string "Dark"
+write_default NSGlobalDomain _HIHideMenuBar -bool true
+write_default NSGlobalDomain NSTableViewDefaultSizeMode -int 3
+write_default NSGlobalDomain AppleMiniaturizeOnDoubleClick -bool false
+
+# Dock.
+write_default com.apple.dock autohide -bool true
+write_default com.apple.dock launchanim -bool false
+write_default com.apple.dock show-recents -bool false
+write_default com.apple.dock mineffect -string "scale"
+write_default com.apple.dock persistent-apps -array
+write_default com.apple.dock workspaces-auto-swoosh -bool false
+write_default com.apple.dock tilesize -int 64
+write_default com.apple.dock wvous-tl-corner -int 0
+write_default com.apple.dock wvous-tr-corner -int 0
+write_default com.apple.dock wvous-bl-corner -int 0
+write_default com.apple.dock wvous-br-corner -int 0
+
+# Window management.
+write_default com.apple.WindowManager StandardHideWidgets -int 1
+write_default com.apple.WindowManager EnableStandardClickToShowDesktop -bool false
+write_default com.apple.WindowManager EnableTiledWindowMargins -bool false
+write_default com.apple.WindowManager StandardHideDesktopIcons -bool true
+write_default com.apple.WindowManager HideDesktop -bool true
+write_default com.apple.WindowManager AppWindowGroupingBehavior -int 1
+write_default com.apple.WindowManager EnableTilingByEdgeDrag -bool false
+write_default com.apple.WindowManager EnableTopTilingByEdgeDrag -bool false
+write_default com.apple.WindowManager EnableTilingOptionAccelerator -bool false
+
+# Finder.
+write_default com.apple.finder QuitMenuItem -bool true
+write_default com.apple.finder FXPreferredViewStyle -string "clmv"
+write_default com.apple.finder FXICloudDriveDesktop -bool false
+write_default com.apple.finder FXICloudDriveDocuments -bool false
+
+# Input and keyboard.
+write_default NSGlobalDomain com.apple.swipescrolldirection -bool false
+write_default NSGlobalDomain AppleKeyboardUIMode -int 2
+write_default NSGlobalDomain com.apple.keyboard.fnState -bool true
+write_default NSGlobalDomain com.apple.trackpad.forceClick -bool true
+write_default com.apple.Accessibility KeyRepeatInterval -float 0.083333333
+write_default com.apple.Accessibility KeyRepeatDelay -float 0.5
+
+# Sound.
+write_default NSGlobalDomain com.apple.sound.beep.volume -float 0
+write_default NSGlobalDomain com.apple.sound.uiaudio.enabled -int 0
+write_default NSGlobalDomain com.apple.sound.beep.flash -int 0
+
+# Siri, Spotlight, and shortcuts.
+write_default com.apple.assistant.support "Assistant Enabled" -bool false
+write_default com.apple.symbolichotkeys AppleSymbolicHotKeys -dict-add 64 \
+    '<dict><key>enabled</key><false/><key>value</key><dict><key>parameters</key><array><integer>32</integer><integer>49</integer><integer>1048576</integer></array><key>type</key><string>standard</string></dict></dict>'
+for shortcut_id in 60 61 65; do
+    write_default com.apple.symbolichotkeys AppleSymbolicHotKeys -dict-add \
+        "$shortcut_id" '<dict><key>enabled</key><false/></dict>'
+done
+write_default com.apple.symbolichotkeys AppleSymbolicHotKeys -dict-add 164 \
+    '<dict><key>enabled</key><false/><key>value</key><dict><key>parameters</key><array><integer>65535</integer><integer>65535</integer><integer>0</integer></array><key>type</key><string>standard</string></dict></dict>'
+
+# Native Ctrl+1…9 Space switching conflicts with Funk's numbered-Space workflow.
+for shortcut_id in 18 19 20 21 22 23 24 25 26; do
+    write_default com.apple.symbolichotkeys AppleSymbolicHotKeys -dict-add \
+        "$shortcut_id" '<dict><key>enabled</key><false/></dict>'
+done
+
+# Continuity services intentionally disabled in the old setup.
+write_default com.apple.ControlCenter AirplayRecieverEnabled -bool false
+write_default com.apple.rapportd AllowRapport -bool false
+
+# Login and menu-bar clock.
+write_default com.apple.loginwindow TALLogoutSavesState -bool false
+write_default com.apple.menuextra.clock ShowAMPM -bool true
+write_default com.apple.menuextra.clock ShowDayOfWeek -bool true
+write_default com.apple.menuextra.clock ShowDate -int 0
+
+# System Events exposes the supported per-desktop picture interface. Generate a
+# PNG outside the repository so the source asset remains a reviewable text file.
+wallpaper_dir="$HOME/Library/Application Support/Funk"
+wallpaper_path="$wallpaper_dir/black-wallpaper.png"
+/bin/mkdir -p "$wallpaper_dir"
+/bin/chmod 0700 "$wallpaper_dir"
+/usr/bin/sips -s format png "$wallpaper_source" --out "$wallpaper_path" >/dev/null
+/bin/chmod 0600 "$wallpaper_path"
+
+if ! /usr/bin/osascript - "$wallpaper_path" <<'APPLESCRIPT'
+on run arguments
+    set wallpaperFile to POSIX file (item 1 of arguments)
+    tell application "System Events"
+        repeat with desktopItem in desktops
+            set picture of desktopItem to wallpaperFile
+        end repeat
+    end tell
+end run
+APPLESCRIPT
+then
+    printf '%s\n' \
+        "Could not set the black wallpaper. Allow your terminal to control System Events, then rerun: funk configure-macos" >&2
+fi
+
+# Relaunch only preference-owning user processes. Missing processes are normal
+# on a headless login and should not turn an otherwise successful run into an
+# error.
+for process_name in Dock Finder SystemUIServer ControlCenter; do
+    /usr/bin/killall "$process_name" >/dev/null 2>&1 || true
+done
+
+printf 'Funk macOS preferences applied.\n'

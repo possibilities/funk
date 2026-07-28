@@ -27,6 +27,8 @@ Usage: funk <command>
 Commands:
   update             Install or upgrade packages declared by Funk
   install-updater    Install and load Funk's daily user LaunchAgent
+  configure-macos    Apply Funk's user-level macOS preferences
+  configure-system   Apply Funk's privileged machine-wide settings
   harden <action>    Show status or reapply the travel firewall posture
   install-hardening  Install the root-owned hardening service
   yabai <action>     Show or maintain the Yabai scripting-addition layer
@@ -48,6 +50,14 @@ case "$command_name" in
     install-updater)
         shift
         exec "$FUNK_ROOT/libexec/install-update-agent" "$@"
+        ;;
+    configure-macos)
+        shift
+        exec "$FUNK_ROOT/libexec/configure-macos" "$@"
+        ;;
+    configure-system)
+        shift
+        exec "$FUNK_ROOT/libexec/configure-system" "$@"
         ;;
     harden)
         shift
