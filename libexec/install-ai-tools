@@ -136,6 +136,11 @@ Command-line tools:
   curl -fsSL https://chatgpt.com/codex/install.sh | CODEX_NON_INTERACTIVE=1 sh
   curl -fsSL https://opencode.ai/install | bash -s -- --no-modify-path
   curl -fsSL https://pi.dev/install.sh | sh
+
+Agent skills:
+  npx --yes skills add https://github.com/stablyai/orca --agent codex claude-code opencode pi --skill orca-cli orchestration computer-use --global --yes
+  npx --yes skills add https://github.com/vercel-labs/skills --agent codex claude-code opencode pi --skill find-skills --global --yes
+  npx --yes skills add https://github.com/nkzw-tech/codiff --agent codex claude-code opencode pi --skill codiff --global --yes
 EOF
     exit 0
 fi
@@ -194,3 +199,23 @@ fi
 install_official "Pi" \
     https://pi.dev/install.sh \
     /bin/sh
+
+command -v npx >/dev/null 2>&1 || die "npx is required to install agent skills"
+
+printf 'Installing the globally managed Orca agent skills.\n'
+npx --yes skills add https://github.com/stablyai/orca \
+    --agent codex claude-code opencode pi \
+    --skill orca-cli orchestration computer-use \
+    --global --yes
+
+printf 'Installing the global skill discovery helper.\n'
+npx --yes skills add https://github.com/vercel-labs/skills \
+    --agent codex claude-code opencode pi \
+    --skill find-skills \
+    --global --yes
+
+printf 'Installing the global Codiff agent skill.\n'
+npx --yes skills add https://github.com/nkzw-tech/codiff \
+    --agent codex claude-code opencode pi \
+    --skill codiff \
+    --global --yes

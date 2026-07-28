@@ -400,7 +400,10 @@ for required_ai_install in \
     'curl -fsSL https://claude.ai/install.sh | bash' \
     'curl -fsSL https://chatgpt.com/codex/install.sh | CODEX_NON_INTERACTIVE=1 sh' \
     'curl -fsSL https://opencode.ai/install | bash -s -- --no-modify-path' \
-    'curl -fsSL https://pi.dev/install.sh | sh'; do
+    'curl -fsSL https://pi.dev/install.sh | sh' \
+    'npx --yes skills add https://github.com/stablyai/orca --agent codex claude-code opencode pi --skill orca-cli orchestration computer-use --global --yes' \
+    'npx --yes skills add https://github.com/vercel-labs/skills --agent codex claude-code opencode pi --skill find-skills --global --yes' \
+    'npx --yes skills add https://github.com/nkzw-tech/codiff --agent codex claude-code opencode pi --skill codiff --global --yes'; do
     printf '%s\n' "$ai_install_plan" | grep -F "$required_ai_install" >/dev/null \
         || fail "AI installation plan is missing: $required_ai_install"
 done
