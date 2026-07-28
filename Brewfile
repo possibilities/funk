@@ -1,7 +1,7 @@
 tap "asmvik/formulae"
 
-brew "asmvik/formulae/yabai"
-brew "asmvik/formulae/skhd"
+brew "asmvik/formulae/yabai", trusted: true
+brew "asmvik/formulae/skhd", trusted: true
 
 cask "tailscale-app"
 cask "ghostty"
