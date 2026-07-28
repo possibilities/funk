@@ -3,28 +3,29 @@
 set -euo pipefail
 
 with_hardening=0
-with_windows=0
+with_windows=1
 with_system_settings=0
 
 usage() {
     cat <<'EOF'
-Usage: ./install [--with-hardening] [--with-windows] [--with-system-settings] [--all]
+Usage: ./install [--with-hardening] [--without-windows] [--with-system-settings] [--all]
 
 Default installation:
   - installs Homebrew when missing
   - applies Funk's Brewfile
   - installs AI desktop applications and command-line tools
   - stows all user configuration packages into the target user's home
+  - installs the window stack and converges Yabai Spaces 1-9
   - links the funk command into the active Homebrew bin directory
   - installs and loads the daily 10:00 update LaunchAgent
   - applies Funk's user-level macOS preferences
 
 Options:
   --with-hardening  Also install and immediately apply boot-time travel hardening
-  --with-windows    Also install/start Yabai, skhd, and Karabiner configuration
+  --without-windows Skip Yabai, skhd, Karabiner startup, and Space convergence
   --with-system-settings
                     Also apply Funk's privileged machine-wide macOS settings
-  --all             Enable every optional system layer
+  --all             Enable hardening and machine-wide system settings
 EOF
 }
 
@@ -67,7 +68,9 @@ find_brew() {
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --with-hardening) with_hardening=1 ;;
+        # Retained as a compatibility no-op now that windows are installed by default.
         --with-windows) with_windows=1 ;;
+        --without-windows) with_windows=0 ;;
         --with-system-settings) with_system_settings=1 ;;
         --all)
             with_hardening=1

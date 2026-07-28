@@ -56,17 +56,22 @@ printf 'Installing the root-owned Yabai maintenance helper (no SIP change or SA 
     --source-root "$funk_root"
 
 export PATH="$brew_prefix/bin:/usr/bin:/bin:/usr/sbin:/sbin"
-"$yabai_bin" --start-service || printf 'Yabai start needs Accessibility approval; retry after granting it.\n' >&2
 "$skhd_bin" --start-service || printf 'skhd start needs Accessibility approval; retry after granting it.\n' >&2
 /usr/bin/open -a Karabiner-Elements \
     || printf 'Open Karabiner-Elements manually to approve its requested permissions.\n' >&2
+
+printf 'Loading Yabai scripting addition and converging Spaces 1-9.\n'
+if ! "$funk_root/bin/funk" yabai maintain; then
+    "$yabai_bin" --start-service \
+        || printf 'Yabai start needs Accessibility approval; retry after granting it.\n' >&2
+    die "numbered-Space setup failed; complete the documented SIP and boot-argument prerequisites, then rerun funk install-windows"
+fi
 
 cat <<'EOF'
 Window configuration installed.
 
 Next:
-  1. Complete the documented Recovery/SIP and Apple Silicon boot-argument steps.
-  2. Grant Accessibility to yabai and skhd, and approve Karabiner permissions.
-  3. Run: funk yabai maintain
-  4. Verify: funk yabai status
+  1. Grant Accessibility to yabai and skhd, approve Karabiner permissions, and
+     keep Karabiner-Elements enabled in General > Login Items > Allow in Background.
+  2. Verify: funk yabai status
 EOF

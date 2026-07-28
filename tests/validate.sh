@@ -32,6 +32,7 @@ system/apply-system-settings
 yabai/.config/yabai/yabairc
 bin/.local/bin/tmux-cycle-session
 bin/.local/bin/tmux-move-window
+bin/.local/bin/focus-address-bar
 tests/fixtures/brew
 tests/validate.sh
 "
@@ -65,18 +66,74 @@ if command -v ruby >/dev/null 2>&1; then
       data = JSON.parse(File.read(ARGV.fetch(0)))
       rules = data.fetch("profiles").fetch(0)
                   .fetch("complex_modifications").fetch("rules")
-      abort "unexpected Karabiner rule count" unless rules.length == 2
-      abort "unexpected Karabiner manipulator counts" unless rules.map { |r| r.fetch("manipulators").length } == [9, 9]
+      abort "unexpected Karabiner rule count" unless rules.length == 5
+      abort "unexpected Karabiner manipulator counts" unless rules.map { |r| r.fetch("manipulators").length } == [9, 9, 4, 2, 1]
+
+      browser_ids = [
+        "^com\\.google\\.Chrome$",
+        "^com\\.google\\.Chrome\\.canary$",
+        "^com\\.brave\\.Browser$",
+        "^org\\.mozilla\\.firefox$"
+      ]
+      browser_rules = rules.fetch(0).fetch("manipulators")
+      abort "unexpected Karabiner browser applications" unless browser_rules.all? { |m|
+        m.fetch("conditions").fetch(0).fetch("bundle_identifiers") == browser_ids
+      }
+
       focus_keys = rules.fetch(1).fetch("manipulators").map { |m| m.fetch("to").fetch(0).fetch("key_code") }
       abort "unexpected Karabiner Space focus keys" unless focus_keys == %w[f13 f14 f15 f16 f17 f18 f19 f20 f12]
+
+      arrow_rules = rules.fetch(2).fetch("manipulators")
+      abort "unexpected Karabiner arrow sources" unless arrow_rules.map { |m| m.dig("from", "key_code") } == %w[h j k l]
+      abort "unexpected Karabiner arrow targets" unless arrow_rules.map { |m| m.dig("to", 0, "key_code") } == %w[left_arrow down_arrow up_arrow right_arrow]
+      abort "Right Option arrow modifiers do not preserve Shift" unless arrow_rules.all? { |m|
+        m.dig("from", "modifiers") == {
+          "mandatory" => ["right_option"],
+          "optional" => ["shift"]
+        }
+      }
+
+      swap_rules = rules.fetch(3).fetch("manipulators")
+      abort "unexpected built-in modifier swap" unless swap_rules.map { |m|
+        [m.dig("from", "key_code"), m.dig("to", 0, "key_code")]
+      } == [["left_command", "left_option"], ["left_option", "left_command"]]
+      abort "modifier swap is not limited to the built-in keyboard" unless swap_rules.all? { |m|
+        m.dig("conditions", 0, "type") == "device_if" &&
+          m.dig("conditions", 0, "identifiers") == [{ "is_built_in_keyboard" => true }]
+      }
+
+      caps_rule = rules.fetch(4).fetch("manipulators").fetch(0)
+      abort "Caps Lock does not send Escape" unless
+        caps_rule.dig("from", "key_code") == "caps_lock" &&
+        caps_rule.dig("to", 0, "key_code") == "escape"
     ' \
         karabiner/.config/karabiner/karabiner.json
 elif command -v jq >/dev/null 2>&1; then
     jq -e '
-      (.profiles[0].complex_modifications.rules | length) == 2 and
-      ([.profiles[0].complex_modifications.rules[].manipulators | length] == [9, 9]) and
+      (.profiles[0].complex_modifications.rules | length) == 5 and
+      ([.profiles[0].complex_modifications.rules[].manipulators | length] == [9, 9, 4, 2, 1]) and
+      (all(.profiles[0].complex_modifications.rules[0].manipulators[];
+        .conditions[0].bundle_identifiers ==
+          ["^com\\.google\\.Chrome$", "^com\\.google\\.Chrome\\.canary$",
+           "^com\\.brave\\.Browser$", "^org\\.mozilla\\.firefox$"])) and
       ([.profiles[0].complex_modifications.rules[1].manipulators[].to[0].key_code] ==
-        ["f13", "f14", "f15", "f16", "f17", "f18", "f19", "f20", "f12"])
+        ["f13", "f14", "f15", "f16", "f17", "f18", "f19", "f20", "f12"]) and
+      ([.profiles[0].complex_modifications.rules[2].manipulators[].from.key_code] ==
+        ["h", "j", "k", "l"]) and
+      ([.profiles[0].complex_modifications.rules[2].manipulators[].to[0].key_code] ==
+        ["left_arrow", "down_arrow", "up_arrow", "right_arrow"]) and
+      (all(.profiles[0].complex_modifications.rules[2].manipulators[];
+        .from.modifiers == {"mandatory": ["right_option"], "optional": ["shift"]})) and
+      ([.profiles[0].complex_modifications.rules[3].manipulators[] |
+        [.from.key_code, .to[0].key_code]] ==
+        [["left_command", "left_option"], ["left_option", "left_command"]]) and
+      (all(.profiles[0].complex_modifications.rules[3].manipulators[];
+        .conditions[0] ==
+          {"type": "device_if", "identifiers": [{"is_built_in_keyboard": true}]})) and
+      (.profiles[0].complex_modifications.rules[4].manipulators[0].from.key_code ==
+        "caps_lock") and
+      (.profiles[0].complex_modifications.rules[4].manipulators[0].to[0].key_code ==
+        "escape")
     ' karabiner/.config/karabiner/karabiner.json >/dev/null
 else
     fail "Ruby or jq is required to validate Karabiner JSON"
@@ -110,6 +167,7 @@ cask "ghostty"
 cask "google-chrome"
 cask "google-chrome@canary"
 cask "brave-browser"
+cask "firefox"
 cask "obsidian"
 cask "raycast"
 cask "karabiner-elements"
@@ -155,6 +213,8 @@ HOME="$stow_home" "$root/bin/funk" stow
     || fail "Ghostty config was not stowed with room for generated themes"
 [ -L "$stow_home/.local/bin/tmux-cycle-session" ] && [ ! -L "$stow_home/.local" ] \
     || fail "bin package did not use --no-folding"
+[ -L "$stow_home/.local/bin/focus-address-bar" ] \
+    || fail "browser address-bar helper was not stowed"
 [ -L "$stow_home/Library/Application Support/io.datasette.llm/extra-openai-models.yaml" ] \
     || fail "LLM package was not stowed"
 HOME="$stow_home" "$root/bin/funk" stow --check >/dev/null 2>&1
@@ -164,10 +224,26 @@ grep -F "\"\$funk_root/libexec/initialize-configs\"" install >/dev/null \
     || fail "default install does not initialize config dependencies"
 grep -F "\"\$funk_root/libexec/install-ai-tools\"" install >/dev/null \
     || fail "default install does not install AI tools"
+grep -F 'with_windows=1' install >/dev/null \
+    || fail "default install does not enable the window stack"
+grep -F -- '--without-windows) with_windows=0' install >/dev/null \
+    || fail "default window stack has no explicit opt-out"
 grep -F 'tmux-fzf.git' libexec/initialize-configs >/dev/null \
     || fail "tmux-fzf is not initialized"
 grep -F 'tinty apply base16-catppuccin-mocha' libexec/initialize-configs >/dev/null \
     || fail "Tinty default theme is not initialized"
+# shellcheck disable=SC2016 # Match the literal shell variable in the script.
+grep -F '"$funk_root/bin/funk" yabai maintain' libexec/install-window-manager >/dev/null \
+    || fail "window installer does not reconcile the Yabai scripting addition"
+# shellcheck disable=SC2016 # Match the literal shell variables in the script.
+grep -F 'wait_for_numbered_spaces "$yabai_bin"' libexec/funk-yabai >/dev/null \
+    || fail "Yabai maintenance does not wait for numbered Spaces"
+# shellcheck disable=SC2016 # Match the literal shell variable in the script.
+grep -F '"$yabai_bin" -m query --spaces --space 9' libexec/funk-yabai >/dev/null \
+    || fail "Yabai maintenance does not verify Space 9"
+if grep -F 'Run: funk yabai maintain' libexec/install-window-manager >/dev/null; then
+    fail "window installer still delegates initial Yabai maintenance to the user"
+fi
 
 ai_install_plan=$(libexec/install-ai-tools --check)
 for required_ai_install in \
@@ -237,8 +313,10 @@ if grep -F '/Users/mike' system/apply-system-settings >/dev/null; then
     fail "old account leaked into system settings"
 fi
 
-[ "$(grep -Ec '^f(13|14|15|16|17|18|19|20) : yabai -m space --focus [1-8]$' skhd/.config/skhd/skhdrc)" -eq 8 ] \
-    || fail "skhd numbered-Space 1-8 focus bindings are incomplete"
+[ "$(grep -Ec '^f(13|14|15|16|17|18|19) : yabai -m space --focus [1-7]$' skhd/.config/skhd/skhdrc)" -eq 7 ] \
+    || fail "skhd numbered-Space 1-7 focus bindings are incomplete"
+grep -Fx '0x5A : yabai -m space --focus 8' skhd/.config/skhd/skhdrc >/dev/null \
+    || fail "skhd Space 8 focus binding is missing its F20 keycode"
 grep -Fx 'f12 : yabai -m space --focus 9' skhd/.config/skhd/skhdrc >/dev/null \
     || fail "skhd Space 9 focus binding is missing"
 [ "$(grep -Ec '^cmd \+ shift - [1-9] : yabai -m window --space [1-9]$' skhd/.config/skhd/skhdrc)" -eq 9 ] \
@@ -246,10 +324,18 @@ grep -Fx 'f12 : yabai -m space --focus 9' skhd/.config/skhd/skhdrc >/dev/null \
 grep -F 'cmd + shift - v : /usr/bin/open "raycast://extensions/raycast/clipboard-history/clipboard-history"' \
     skhd/.config/skhd/skhdrc >/dev/null \
     || fail "Raycast Clipboard History shortcut is missing"
-if grep -Eq 'right_option|left_command|left_option|Swap .*Command|hjkl to arrow' \
-    karabiner/.config/karabiner/karabiner.json; then
-    fail "unapproved Karabiner rules found"
+grep -F 'ctrl - l [' skhd/.config/skhd/skhdrc >/dev/null \
+    || fail "browser address-bar shortcut is missing"
+for browser_name in "Google Chrome" "Google Chrome Canary" Firefox "Brave Browser"; do
+    grep -F "\"$browser_name\" : ~/.local/bin/focus-address-bar" \
+        skhd/.config/skhd/skhdrc >/dev/null \
+        || fail "browser address-bar shortcut is missing $browser_name"
+done
+if grep -Eq '^cmd - (return|b) :' skhd/.config/skhd/skhdrc; then
+    fail "removed application launcher shortcut is present"
 fi
+grep -F 'menu item "Open Location…"' bin/.local/bin/focus-address-bar >/dev/null \
+    || fail "browser address-bar helper does not use the browser menu"
 
 if grep -Eqi 'bundle cleanup|uninstall|quarantine|fetch-head|telegram|notify|sudo' \
     bin/funk libexec/funk-update libexec/install-update-agent \

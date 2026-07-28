@@ -25,7 +25,8 @@ f16 : yabai -m space --focus 4
 f17 : yabai -m space --focus 5
 f18 : yabai -m space --focus 6
 f19 : yabai -m space --focus 7
-f20 : yabai -m space --focus 8
+# This skhd build does not recognize the F20 literal; 0x5A is its raw keycode.
+0x5A : yabai -m space --focus 8
 f12 : yabai -m space --focus 9
 
 # Moving windows between Spaces requires Yabai's scripting addition.
@@ -38,6 +39,16 @@ cmd + shift - 6 : yabai -m window --space 6
 cmd + shift - 7 : yabai -m window --space 7
 cmd + shift - 8 : yabai -m window --space 8
 cmd + shift - 9 : yabai -m window --space 9
+
+# Preserve Ctrl+L muscle memory for the address bar without synthesizing Cmd+L,
+# which is reserved above for focusing the window to the east.
+ctrl - l [
+    "Google Chrome" : ~/.local/bin/focus-address-bar
+    "Google Chrome Canary" : ~/.local/bin/focus-address-bar
+    "Firefox" : ~/.local/bin/focus-address-bar
+    "Brave Browser" : ~/.local/bin/focus-address-bar
+    * ~
+]
 
 # Additional screenshot bindings; stock macOS shortcuts remain untouched.
 ctrl + shift - 3 : /usr/sbin/screencapture -c

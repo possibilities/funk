@@ -1,0 +1,19 @@
+#!/bin/bash
+
+set -euo pipefail
+
+frontmost_app=$(
+    /usr/bin/osascript \
+        -e 'tell application "System Events" to get name of first application process whose frontmost is true'
+)
+
+/usr/bin/osascript - "$frontmost_app" <<'APPLESCRIPT'
+on run arguments
+    set frontmostApp to item 1 of arguments
+    tell application "System Events"
+        tell process frontmostApp
+            click menu item "Open Location…" of menu 1 of menu bar item "File" of menu bar 1
+        end tell
+    end tell
+end run
+APPLESCRIPT

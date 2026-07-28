@@ -16,7 +16,8 @@
                     "bundle_identifiers": [
                       "^com\\.google\\.Chrome$",
                       "^com\\.google\\.Chrome\\.canary$",
-                      "^com\\.brave\\.Browser$"
+                      "^com\\.brave\\.Browser$",
+                      "^org\\.mozilla\\.firefox$"
                     ]
                   }
                 ],
@@ -34,7 +35,8 @@
                     "bundle_identifiers": [
                       "^com\\.google\\.Chrome$",
                       "^com\\.google\\.Chrome\\.canary$",
-                      "^com\\.brave\\.Browser$"
+                      "^com\\.brave\\.Browser$",
+                      "^org\\.mozilla\\.firefox$"
                     ]
                   }
                 ],
@@ -52,7 +54,8 @@
                     "bundle_identifiers": [
                       "^com\\.google\\.Chrome$",
                       "^com\\.google\\.Chrome\\.canary$",
-                      "^com\\.brave\\.Browser$"
+                      "^com\\.brave\\.Browser$",
+                      "^org\\.mozilla\\.firefox$"
                     ]
                   }
                 ],
@@ -70,7 +73,8 @@
                     "bundle_identifiers": [
                       "^com\\.google\\.Chrome$",
                       "^com\\.google\\.Chrome\\.canary$",
-                      "^com\\.brave\\.Browser$"
+                      "^com\\.brave\\.Browser$",
+                      "^org\\.mozilla\\.firefox$"
                     ]
                   }
                 ],
@@ -88,7 +92,8 @@
                     "bundle_identifiers": [
                       "^com\\.google\\.Chrome$",
                       "^com\\.google\\.Chrome\\.canary$",
-                      "^com\\.brave\\.Browser$"
+                      "^com\\.brave\\.Browser$",
+                      "^org\\.mozilla\\.firefox$"
                     ]
                   }
                 ],
@@ -106,7 +111,8 @@
                     "bundle_identifiers": [
                       "^com\\.google\\.Chrome$",
                       "^com\\.google\\.Chrome\\.canary$",
-                      "^com\\.brave\\.Browser$"
+                      "^com\\.brave\\.Browser$",
+                      "^org\\.mozilla\\.firefox$"
                     ]
                   }
                 ],
@@ -124,7 +130,8 @@
                     "bundle_identifiers": [
                       "^com\\.google\\.Chrome$",
                       "^com\\.google\\.Chrome\\.canary$",
-                      "^com\\.brave\\.Browser$"
+                      "^com\\.brave\\.Browser$",
+                      "^org\\.mozilla\\.firefox$"
                     ]
                   }
                 ],
@@ -142,7 +149,8 @@
                     "bundle_identifiers": [
                       "^com\\.google\\.Chrome$",
                       "^com\\.google\\.Chrome\\.canary$",
-                      "^com\\.brave\\.Browser$"
+                      "^com\\.brave\\.Browser$",
+                      "^org\\.mozilla\\.firefox$"
                     ]
                   }
                 ],
@@ -160,7 +168,8 @@
                     "bundle_identifiers": [
                       "^com\\.google\\.Chrome$",
                       "^com\\.google\\.Chrome\\.canary$",
-                      "^com\\.brave\\.Browser$"
+                      "^com\\.brave\\.Browser$",
+                      "^org\\.mozilla\\.firefox$"
                     ]
                   }
                 ],
@@ -246,6 +255,101 @@
                   "modifiers": { "mandatory": ["command"] }
                 },
                 "to": [{ "key_code": "f12" }]
+              }
+            ]
+          },
+          {
+            "description": "Right Option + H/J/K/L sends arrow keys and preserves Shift",
+            "manipulators": [
+              {
+                "type": "basic",
+                "from": {
+                  "key_code": "h",
+                  "modifiers": {
+                    "mandatory": ["right_option"],
+                    "optional": ["shift"]
+                  }
+                },
+                "to": [{ "key_code": "left_arrow" }]
+              },
+              {
+                "type": "basic",
+                "from": {
+                  "key_code": "j",
+                  "modifiers": {
+                    "mandatory": ["right_option"],
+                    "optional": ["shift"]
+                  }
+                },
+                "to": [{ "key_code": "down_arrow" }]
+              },
+              {
+                "type": "basic",
+                "from": {
+                  "key_code": "k",
+                  "modifiers": {
+                    "mandatory": ["right_option"],
+                    "optional": ["shift"]
+                  }
+                },
+                "to": [{ "key_code": "up_arrow" }]
+              },
+              {
+                "type": "basic",
+                "from": {
+                  "key_code": "l",
+                  "modifiers": {
+                    "mandatory": ["right_option"],
+                    "optional": ["shift"]
+                  }
+                },
+                "to": [{ "key_code": "right_arrow" }]
+              }
+            ]
+          },
+          {
+            "description": "Swap left Command and left Option on the built-in keyboard",
+            "manipulators": [
+              {
+                "type": "basic",
+                "conditions": [
+                  {
+                    "type": "device_if",
+                    "identifiers": [{ "is_built_in_keyboard": true }]
+                  }
+                ],
+                "from": {
+                  "key_code": "left_command",
+                  "modifiers": { "optional": ["any"] }
+                },
+                "to": [{ "key_code": "left_option" }]
+              },
+              {
+                "type": "basic",
+                "conditions": [
+                  {
+                    "type": "device_if",
+                    "identifiers": [{ "is_built_in_keyboard": true }]
+                  }
+                ],
+                "from": {
+                  "key_code": "left_option",
+                  "modifiers": { "optional": ["any"] }
+                },
+                "to": [{ "key_code": "left_command" }]
+              }
+            ]
+          },
+          {
+            "description": "Caps Lock sends Escape",
+            "manipulators": [
+              {
+                "type": "basic",
+                "from": {
+                  "key_code": "caps_lock",
+                  "modifiers": { "optional": ["any"] }
+                },
+                "to": [{ "key_code": "escape" }]
               }
             ]
           }

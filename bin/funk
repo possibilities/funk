@@ -33,7 +33,7 @@ Commands:
   harden <action>    Show status or reapply the travel firewall posture
   install-hardening  Install the root-owned hardening service
   yabai <action>     Show or maintain the Yabai scripting-addition layer
-  install-windows    Install and start the Yabai/skhd/Karabiner stack
+  install-windows    Install the window stack and converge Yabai Spaces 1-9
   help               Show this help
 EOF
 }

@@ -21,6 +21,20 @@ find_binary() {
     return 1
 }
 
+wait_for_numbered_spaces() {
+    local yabai_bin="$1"
+    local attempt=0
+
+    while ! "$yabai_bin" -m query --spaces --space 9 >/dev/null 2>&1; do
+        if [ "$attempt" -ge 30 ]; then
+            printf 'funk yabai: Yabai started, but Space 9 was not available after 30 seconds\n' >&2
+            return 1
+        fi
+        /bin/sleep 1
+        attempt=$((attempt + 1))
+    done
+}
+
 usage() {
     cat <<'EOF'
 Usage: funk yabai <status|maintain>
@@ -68,7 +82,8 @@ case "$1" in
         # user service so launchd points at the current version.
         "$yabai_bin" --uninstall-service >/dev/null 2>&1 || true
         "$yabai_bin" --start-service
-        printf 'Yabai scripting addition and user service reconciled.\n'
+        wait_for_numbered_spaces "$yabai_bin"
+        printf 'Yabai scripting addition, user service, and Spaces 1-9 reconciled.\n'
         ;;
     *)
         usage >&2

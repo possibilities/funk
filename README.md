@@ -9,7 +9,7 @@ forward the old repository's Stow-based, fix-forward configuration workflow.
 The default installer applies the Brewfile plus the vendor-supported AI tool
 installers:
 
-- Tailscale, Ghostty, Google Chrome, Chrome Canary, Brave
+- Tailscale, Ghostty, Google Chrome, Chrome Canary, Brave, Firefox
 - ChatGPT, Claude Desktop, Orca, Obsidian, Raycast
 - GitHub CLI, Claude Code, Codex CLI, OpenCode, and Pi
 - Yabai, skhd, and the narrowly justified Karabiner-Elements layer
@@ -32,11 +32,15 @@ adopt an old `/Users/mike/.config/gh/hosts.yml` only when no current host config
 exists and the old file contains a portable token. Keyring-backed credentials
 cannot be transferred by copying that file.
 
-Karabiner has exactly two paired rules: global Cmd+1…8 becomes F13…F20 and
-Cmd+9 becomes F12 for Yabai Space focus, while Ctrl+1…9 becomes the normal
-Cmd+number tab shortcut in Chrome, Chrome Canary, and Brave. No modifier swaps
-or Option-hjkl rules survive.
-skhd also restores Cmd+Shift+V as a direct Raycast Clipboard History shortcut.
+Karabiner owns Funk's low-level keyboard layer: global Cmd+1…8 becomes
+F13…F20 and Cmd+9 becomes F12 for Yabai Space focus; Ctrl+1…9 becomes the
+normal Cmd+number tab shortcut in Chrome, Chrome Canary, Brave, and Firefox;
+Right Option+H/J/K/L becomes the arrow keys while preserving Shift; Caps Lock
+becomes Escape; and left Command and left Option are swapped only on the
+built-in keyboard.
+
+skhd restores Ctrl+L as the address-bar shortcut in Funk's four browsers and
+Cmd+Shift+V as a direct Raycast Clipboard History shortcut.
 
 The default install also applies the personal macOS preferences retained from
 the old dotfiles: dark mode and a black wallpaper, an empty auto-hidden Dock and
@@ -76,8 +80,8 @@ target account. Funk owns the union of the useful packages from both projects:
 | `btop` | `~/.config/btop/` | no |
 | `llm` | `~/Library/Application Support/io.datasette.llm/` | yes |
 
-Funk's current Yabai, skhd, and deliberately minimal Karabiner configurations
-take precedence where the two repositories overlapped. Privileged helpers,
+Funk's current Yabai, skhd, and reviewed Karabiner configurations take
+precedence where the two repositories overlapped. Privileged helpers,
 LaunchAgents, generated application state, credentials, and remote Termux
 configuration are intentionally not Stow-linked.
 
@@ -97,23 +101,30 @@ Run from the checked-out repository as the new account, never with `sudo`:
 This installs Homebrew when absent, runs `brew bundle install`, stows every user
 configuration package, initializes Tinty, tmux-fzf, the pinned Node runtime, and
 shell-gpt, installs the AI tools listed above, links `funk` into the active
-Homebrew `bin` directory, and installs the daily updater.
-Optional system layers are explicit:
+Homebrew `bin` directory, installs the daily updater, starts the Yabai/skhd/
+Karabiner stack, and converges Yabai Spaces 1–9.
+Optional system layers and the window-stack opt-out are explicit:
 
 ```sh
+./install --without-windows
 ./install --with-hardening
-./install --with-windows
 ./install --with-system-settings
 ./install --all
 ```
 
+The default window setup restows the Yabai, skhd, and Karabiner packages and
+starts the app-provided user services. After the documented Recovery and
+boot-argument prerequisites are complete, it installs Funk's guarded root
+helper, loads the Yabai scripting addition, creates its digest-pinned sudo rule,
+and waits for Spaces 1–9 to exist. It never changes SIP or boot arguments
+itself, and exits unsuccessfully with recovery instructions if those
+prerequisites are missing. Use `./install --without-windows` only when
+deliberately installing on a machine that cannot use this window stack.
+
 `--with-hardening` immediately loads the travel firewall posture.
-`--with-windows` restows the Yabai, skhd, and Karabiner packages and starts the
-app-provided user services, but it does not change SIP or create the
-scripting-addition sudo rule.
 `--with-system-settings` applies the privileged machine-wide settings described
-above and prompts for administrator authentication. `--all` enables all three
-optional layers.
+above and prompts for administrator authentication. `--all` enables hardening
+and system settings in addition to the default window stack.
 
 Homebrew is single-prefix software. Funk refuses to operate if the detected
 Homebrew prefix belongs to another macOS account; resolve that ownership choice
@@ -138,7 +149,8 @@ reapplies their supported installation methods.
 
 After a Yabai upgrade, run `funk yabai maintain` manually. This refreshes the
 digest-pinned `yabai --load-sa` sudo rule, loads the current scripting addition,
-and regenerates Yabai's user service for the new Homebrew Cellar path.
+regenerates Yabai's user service for the new Homebrew Cellar path, and waits for
+Spaces 1–9 to converge.
 
 ## Travel hardening
 
@@ -188,14 +200,19 @@ current documentation requires a deliberate partial-SIP setup.
 
    Reboot again.
 
-3. Run `funk install-windows`. Grant Accessibility to Yabai and skhd when
-   prompted, restart each service after approval, approve Karabiner's requested
-   permissions, and keep Secure Keyboard Entry disabled while using skhd.
+3. Run `./install` (or `funk install-windows` when reapplying only this layer).
+   It installs and invokes the guarded Yabai maintenance path, starts the
+   `RunAtLoad` Yabai and skhd services, and waits for Spaces 1–9. Grant
+   Accessibility to Yabai and skhd when prompted, restart the command after
+   approval if necessary, approve Karabiner's requested
+   permissions, keep Karabiner-Elements enabled under General > Login Items >
+   Allow in Background, and keep Secure Keyboard Entry disabled while using
+   skhd. Karabiner registers its own background services the first time it
+   opens.
 
-4. Configure and verify the scripting addition:
+4. Verify the converged setup:
 
    ```sh
-   funk yabai maintain
    funk yabai status
    ```
 
@@ -213,7 +230,7 @@ certificates, or runs from the daily updater. See Yabai's current
 tests/validate.sh
 ```
 
-The checks parse shell/config files, verify the exact Brewfile and minimal
+The checks parse shell/config files, verify the exact Brewfile and approved
 Karabiner rule set, exercise updater success/failure with a stub Homebrew
 command, validate the macOS-preference command without applying it, render the
 LaunchAgent, and dry-parse the PF rules. They do not install packages, load
