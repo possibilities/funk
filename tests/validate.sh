@@ -239,6 +239,12 @@ jq -e '
   .settings.showMenuBarIcon == false and
   .settings.notifications.enabled == false and
   .settings.defaultTuiAgent == "codex" and
+  .settings.mobilePairingConnectionMode == "local-only" and
+  .settings.openLinksInApp == true and
+  .settings.openLinksInAppPreferencePrompted == true and
+  .settings.refreshLocalBaseRefOnWorktreeCreate == true and
+  .settings.showMobileButton == false and
+  .settings.tabAutoGenerateTitle == true and
   .settings.terminalFontFamily == "0xProto Nerd Font" and
   .settings.terminalFontSize == 20 and
   .settings.terminalMacOptionAsAlt == "true" and
@@ -268,6 +274,12 @@ mv "$orca_state" "$orca_state.merged-test"
 HOME="$stow_home" FUNK_TEST_ORCA_RUNNING=0 "$root/bin/funk" configure-orca >/dev/null
 jq -e '
   .settings.defaultTuiAgent == "codex" and
+  .settings.mobilePairingConnectionMode == "local-only" and
+  .settings.openLinksInApp == true and
+  .settings.openLinksInAppPreferencePrompted == true and
+  .settings.refreshLocalBaseRefOnWorktreeCreate == true and
+  .settings.showMobileButton == false and
+  .settings.tabAutoGenerateTitle == true and
   .settings.terminalMacOptionAsAltMigrated == true and
   .settings.notifications == {"terminalBell":true}
 ' "$orca_state" >/dev/null || fail "Orca settings did not seed a fresh profile"

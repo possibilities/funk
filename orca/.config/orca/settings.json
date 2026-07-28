@@ -1,8 +1,14 @@
 {
   "defaultTuiAgent": "codex",
+  "mobilePairingConnectionMode": "local-only",
   "notifications": {
     "terminalBell": true
   },
+  "openLinksInApp": true,
+  "openLinksInAppPreferencePrompted": true,
+  "refreshLocalBaseRefOnWorktreeCreate": true,
+  "showMobileButton": false,
+  "tabAutoGenerateTitle": true,
   "terminalFontFamily": "0xProto Nerd Font",
   "terminalFontSize": 20,
   "terminalMacOptionAsAlt": "true",

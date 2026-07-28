@@ -68,7 +68,13 @@ settings_file="$HOME/.config/orca/settings.json"
   type == "object" and
   ((keys - [
     "defaultTuiAgent",
+    "mobilePairingConnectionMode",
     "notifications",
+    "openLinksInApp",
+    "openLinksInAppPreferencePrompted",
+    "refreshLocalBaseRefOnWorktreeCreate",
+    "showMobileButton",
+    "tabAutoGenerateTitle",
     "terminalFontFamily",
     "terminalFontSize",
     "terminalMacOptionAsAlt",
@@ -82,8 +88,14 @@ settings_file="$HOME/.config/orca/settings.json"
     . == "devin" or . == "droid" or . == "gemini" or . == "grok" or
     . == "hermes" or . == "kimi" or . == "kilo" or . == "minimax" or
     . == "opencode" or . == "openclaude" or . == "pi" or . == "qwen") and
+  (.mobilePairingConnectionMode | . == "automatic" or . == "local-only") and
   (.notifications | type == "object" and keys == ["terminalBell"]) and
   (.notifications.terminalBell | type == "boolean") and
+  (.openLinksInApp | type == "boolean") and
+  (.openLinksInAppPreferencePrompted | type == "boolean") and
+  (.refreshLocalBaseRefOnWorktreeCreate | type == "boolean") and
+  (.showMobileButton | type == "boolean") and
+  (.tabAutoGenerateTitle | type == "boolean") and
   (.terminalFontFamily | type == "string" and length > 0) and
   (.terminalFontSize | type == "number" and . >= 6 and . <= 72) and
   (.terminalMacOptionAsAlt |
