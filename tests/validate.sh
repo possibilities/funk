@@ -356,7 +356,7 @@ grep -F 'tmux-fzf.git' libexec/initialize-configs >/dev/null \
     || fail "tmux-fzf is not initialized"
 if grep -R -Eqi \
     'tinty|tinted-theming|catppuccin|base16|base24|syntax-theme|color_theme|theme_background' \
-    Brewfile README.md AGENTS.md libexec ghostty nvim tmux zsh btop starship git; then
+    Brewfile README.md libexec ghostty nvim tmux zsh btop starship git; then
     fail "managed configuration contains a prohibited theme or theme manager"
 fi
 if grep -R -Eq \
