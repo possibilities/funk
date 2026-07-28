@@ -1,0 +1,34 @@
+#!/bin/bash
+
+set -euo pipefail
+
+helper=/usr/local/libexec/funk-harden
+
+usage() {
+    cat <<'EOF'
+Usage: funk harden <status|travel>
+
+  status  Report PF and Funk travel-anchor state
+  travel  Reapply Funk's fail-closed physical-interface posture
+EOF
+}
+
+if [ "$#" -ne 1 ]; then
+    usage >&2
+    exit 64
+fi
+
+case "$1" in
+    status|travel) ;;
+    *)
+        usage >&2
+        exit 64
+        ;;
+esac
+
+if [ ! -x "$helper" ]; then
+    printf '%s\n' 'funk harden: helper is not installed; run funk install-hardening first' >&2
+    exit 69
+fi
+
+exec /usr/bin/sudo -n "$helper" "$1"

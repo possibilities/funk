@@ -1,0 +1,119 @@
+#!/bin/bash
+
+set -euo pipefail
+export PATH=/usr/bin:/bin:/usr/sbin:/sbin
+umask 022
+
+helper_target=/usr/local/libexec/funk-harden
+daemon_label=com.arthack.funk.harden-boot
+daemon_target="/Library/LaunchDaemons/$daemon_label.plist"
+pf_conf=/etc/pf.conf
+anchor_line='anchor "com.arthack.funk.travel"'
+
+die() {
+    printf 'funk hardening installer: %s\n' "$*" >&2
+    exit 1
+}
+
+guard_root_directory() {
+    local directory="$1"
+    local owner
+    local mode
+
+    [ -d "$directory" ] || die "required directory is missing: $directory"
+    [ ! -L "$directory" ] || die "refusing symlink directory: $directory"
+    owner=$(stat -f '%Su' "$directory")
+    mode=$(stat -f '%Lp' "$directory")
+    [ "$owner" = root ] || die "$directory must be root-owned"
+    [ $((8#$mode & 8#022)) -eq 0 ] || die "$directory must not be group/world-writable"
+}
+
+target_user=
+source_root=
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --user)
+            [ "$#" -ge 2 ] || die "--user requires a value"
+            target_user="$2"
+            shift 2
+            ;;
+        --source-root)
+            [ "$#" -ge 2 ] || die "--source-root requires a value"
+            source_root="$2"
+            shift 2
+            ;;
+        *)
+            die "unknown argument: $1"
+            ;;
+    esac
+done
+
+[ "$(id -u)" -eq 0 ] || die "must run as root"
+[ -n "$target_user" ] || die "--user is required"
+[ -n "$source_root" ] || die "--source-root is required"
+printf '%s\n' "$target_user" | grep -Eq '^[A-Za-z_][A-Za-z0-9._-]*$' \
+    || die "invalid user name: $target_user"
+target_uid=$(id -u "$target_user" 2>/dev/null) || die "user does not exist: $target_user"
+[ "$target_uid" -ge 500 ] || die "refusing system account: $target_user"
+
+source_root=$(cd -P -- "$source_root" && pwd)
+helper_source="$source_root/system/funk-harden"
+daemon_source="$source_root/system/$daemon_label.plist"
+[ -f "$helper_source" ] && [ ! -L "$helper_source" ] \
+    || die "invalid helper source: $helper_source"
+[ -f "$daemon_source" ] && [ ! -L "$daemon_source" ] \
+    || die "invalid daemon source: $daemon_source"
+/usr/bin/plutil -lint "$daemon_source" >/dev/null \
+    || die "invalid LaunchDaemon plist"
+/bin/bash "$helper_source" validate
+
+if [ ! -e /usr/local/libexec ]; then
+    /usr/bin/install -d -o root -g wheel -m 0755 /usr/local/libexec
+fi
+guard_root_directory /usr/local/libexec
+guard_root_directory /Library/LaunchDaemons
+guard_root_directory /etc/sudoers.d
+
+[ -f "$pf_conf" ] && [ ! -L "$pf_conf" ] || die "invalid $pf_conf"
+pf_owner=$(stat -f '%Su' "$pf_conf")
+pf_mode=$(stat -f '%Lp' "$pf_conf")
+[ "$pf_owner" = root ] || die "$pf_conf must be root-owned"
+[ $((8#$pf_mode & 8#022)) -eq 0 ] || die "$pf_conf must not be group/world-writable"
+
+tmpdir=$(mktemp -d /private/tmp/funk-hardening-install.XXXXXX)
+trap 'rm -rf "$tmpdir"' EXIT
+
+if ! grep -Eq '^[[:space:]]*anchor[[:space:]]+"com\\.arthack\\.funk\\.travel"' "$pf_conf"; then
+    pf_candidate="$tmpdir/pf.conf"
+    cp "$pf_conf" "$pf_candidate"
+    printf '\n# Funk fail-closed travel posture\n%s\n' "$anchor_line" >> "$pf_candidate"
+    /sbin/pfctl -nf "$pf_candidate" >/dev/null \
+        || die "updated $pf_conf failed PF validation"
+
+    if [ ! -e /etc/pf.conf.pre-funk ]; then
+        /usr/bin/install -o root -g wheel -m "$pf_mode" "$pf_conf" /etc/pf.conf.pre-funk
+    fi
+    /usr/bin/install -o root -g wheel -m "$pf_mode" "$pf_candidate" "$pf_conf"
+fi
+
+/usr/bin/install -o root -g wheel -m 0755 "$helper_source" "$helper_target"
+
+sudoers_candidate="$tmpdir/sudoers"
+printf '%s ALL=(root) NOPASSWD: %s status\n' "$target_user" "$helper_target" > "$sudoers_candidate"
+printf '%s ALL=(root) NOPASSWD: %s travel\n' "$target_user" "$helper_target" >> "$sudoers_candidate"
+/bin/chmod 0440 "$sudoers_candidate"
+/usr/sbin/visudo -cf "$sudoers_candidate" >/dev/null \
+    || die "generated sudoers rules failed validation"
+sudoers_target="/etc/sudoers.d/funk-harden-$target_uid"
+/usr/bin/install -o root -g wheel -m 0440 "$sudoers_candidate" "$sudoers_target"
+
+if [ ! -e /Library/Logs/Funk ]; then
+    /usr/bin/install -d -o root -g wheel -m 0755 /Library/Logs/Funk
+fi
+guard_root_directory /Library/Logs/Funk
+/usr/bin/install -o root -g wheel -m 0644 "$daemon_source" "$daemon_target"
+/bin/launchctl bootout "system/$daemon_label" 2>/dev/null || true
+/bin/launchctl bootstrap system "$daemon_target"
+
+printf 'Installed and loaded %s\n' "$daemon_label"
+printf 'Installed narrow sudoers rules for %s: status and travel only\n' "$target_user"

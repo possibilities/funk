@@ -27,6 +27,8 @@ Usage: funk <command>
 Commands:
   update             Install or upgrade packages declared by Funk
   install-updater    Install and load Funk's daily user LaunchAgent
+  harden <action>    Show status or reapply the travel firewall posture
+  install-hardening  Install the root-owned hardening service
   help               Show this help
 EOF
 }
@@ -44,6 +46,14 @@ case "$command_name" in
     install-updater)
         shift
         exec "$FUNK_ROOT/libexec/install-update-agent" "$@"
+        ;;
+    harden)
+        shift
+        exec "$FUNK_ROOT/libexec/funk-harden-client" "$@"
+        ;;
+    install-hardening)
+        shift
+        exec "$FUNK_ROOT/libexec/install-hardening" "$@"
         ;;
     help|-h|--help)
         usage

@@ -1,0 +1,179 @@
+#!/bin/bash
+
+set -euo pipefail
+export PATH=/usr/bin:/bin:/usr/sbin:/sbin
+umask 022
+
+pfctl=/sbin/pfctl
+ifconfig=/sbin/ifconfig
+anchor=com.arthack.funk.travel
+pf_conf=/etc/pf.conf
+state_dir=/var/db/funk
+posture_file="$state_dir/hardening-posture"
+work_dir=
+
+log() {
+    printf '[funk harden] %s %s\n' "$(date '+%Y-%m-%dT%H:%M:%S%z')" "$*"
+}
+
+die() {
+    log "FAILED: $*" >&2
+    exit 1
+}
+
+ensure_state_directory() {
+    local owner
+    local mode
+
+    if [ ! -e "$state_dir" ]; then
+        /usr/bin/install -d -o root -g wheel -m 0755 "$state_dir"
+    fi
+    [ -d "$state_dir" ] && [ ! -L "$state_dir" ] \
+        || die "invalid state directory: $state_dir"
+    owner=$(stat -f '%Su' "$state_dir")
+    mode=$(stat -f '%Lp' "$state_dir")
+    [ "$owner" = root ] || die "$state_dir must be root-owned"
+    [ $((8#$mode & 8#022)) -eq 0 ] \
+        || die "$state_dir must not be group/world-writable"
+    [ ! -L "$posture_file" ] || die "refusing posture symlink: $posture_file"
+}
+
+physical_interfaces() {
+    local interface
+
+    for interface in $("$ifconfig" -l); do
+        if printf '%s\n' "$interface" | grep -Eq '^en[0-9]+$'; then
+            printf '%s\n' "$interface"
+        fi
+    done
+}
+
+render_travel_rules() {
+    local interface
+
+    printf '%s\n' \
+        'set skip on lo0' \
+        'set block-policy drop' \
+        'pass out all keep state'
+
+    while IFS= read -r interface; do
+        [ -n "$interface" ] || continue
+        printf '%s\n' "$interface" | grep -Eq '^en[0-9]+$' \
+            || die "refusing invalid interface name: $interface"
+
+        printf '%s\n' \
+            "pass in quick on $interface proto udp from any port 67 to any port 68" \
+            "pass in quick on $interface proto udp to 224.0.0.251 port 5353" \
+            "pass in quick on $interface inet6 proto udp to ff02::fb port 5353" \
+            "pass in quick on $interface inet6 proto udp from fe80::/10 port 547 to any port 546" \
+            "pass in quick on $interface inet6 proto icmp6 icmp6-type { neighbrsol neighbradv routeradv routersol echoreq echorep toobig timex unreach }" \
+            "block in quick on $interface all"
+    done < <(physical_interfaces)
+}
+
+validate_rules() {
+    local rules_file="$1"
+    "$pfctl" -a "$anchor" -nf "$rules_file" >/dev/null
+}
+
+with_rendered_rules() {
+    local callback="$1"
+    local rules_file
+
+    work_dir=$(mktemp -d /private/tmp/funk-harden.XXXXXX)
+    rules_file="$work_dir/travel.pf"
+    render_travel_rules > "$rules_file"
+    "$callback" "$rules_file"
+    rm -rf "$work_dir"
+    work_dir=
+}
+
+validate_posture() {
+    local rules_file="$1"
+    validate_rules "$rules_file" || die "generated travel rules failed PF validation"
+    log "travel rules validated"
+}
+
+apply_posture() {
+    local rules_file="$1"
+
+    validate_rules "$rules_file" || die "generated travel rules failed PF validation"
+    grep -Eq '^[[:space:]]*anchor[[:space:]]+"com\\.arthack\\.funk\\.travel"' "$pf_conf" \
+        || die "$pf_conf does not traverse the $anchor anchor"
+
+    "$pfctl" -f "$pf_conf" >/dev/null \
+        || die "could not reload $pf_conf"
+    "$pfctl" -e >/dev/null 2>&1 || true
+    "$pfctl" -s info 2>/dev/null | grep -Eq '^Status:[[:space:]]+Enabled' \
+        || die "PF is not enabled"
+    "$pfctl" -a "$anchor" -f "$rules_file" \
+        || die "could not load the travel anchor"
+
+    ensure_state_directory
+    printf 'travel\n' > "$posture_file"
+    /usr/sbin/chown root:wheel "$posture_file"
+    /bin/chmod 0644 "$posture_file"
+    log "travel posture applied to: $(physical_interfaces | tr '\n' ' ')"
+}
+
+status() {
+    local failed=0
+    local interface
+    local info
+    local rules
+    local posture=missing
+
+    info=$("$pfctl" -s info 2>/dev/null) || die "could not read PF status"
+    rules=$("$pfctl" -a "$anchor" -sr 2>/dev/null) || die "could not read $anchor rules"
+    [ -f "$posture_file" ] && posture=$(head -n 1 "$posture_file")
+
+    if printf '%s\n' "$info" | grep -Eq '^Status:[[:space:]]+Enabled'; then
+        printf 'PF: enabled\n'
+    else
+        printf 'PF: disabled\n'
+        failed=1
+    fi
+
+    printf 'Posture marker: %s\n' "$posture"
+    if [ "$posture" != travel ]; then
+        failed=1
+    fi
+
+    printf 'Physical interfaces:\n'
+    while IFS= read -r interface; do
+        [ -n "$interface" ] || continue
+        if printf '%s\n' "$rules" | grep -Eq "block.*in quick on $interface all"; then
+            printf '  %s: blocked inbound\n' "$interface"
+        else
+            printf '  %s: MISSING travel block\n' "$interface"
+            failed=1
+        fi
+    done < <(physical_interfaces)
+
+    return "$failed"
+}
+
+[ "$#" -eq 1 ] || die "expected exactly one action"
+
+if [ "$1" = render ]; then
+    render_travel_rules
+    exit 0
+fi
+
+[ "$(id -u)" -eq 0 ] || die "must run as root"
+trap '[ -n "$work_dir" ] && rm -rf "$work_dir"' EXIT
+
+case "$1" in
+    status)
+        status
+        ;;
+    travel|boot)
+        with_rendered_rules apply_posture
+        ;;
+    validate)
+        with_rendered_rules validate_posture
+        ;;
+    *)
+        die "unknown action: $1"
+        ;;
+esac

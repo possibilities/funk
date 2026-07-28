@@ -1,0 +1,30 @@
+#!/bin/bash
+
+set -euo pipefail
+
+if [ "$#" -ne 0 ]; then
+    printf 'Usage: funk install-hardening\n' >&2
+    exit 64
+fi
+
+if [ "$(uname -s)" != Darwin ]; then
+    printf 'funk install-hardening: macOS is required\n' >&2
+    exit 1
+fi
+
+if [ "$(id -u)" -eq 0 ]; then
+    printf 'funk install-hardening: run as the target user, not root\n' >&2
+    exit 1
+fi
+
+funk_root=${FUNK_ROOT:?FUNK_ROOT is not set}
+installer="$funk_root/system/install-hardening-root"
+
+if [ ! -x "$installer" ]; then
+    printf 'funk install-hardening: root installer is missing or not executable: %s\n' "$installer" >&2
+    exit 1
+fi
+
+printf 'This installs and immediately loads a root LaunchDaemon that applies\n'
+printf 'Funk'\''s travel firewall posture. sudo will prompt once for installation.\n'
+exec /usr/bin/sudo "$installer" --user "$(id -un)" --source-root "$funk_root"
