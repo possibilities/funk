@@ -62,12 +62,16 @@ if command -v ruby >/dev/null 2>&1; then
                   .fetch("complex_modifications").fetch("rules")
       abort "unexpected Karabiner rule count" unless rules.length == 2
       abort "unexpected Karabiner manipulator counts" unless rules.map { |r| r.fetch("manipulators").length } == [9, 9]
+      focus_keys = rules.fetch(1).fetch("manipulators").map { |m| m.fetch("to").fetch(0).fetch("key_code") }
+      abort "unexpected Karabiner Space focus keys" unless focus_keys == %w[f13 f14 f15 f16 f17 f18 f19 f20 f12]
     ' \
         config/karabiner/karabiner.json
 elif command -v jq >/dev/null 2>&1; then
     jq -e '
       (.profiles[0].complex_modifications.rules | length) == 2 and
-      ([.profiles[0].complex_modifications.rules[].manipulators | length] == [9, 9])
+      ([.profiles[0].complex_modifications.rules[].manipulators | length] == [9, 9]) and
+      ([.profiles[0].complex_modifications.rules[1].manipulators[].to[0].key_code] ==
+        ["f13", "f14", "f15", "f16", "f17", "f18", "f19", "f20", "f12"])
     ' config/karabiner/karabiner.json >/dev/null
 else
     fail "Ruby or jq is required to validate Karabiner JSON"
@@ -124,10 +128,14 @@ for required_setting in \
     'com.apple.finder FXICloudDriveDocuments -bool false' \
     'NSGlobalDomain com.apple.swipescrolldirection -bool false' \
     'com.apple.symbolichotkeys AppleSymbolicHotKeys -dict-add 64' \
+    'com.raycast.macos raycastGlobalHotkey -string "Command-2"' \
+    'com.raycast.macos onboardingCompleted -bool true' \
     'com.apple.ControlCenter AirplayRecieverEnabled -bool false'; do
     grep -F "$required_setting" libexec/configure-macos >/dev/null \
         || fail "required macOS setting is missing: $required_setting"
 done
+grep -F '/usr/bin/killall Raycast' libexec/configure-macos >/dev/null \
+    || fail "Raycast is not stopped before its hotkey preference is written"
 grep -F 'black-wallpaper.ppm' libexec/configure-macos >/dev/null \
     || fail "black wallpaper is not configured"
 grep -F '$.NSWorkspace.sharedWorkspace' libexec/configure-macos >/dev/null \
@@ -157,10 +165,15 @@ if grep -F '/Users/mike' system/apply-system-settings >/dev/null; then
     fail "old account leaked into system settings"
 fi
 
-[ "$(grep -Ec '^f(13|14|15|16|17|18|19|20|21) : yabai -m space --focus [1-9]$' config/skhd/skhdrc)" -eq 9 ] \
-    || fail "skhd numbered-Space focus bindings are incomplete"
+[ "$(grep -Ec '^f(13|14|15|16|17|18|19|20) : yabai -m space --focus [1-8]$' config/skhd/skhdrc)" -eq 8 ] \
+    || fail "skhd numbered-Space 1-8 focus bindings are incomplete"
+grep -Fx 'f12 : yabai -m space --focus 9' config/skhd/skhdrc >/dev/null \
+    || fail "skhd Space 9 focus binding is missing"
 [ "$(grep -Ec '^cmd \+ shift - [1-9] : yabai -m window --space [1-9]$' config/skhd/skhdrc)" -eq 9 ] \
     || fail "skhd numbered-Space move bindings are incomplete"
+grep -F 'cmd + shift - v : /usr/bin/open "raycast://extensions/raycast/clipboard-history/clipboard-history"' \
+    config/skhd/skhdrc >/dev/null \
+    || fail "Raycast Clipboard History shortcut is missing"
 if grep -Eq 'right_option|left_command|left_option|Swap .*Command|hjkl to arrow' \
     config/karabiner/karabiner.json; then
     fail "unapproved Karabiner rules found"

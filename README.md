@@ -11,17 +11,19 @@ The Brewfile declares only:
 - ChatGPT, Claude, Obsidian, Raycast
 - Yabai, skhd, and the narrowly justified Karabiner-Elements layer
 
-Karabiner has exactly two paired rules: global Cmd+1…9 becomes F13…F21 for
-Yabai Space focus, while Ctrl+1…9 becomes the normal Cmd+number tab shortcut in
-Chrome, Chrome Canary, and Brave. No modifier swaps or Option-hjkl rules survive.
+Karabiner has exactly two paired rules: global Cmd+1…8 becomes F13…F20 and
+Cmd+9 becomes F12 for Yabai Space focus, while Ctrl+1…9 becomes the normal
+Cmd+number tab shortcut in Chrome, Chrome Canary, and Brave. No modifier swaps
+or Option-hjkl rules survive.
+skhd also restores Cmd+Shift+V as a direct Raycast Clipboard History shortcut.
 
 The default install also applies the personal macOS preferences retained from
 the old dotfiles: dark mode and a black wallpaper, an empty auto-hidden Dock and
 menu bar, quiet UI, hidden desktop items, column-view Finder, fast key repeat,
 Yabai-friendly window and Space behavior, Raycast-friendly Spotlight shortcuts,
-disabled AirPlay Receiver and Handoff, disabled iCloud Desktop/Documents syncing,
-and the compact 12-hour menu-bar clock. Run `funk configure-macos` to reapply
-them.
+Cmd+D as the Raycast launcher with first-run onboarding dismissed, disabled
+AirPlay Receiver and Handoff, disabled iCloud Desktop/Documents syncing, and the
+compact 12-hour menu-bar clock. Run `funk configure-macos` to reapply them.
 
 The old machine-wide settings are available through the explicit
 `funk configure-system` command: it disables Spotlight indexing on all mounted

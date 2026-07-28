@@ -173,7 +173,7 @@
             ]
           },
           {
-            "description": "Cmd+1-9 sends F13-F21 for Yabai Space focus",
+            "description": "Cmd+1-8 sends F13-F20 and Cmd+9 sends F12 for Yabai Space focus",
             "manipulators": [
               {
                 "type": "basic",
@@ -245,7 +245,7 @@
                   "key_code": "9",
                   "modifiers": { "mandatory": ["command"] }
                 },
-                "to": [{ "key_code": "f21" }]
+                "to": [{ "key_code": "f12" }]
               }
             ]
           }

@@ -15,8 +15,9 @@ cmd - space : if yabai -m query --spaces --space | /usr/bin/grep -Eq '"type"[[:s
 cmd + shift - f : yabai -m window --toggle float
 ctrl + cmd + shift - g : yabai -m space --balance
 
-# Karabiner maps Cmd+1…9 to F13…F21. Keeping this indirection here lets
-# Ctrl+1…9 become ordinary browser Cmd+number shortcuts without recursion.
+# Karabiner maps Cmd+1…8 to F13…F20 and Cmd+9 to F12. Keeping this
+# indirection here lets Ctrl+1…9 become ordinary browser Cmd+number shortcuts
+# without recursion.
 f13 : yabai -m space --focus 1
 f14 : yabai -m space --focus 2
 f15 : yabai -m space --focus 3
@@ -25,7 +26,7 @@ f17 : yabai -m space --focus 5
 f18 : yabai -m space --focus 6
 f19 : yabai -m space --focus 7
 f20 : yabai -m space --focus 8
-f21 : yabai -m space --focus 9
+f12 : yabai -m space --focus 9
 
 # Moving windows between Spaces requires Yabai's scripting addition.
 cmd + shift - 1 : yabai -m window --space 1
@@ -42,3 +43,6 @@ cmd + shift - 9 : yabai -m window --space 9
 ctrl + shift - 3 : /usr/sbin/screencapture -c
 ctrl + shift - 4 : /usr/sbin/screencapture -i -c
 ctrl + shift - 5 : /usr/sbin/screencapture -i "$HOME/Desktop/screenshot-$(date +\%Y\%m\%d-\%H\%M\%S).png"
+
+# Raycast Clipboard History.
+cmd + shift - v : /usr/bin/open "raycast://extensions/raycast/clipboard-history/clipboard-history"

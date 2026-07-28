@@ -95,6 +95,26 @@ for shortcut_id in 18 19 20 21 22 23 24 25 26; do
         "$shortcut_id" '<dict><key>enabled</key><false/></dict>'
 done
 
+# Raycast can overwrite externally changed preferences while it is running, so
+# stop it before setting Cmd+D and reopen it only if it was already active.
+raycast_was_running=0
+if /usr/bin/pgrep -x Raycast >/dev/null 2>&1; then
+    raycast_was_running=1
+    /usr/bin/killall Raycast
+    for _attempt in 1 2 3 4 5; do
+        /usr/bin/pgrep -x Raycast >/dev/null 2>&1 || break
+        /bin/sleep 1
+    done
+    /usr/bin/pgrep -x Raycast >/dev/null 2>&1 \
+        && die "Raycast did not stop before its hotkey was configured"
+fi
+write_default com.raycast.macos raycastGlobalHotkey -string "Command-2"
+write_default com.raycast.macos onboardingCompleted -bool true
+if [ "$raycast_was_running" -eq 1 ]; then
+    /usr/bin/open -gja Raycast \
+        || printf 'Raycast was stopped; reopen it manually.\n' >&2
+fi
+
 # Continuity services intentionally disabled in the old setup.
 write_default com.apple.ControlCenter AirplayRecieverEnabled -bool false
 write_default com.apple.rapportd AllowRapport -bool false
