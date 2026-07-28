@@ -1,0 +1,16 @@
+#!/bin/bash
+
+set -euo pipefail
+
+: "${FUNK_TEST_GH_LOG:?FUNK_TEST_GH_LOG is not set}"
+
+[ "${1:-}" = repo ] && [ "${2:-}" = create ] || {
+    printf 'gh-stub: unexpected command\n' >&2
+    exit 64
+}
+shift 2
+
+{
+    printf 'cwd=%s\n' "$PWD"
+    printf 'arg=%s\n' "$@"
+} >"$FUNK_TEST_GH_LOG"

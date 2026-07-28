@@ -1,0 +1,12 @@
+#!/bin/bash
+
+# Initialize the current directory as a Git repository with an empty commit.
+
+set -euo pipefail
+
+if [ -e .git ]; then
+    exit 0
+fi
+
+git init
+git commit --allow-empty -m "New repo"

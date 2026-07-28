@@ -34,7 +34,10 @@ yabai/.config/yabai/yabairc
 bin/.local/bin/tmux-cycle-session
 bin/.local/bin/tmux-move-window
 bin/.local/bin/focus-address-bar
+bin/.local/bin/ginit
+bin/.local/bin/ghinit
 tests/fixtures/brew
+tests/fixtures/gh
 tests/validate.sh
 "
 
@@ -216,6 +219,10 @@ HOME="$stow_home" "$root/bin/funk" stow
     || fail "bin package did not use --no-folding"
 [ -L "$stow_home/.local/bin/focus-address-bar" ] \
     || fail "browser address-bar helper was not stowed"
+[ -x "$stow_home/.local/bin/ginit" ] \
+    || fail "ginit was not stowed as an executable"
+[ -x "$stow_home/.local/bin/ghinit" ] \
+    || fail "ghinit was not stowed as an executable"
 [ -L "$stow_home/Library/Application Support/io.datasette.llm/extra-openai-models.yaml" ] \
     || fail "LLM package was not stowed"
 [ -L "$stow_home/.config/orca" ] && [ -f "$stow_home/.config/orca/settings.json" ] \
@@ -265,6 +272,62 @@ jq -e '
   .settings.notifications == {"terminalBell":true}
 ' "$orca_state" >/dev/null || fail "Orca settings did not seed a fresh profile"
 HOME="$stow_home" "$root/bin/funk" configure-orca --check >/dev/null
+
+mcd_path="$stow_home/mcd parent/mcd child"
+cmkdir_path="$stow_home/cmkdir parent/cmkdir child"
+HOME="$stow_home" MCD_TEST_PATH="$mcd_path" CMKDIR_TEST_PATH="$cmkdir_path" \
+    /bin/zsh -c '
+        source "$HOME/.zsh/aliases/core.zsh"
+        mcd "$MCD_TEST_PATH"
+        [[ "$PWD" -ef "$MCD_TEST_PATH" ]]
+        eval "cmkdir \"\$CMKDIR_TEST_PATH\""
+        [[ "$PWD" -ef "$CMKDIR_TEST_PATH" ]]
+    ' || fail "mcd or cmkdir did not create and enter a directory"
+
+helper_home="$stow_home/helper-home"
+mkdir -p "$helper_home/code/ginit-project"
+git config --file "$helper_home/gitconfig" init.defaultBranch main
+git config --file "$helper_home/gitconfig" user.name 'Funk Validate'
+git config --file "$helper_home/gitconfig" user.email 'funk-validate@example.invalid'
+(
+    cd "$helper_home/code/ginit-project"
+    HOME="$helper_home" \
+        GIT_CONFIG_GLOBAL="$helper_home/gitconfig" \
+        GIT_CONFIG_NOSYSTEM=1 \
+        "$root/bin/.local/bin/ginit" >/dev/null
+    first_head=$(git rev-parse HEAD)
+    HOME="$helper_home" "$root/bin/.local/bin/ginit"
+    [ "$(git rev-parse HEAD)" = "$first_head" ] \
+        || fail "ginit was not idempotent"
+    [ "$(git log -1 --format=%s)" = 'New repo' ] \
+        || fail "ginit did not create the expected initial commit"
+)
+
+gh_log="$helper_home/gh.log"
+HOME="$helper_home" \
+    PATH="$root/bin/.local/bin:$root/tests/fixtures:/usr/bin:/bin" \
+    FUNK_TEST_GH_LOG="$gh_log" \
+    GIT_CONFIG_GLOBAL="$helper_home/gitconfig" \
+    GIT_CONFIG_NOSYSTEM=1 \
+    "$root/bin/.local/bin/ghinit" gh-project --description 'Funk test' >/dev/null
+gh_project_dir=$(cd -P -- "$helper_home/code/gh-project" && pwd)
+expected_gh_log=$(printf '%s\n' \
+    "cwd=$gh_project_dir" \
+    'arg=--source=.' \
+    'arg=--private' \
+    'arg=--push' \
+    'arg=--description' \
+    'arg=Funk test')
+[ "$(cat "$gh_log")" = "$expected_gh_log" ] \
+    || fail "ghinit invoked gh repo create with unexpected arguments"
+
+set +e
+HOME="$helper_home" "$root/bin/.local/bin/ghinit" ../outside >/dev/null 2>&1
+ghinit_traversal_status=$?
+set -e
+[ "$ghinit_traversal_status" -ne 0 ] && [ ! -e "$helper_home/outside" ] \
+    || fail "ghinit allowed a project name to escape ~/code"
+
 grep -F "\"\$funk_command\" stow" install >/dev/null \
     || fail "default install does not stow user configuration"
 grep -F "\"\$funk_root/libexec/initialize-configs\"" install >/dev/null \

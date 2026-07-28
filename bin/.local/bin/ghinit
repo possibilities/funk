@@ -1,0 +1,48 @@
+#!/bin/bash
+
+# Initialize a new Git repository (via ginit), create a matching private
+# GitHub repository, and push the initial commit. With no arguments, the
+# current directory must be directly inside ~/code. With a project name,
+# create and enter ~/code/<name>; any remaining arguments go to gh repo create.
+
+set -euo pipefail
+
+if ! code_dir=$(cd -P -- "$HOME/code" 2>/dev/null && pwd); then
+    printf 'ghinit: %s does not exist\n' "$HOME/code" >&2
+    exit 1
+fi
+
+if [ "$#" -gt 0 ]; then
+    name=$1
+    shift
+    case "$name" in
+        ''|.|..|*/*)
+            printf 'ghinit: project name must be one path component\n' >&2
+            exit 1
+            ;;
+    esac
+
+    project_dir="$code_dir/$name"
+    if [ -e "$project_dir" ]; then
+        printf 'ghinit: %s already exists\n' "$project_dir" >&2
+        exit 1
+    fi
+    mkdir "$project_dir"
+    cd "$project_dir"
+elif [ "$(dirname -- "$(pwd -P)")" != "$code_dir" ]; then
+    printf '%s\n' \
+        'ghinit: run from a directory directly inside ~/code, or pass a project name (creates ~/code/<name>)' \
+        >&2
+    exit 1
+fi
+
+ginit
+
+if ! git remote get-url origin >/dev/null 2>&1; then
+    gh repo create --source=. --private --push "$@"
+else
+    branch=$(git symbolic-ref --short HEAD)
+    if ! git rev-parse --abbrev-ref '@{upstream}' >/dev/null 2>&1; then
+        git push -u origin "$branch"
+    fi
+fi
