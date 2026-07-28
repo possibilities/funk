@@ -209,6 +209,8 @@ HOME="$stow_home" "$root/bin/funk" stow
     || fail "ssh package did not use --no-folding"
 [ -L "$stow_home/.config/ghostty/config" ] \
     || fail "Ghostty config was not stowed"
+[ -L "$stow_home/.config/nvim" ] && [ -f "$stow_home/.config/nvim/init.lua" ] \
+    || fail "Neovim config was not stowed"
 [ -L "$stow_home/.local/bin/tmux-cycle-session" ] && [ ! -L "$stow_home/.local" ] \
     || fail "bin package did not use --no-folding"
 [ -L "$stow_home/.local/bin/focus-address-bar" ] \
