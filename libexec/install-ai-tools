@@ -60,6 +60,19 @@ configure_livekit_docs_mcp() {
     opencode mcp add livekit-docs --url "$livekit_docs_url"
 }
 
+configure_shadcn_mcp() {
+    printf 'Configuring the shadcn registry MCP server for Codex.\n'
+    codex mcp remove shadcn >/dev/null 2>&1 || true
+    codex mcp add shadcn -- npx shadcn@latest mcp
+
+    printf 'Configuring the shadcn registry MCP server for Claude Code.\n'
+    claude mcp remove --scope user shadcn >/dev/null 2>&1 || true
+    claude mcp add --scope user shadcn -- npx shadcn@latest mcp
+
+    printf 'Configuring the shadcn registry MCP server for OpenCode.\n'
+    opencode mcp add shadcn -- npx shadcn@latest mcp
+}
+
 migrate_gh_credentials() {
     local old_home
     local old_hosts
@@ -156,6 +169,9 @@ Agent documentation:
   codex mcp add --url https://docs.livekit.io/mcp livekit-docs
   claude mcp add --scope user --transport http livekit-docs https://docs.livekit.io/mcp
   opencode mcp add livekit-docs --url https://docs.livekit.io/mcp
+  codex mcp add shadcn -- npx shadcn@latest mcp
+  claude mcp add --scope user shadcn -- npx shadcn@latest mcp
+  opencode mcp add shadcn -- npx shadcn@latest mcp
   lk docs overview
   native skills list
 
@@ -163,10 +179,15 @@ Agent skills:
 EOF
     "$script_dir/install-orca" --check
     cat <<'EOF'
+  npx --yes skills remove livekit-agents --global --yes  # when installed
   npx --yes skills add https://github.com/vercel-labs/skills --agent codex claude-code opencode pi --skill find-skills --global --yes
   npx --yes skills add https://github.com/anthropics/skills --agent codex claude-code opencode pi --skill frontend-design --global --yes
   npx --yes skills add https://github.com/vercel-labs/agent-skills --agent codex claude-code opencode pi --skill web-design-guidelines --global --yes
-  npx --yes skills add https://github.com/livekit/agent-skills --agent codex claude-code opencode pi --skill livekit-agents livekit-simulations --global --yes
+  npx --yes skills add https://github.com/vercel-labs/agent-skills --agent codex claude-code opencode pi --skill vercel-react-best-practices --global --yes
+  npx --yes skills add https://github.com/vercel/ai --agent codex claude-code opencode pi --skill ai-sdk --global --yes
+  npx --yes skills add https://github.com/vercel/ai-elements --agent codex claude-code opencode pi --skill ai-elements --global --yes
+  npx --yes skills add https://github.com/shadcn/ui --agent codex claude-code opencode pi --skill shadcn --global --yes
+  npx --yes skills add https://github.com/livekit/agent-skills --agent codex claude-code opencode pi --skill livekit-simulations --global --yes
   npx --yes skills add https://github.com/vercel-labs/native --agent codex claude-code opencode pi --skill native-sdk --global --yes
   npx --yes skills add "$HOME/code/arthack" --agent codex claude-code opencode pi --skill hack --global --yes
 EOF
@@ -257,7 +278,15 @@ configure_livekit_docs_mcp
 
 command -v npx >/dev/null 2>&1 || die "npx is required to install agent skills"
 
+configure_shadcn_mcp
+
 "$script_dir/install-orca"
+
+if npx --yes skills list --global --json \
+    | jq -e '.[] | select(.name == "livekit-agents")' >/dev/null; then
+    printf 'Removing the no-longer-managed LiveKit agent-development skill.\n'
+    npx --yes skills remove livekit-agents --global --yes
+fi
 
 printf 'Installing the global skill discovery helper.\n'
 npx --yes skills add https://github.com/vercel-labs/skills \
@@ -275,10 +304,32 @@ npx --yes skills add https://github.com/vercel-labs/agent-skills \
     --skill web-design-guidelines \
     --global --yes
 
-printf 'Installing the globally managed LiveKit agent skills.\n'
+printf 'Installing Vercel React engineering guidance.\n'
+npx --yes skills add https://github.com/vercel-labs/agent-skills \
+    --agent codex claude-code opencode pi \
+    --skill vercel-react-best-practices \
+    --global --yes
+
+printf 'Installing the official Vercel AI SDK and AI Elements skills.\n'
+npx --yes skills add https://github.com/vercel/ai \
+    --agent codex claude-code opencode pi \
+    --skill ai-sdk \
+    --global --yes
+npx --yes skills add https://github.com/vercel/ai-elements \
+    --agent codex claude-code opencode pi \
+    --skill ai-elements \
+    --global --yes
+
+printf 'Installing the official shadcn skill.\n'
+npx --yes skills add https://github.com/shadcn/ui \
+    --agent codex claude-code opencode pi \
+    --skill shadcn \
+    --global --yes
+
+printf 'Installing the globally managed LiveKit simulation skill.\n'
 npx --yes skills add https://github.com/livekit/agent-skills \
     --agent codex claude-code opencode pi \
-    --skill livekit-agents livekit-simulations \
+    --skill livekit-simulations \
     --global --yes
 
 printf 'Installing the Native SDK discovery skill.\n'

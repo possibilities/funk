@@ -597,13 +597,21 @@ for required_ai_install in \
     'codex mcp add --url https://docs.livekit.io/mcp livekit-docs' \
     'claude mcp add --scope user --transport http livekit-docs https://docs.livekit.io/mcp' \
     'opencode mcp add livekit-docs --url https://docs.livekit.io/mcp' \
+    'codex mcp add shadcn -- npx shadcn@latest mcp' \
+    'claude mcp add --scope user shadcn -- npx shadcn@latest mcp' \
+    'opencode mcp add shadcn -- npx shadcn@latest mcp' \
     'lk docs overview' \
     'native skills list' \
     'npx --yes skills add https://github.com/stablyai/orca --agent codex claude-code opencode pi --skill orca-cli orchestration computer-use --global --yes' \
+    'npx --yes skills remove livekit-agents --global --yes  # when installed' \
     'npx --yes skills add https://github.com/vercel-labs/skills --agent codex claude-code opencode pi --skill find-skills --global --yes' \
     'npx --yes skills add https://github.com/anthropics/skills --agent codex claude-code opencode pi --skill frontend-design --global --yes' \
     'npx --yes skills add https://github.com/vercel-labs/agent-skills --agent codex claude-code opencode pi --skill web-design-guidelines --global --yes' \
-    'npx --yes skills add https://github.com/livekit/agent-skills --agent codex claude-code opencode pi --skill livekit-agents livekit-simulations --global --yes' \
+    'npx --yes skills add https://github.com/vercel-labs/agent-skills --agent codex claude-code opencode pi --skill vercel-react-best-practices --global --yes' \
+    'npx --yes skills add https://github.com/vercel/ai --agent codex claude-code opencode pi --skill ai-sdk --global --yes' \
+    'npx --yes skills add https://github.com/vercel/ai-elements --agent codex claude-code opencode pi --skill ai-elements --global --yes' \
+    'npx --yes skills add https://github.com/shadcn/ui --agent codex claude-code opencode pi --skill shadcn --global --yes' \
+    'npx --yes skills add https://github.com/livekit/agent-skills --agent codex claude-code opencode pi --skill livekit-simulations --global --yes' \
     'npx --yes skills add https://github.com/vercel-labs/native --agent codex claude-code opencode pi --skill native-sdk --global --yes' \
     "npx --yes skills add \"\$HOME/code/arthack\" --agent codex claude-code opencode pi --skill hack --global --yes"; do
     printf '%s\n' "$ai_install_plan" | grep -F "$required_ai_install" >/dev/null \
@@ -611,6 +619,9 @@ for required_ai_install in \
 done
 if printf '%s\n' "$ai_install_plan" | grep -Eq -- '--skill ([^[:space:]]+ )*funk([[:space:]]|$)'; then
     fail "AI installation plan still installs the retired Funk priming skill"
+fi
+if printf '%s\n' "$ai_install_plan" | grep -Eq -- '--skill ([^[:space:]]+ )*livekit-agents([[:space:]]|$)'; then
+    fail "AI installation plan still installs the removed LiveKit agent-development skill"
 fi
 grep -F "art_hack_root=\"\$HOME/code/arthack\"" libexec/install-ai-tools >/dev/null \
     || fail "AI installer does not own the Art Hack skill source"
