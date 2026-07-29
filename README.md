@@ -12,7 +12,8 @@ installers:
 - Tailscale, Ghostty, Google Chrome, Chrome Canary, Brave, Firefox
 - ChatGPT, Claude Desktop, Orca, Obsidian, Raycast
 - GitHub CLI, Claude Code, Codex CLI, OpenCode, and Pi
-- Orca CLI, orchestration, computer-use, and skill-discovery agent skills
+- Orca CLI, orchestration, computer-use, skill-discovery, Funk, and Hack agent
+  skills
 - Yabai, skhd, and the narrowly justified Karabiner-Elements layer
 - Git Delta, Neovim, tmux, Starship, btop, GNU Stow, and supporting
   shell/development tools
@@ -30,8 +31,11 @@ changes.
 The AI installer also reproduces the globally managed agent skills with the
 same `npx skills add` mechanism used by Orca's setup UI. It installs `orca-cli`,
 `orchestration`, and `computer-use` from Orca plus `find-skills` from Vercel for
-Codex, Claude Code, OpenCode, and Pi. Locally authored, unmanaged skills are
-intentionally outside this installer.
+Codex, Claude Code, OpenCode, and Pi. It also synchronizes the locally authored
+`funk` and `hack` skills from `~/code/arthack` into the shared
+`~/.agents/skills` directory discovered by Codex Desktop and the other agent
+skill locations. Funk is the sole owner of AI-stack installation; Art Hack
+remains the source of those two skills and does not provide a second installer.
 
 GitHub CLI is intentionally installed twice: once through the main Brewfile and
 again by the AI tool installer. The latter preserves an existing login and can

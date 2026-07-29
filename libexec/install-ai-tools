@@ -138,12 +138,21 @@ Command-line tools:
 Agent skills:
   npx --yes skills add https://github.com/stablyai/orca --agent codex claude-code opencode pi --skill orca-cli orchestration computer-use --global --yes
   npx --yes skills add https://github.com/vercel-labs/skills --agent codex claude-code opencode pi --skill find-skills --global --yes
+  npx --yes skills add "$HOME/code/arthack" --agent codex claude-code opencode pi --skill funk hack --global --yes
 EOF
     exit 0
 fi
 
 [ "$(uname -s)" = Darwin ] || die "macOS is required"
 [ "$(id -u)" -ne 0 ] || die "run as the target user, not root"
+
+art_hack_root="$HOME/code/arthack"
+for skill in funk hack; do
+    [ -f "$art_hack_root/$skill/SKILL.md" ] \
+        || die "Art Hack skill source is missing: $art_hack_root/$skill/SKILL.md"
+    [ -f "$art_hack_root/$skill/agents/openai.yaml" ] \
+        || die "Art Hack skill manifest is missing: $art_hack_root/$skill/agents/openai.yaml"
+done
 
 brew_bin=$(find_brew) || die "Homebrew is not installed"
 brew_prefix=$("$brew_bin" --prefix)
@@ -206,4 +215,10 @@ printf 'Installing the global skill discovery helper.\n'
 npx --yes skills add https://github.com/vercel-labs/skills \
     --agent codex claude-code opencode pi \
     --skill find-skills \
+    --global --yes
+
+printf 'Synchronizing the personal Art Hack agent skills.\n'
+npx --yes skills add "$art_hack_root" \
+    --agent codex claude-code opencode pi \
+    --skill funk hack \
     --global --yes

@@ -400,10 +400,19 @@ for required_ai_install in \
     'curl -fsSL https://opencode.ai/install | bash -s -- --no-modify-path' \
     'curl -fsSL https://pi.dev/install.sh | sh' \
     'npx --yes skills add https://github.com/stablyai/orca --agent codex claude-code opencode pi --skill orca-cli orchestration computer-use --global --yes' \
-    'npx --yes skills add https://github.com/vercel-labs/skills --agent codex claude-code opencode pi --skill find-skills --global --yes'; do
+    'npx --yes skills add https://github.com/vercel-labs/skills --agent codex claude-code opencode pi --skill find-skills --global --yes' \
+    "npx --yes skills add \"\$HOME/code/arthack\" --agent codex claude-code opencode pi --skill funk hack --global --yes"; do
     printf '%s\n' "$ai_install_plan" | grep -F "$required_ai_install" >/dev/null \
         || fail "AI installation plan is missing: $required_ai_install"
 done
+grep -F "art_hack_root=\"\$HOME/code/arthack\"" libexec/install-ai-tools >/dev/null \
+    || fail "AI installer does not own the Art Hack skill source"
+grep -F "npx --yes skills add \"\$art_hack_root\"" libexec/install-ai-tools >/dev/null \
+    || fail "AI installer does not synchronize the Art Hack skills"
+grep -F "\$art_hack_root/\$skill/SKILL.md" libexec/install-ai-tools >/dev/null \
+    || fail "AI installer does not validate Art Hack skill sources"
+grep -F "\$art_hack_root/\$skill/agents/openai.yaml" libexec/install-ai-tools >/dev/null \
+    || fail "AI installer does not validate Art Hack skill manifests"
 grep -F "\"\$brew_bin\" install gh" libexec/install-ai-tools >/dev/null \
     || fail "AI installer does not deliberately duplicate the GitHub CLI install"
 grep -F '^[[:space:]]*oauth_token:' libexec/install-ai-tools >/dev/null \
