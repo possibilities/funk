@@ -45,10 +45,21 @@ trap 'rm -rf "$tmpdir"' EXIT
 rendered="$tmpdir/$label.plist"
 
 cp "$template" "$rendered"
-/usr/bin/plutil -replace ProgramArguments.0 -string "$funk_executable" "$rendered"
+/usr/bin/plutil -remove ProgramArguments.0 "$rendered"
+/usr/bin/plutil -insert ProgramArguments.0 -string "$funk_executable" "$rendered"
 /usr/bin/plutil -replace StandardOutPath -string "$log_path" "$rendered"
 /usr/bin/plutil -replace StandardErrorPath -string "$log_path" "$rendered"
 /usr/bin/plutil -lint "$rendered" >/dev/null
+
+[ "$(/usr/libexec/PlistBuddy -c 'Print :ProgramArguments:0' "$rendered")" = "$funk_executable" ] \
+    || die "rendered updater executable is incorrect"
+[ "$(/usr/libexec/PlistBuddy -c 'Print :ProgramArguments:1' "$rendered")" = update ] \
+    || die "rendered updater command is incorrect"
+[ "$(/usr/libexec/PlistBuddy -c 'Print :ProgramArguments:2' "$rendered")" = --notify ] \
+    || die "rendered updater notification flag is incorrect"
+if /usr/libexec/PlistBuddy -c 'Print :ProgramArguments:3' "$rendered" >/dev/null 2>&1; then
+    die "rendered updater has an unexpected extra argument"
+fi
 
 if [ "$check_only" -eq 1 ]; then
     printf 'Update LaunchAgent renders and validates successfully.\n'
