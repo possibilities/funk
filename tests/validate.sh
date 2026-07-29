@@ -395,15 +395,12 @@ for required_ai_install in \
     'brew install --cask claude' \
     'brew install --cask chatgpt' \
     'brew install --cask stablyai/orca/orca' \
-    'brew trust --cask nkzw-tech/tap/codiff' \
-    'brew install --cask nkzw-tech/tap/codiff' \
     'curl -fsSL https://claude.ai/install.sh | bash' \
     'curl -fsSL https://chatgpt.com/codex/install.sh | CODEX_NON_INTERACTIVE=1 sh' \
     'curl -fsSL https://opencode.ai/install | bash -s -- --no-modify-path' \
     'curl -fsSL https://pi.dev/install.sh | sh' \
     'npx --yes skills add https://github.com/stablyai/orca --agent codex claude-code opencode pi --skill orca-cli orchestration computer-use --global --yes' \
-    'npx --yes skills add https://github.com/vercel-labs/skills --agent codex claude-code opencode pi --skill find-skills --global --yes' \
-    'npx --yes skills add https://github.com/nkzw-tech/codiff --agent codex claude-code opencode pi --skill codiff --global --yes'; do
+    'npx --yes skills add https://github.com/vercel-labs/skills --agent codex claude-code opencode pi --skill find-skills --global --yes'; do
     printf '%s\n' "$ai_install_plan" | grep -F "$required_ai_install" >/dev/null \
         || fail "AI installation plan is missing: $required_ai_install"
 done
@@ -413,9 +410,7 @@ grep -F '^[[:space:]]*oauth_token:' libexec/install-ai-tools >/dev/null \
     || fail "GitHub CLI migration does not require a portable token"
 grep -F 'Preserving existing GitHub CLI credentials' libexec/install-ai-tools >/dev/null \
     || fail "GitHub CLI migration does not preserve an existing login"
-grep -F "\"\$brew_bin\" trust --cask nkzw-tech/tap/codiff" libexec/install-ai-tools >/dev/null \
-    || fail "AI installer does not narrowly trust the Codiff cask"
-if grep -Eq '^cask "(chatgpt|claude)"$|stablyai/orca/orca|nkzw-tech/tap/codiff' Brewfile; then
+if grep -Eq '^cask "(chatgpt|claude)"$|stablyai/orca/orca' Brewfile; then
     fail "AI desktop application leaked back into the bootstrap Brewfile"
 fi
 

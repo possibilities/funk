@@ -10,9 +10,9 @@ The default installer applies the Brewfile plus the vendor-supported AI tool
 installers:
 
 - Tailscale, Ghostty, Google Chrome, Chrome Canary, Brave, Firefox
-- ChatGPT, Claude Desktop, Codiff, Orca, Obsidian, Raycast
+- ChatGPT, Claude Desktop, Orca, Obsidian, Raycast
 - GitHub CLI, Claude Code, Codex CLI, OpenCode, and Pi
-- Codiff, Orca CLI, orchestration, computer-use, and skill-discovery agent skills
+- Orca CLI, orchestration, computer-use, and skill-discovery agent skills
 - Yabai, skhd, and the narrowly justified Karabiner-Elements layer
 - Git Delta, Neovim, tmux, Starship, btop, GNU Stow, and supporting
   shell/development tools
@@ -22,19 +22,16 @@ installers:
 [Codex CLI](https://github.com/openai/codex#installing-and-running-codex-cli),
 [OpenCode](https://opencode.ai/docs/), and [Pi](https://pi.dev/docs/latest).
 ChatGPT and Claude Desktop use their Homebrew casks because their normal
-personal macOS downloads do not provide unattended installer commands.
-[Codiff](https://github.com/nkzw-tech/codiff) and
-[Orca](https://github.com/stablyai/orca) use the casks documented by their
-respective projects. Funk narrowly trusts Codiff's cask rather than its entire
-third-party tap.
+personal macOS downloads do not provide unattended installer commands. Orca
+uses the cask documented by the [Orca project](https://github.com/stablyai/orca).
 Run `libexec/install-ai-tools --check` to inspect the exact plan without making
 changes.
 
 The AI installer also reproduces the globally managed agent skills with the
 same `npx skills add` mechanism used by Orca's setup UI. It installs `orca-cli`,
-`orchestration`, and `computer-use` from Orca, `find-skills` from Vercel, and
-`codiff` from Codiff for Codex, Claude Code, OpenCode, and Pi. Locally authored,
-unmanaged skills are intentionally outside this installer.
+`orchestration`, and `computer-use` from Orca plus `find-skills` from Vercel for
+Codex, Claude Code, OpenCode, and Pi. Locally authored, unmanaged skills are
+intentionally outside this installer.
 
 GitHub CLI is intentionally installed twice: once through the main Brewfile and
 again by the AI tool installer. The latter preserves an existing login and can

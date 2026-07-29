@@ -127,8 +127,6 @@ Desktop applications:
   brew install --cask claude
   brew install --cask chatgpt
   brew install --cask stablyai/orca/orca
-  brew trust --cask nkzw-tech/tap/codiff
-  brew install --cask nkzw-tech/tap/codiff
 
 Command-line tools:
   brew install gh  # intentional duplicate of the Brewfile
@@ -140,7 +138,6 @@ Command-line tools:
 Agent skills:
   npx --yes skills add https://github.com/stablyai/orca --agent codex claude-code opencode pi --skill orca-cli orchestration computer-use --global --yes
   npx --yes skills add https://github.com/vercel-labs/skills --agent codex claude-code opencode pi --skill find-skills --global --yes
-  npx --yes skills add https://github.com/nkzw-tech/codiff --agent codex claude-code opencode pi --skill codiff --global --yes
 EOF
     exit 0
 fi
@@ -167,9 +164,6 @@ printf 'Installing AI desktop applications with their supported Homebrew casks.\
 "$brew_bin" install --cask claude
 "$brew_bin" install --cask chatgpt
 "$brew_bin" install --cask stablyai/orca/orca
-printf 'Trusting the Codiff cask from its official third-party tap.\n'
-"$brew_bin" trust --cask nkzw-tech/tap/codiff
-"$brew_bin" install --cask nkzw-tech/tap/codiff
 
 install_official "Claude Code" \
     https://claude.ai/install.sh \
@@ -212,10 +206,4 @@ printf 'Installing the global skill discovery helper.\n'
 npx --yes skills add https://github.com/vercel-labs/skills \
     --agent codex claude-code opencode pi \
     --skill find-skills \
-    --global --yes
-
-printf 'Installing the global Codiff agent skill.\n'
-npx --yes skills add https://github.com/nkzw-tech/codiff \
-    --agent codex claude-code opencode pi \
-    --skill codiff \
     --global --yes
