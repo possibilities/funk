@@ -14,6 +14,10 @@ shell_files="
 install
 bin/funk
 libexec/funk-update
+libexec/converge-brewfile
+libexec/converge-brew-casks
+libexec/release-cask-quarantine
+libexec/install-orca
 libexec/stow-config
 libexec/initialize-configs
 libexec/configure-orca
@@ -46,6 +50,9 @@ tests/adb-wireless.sh
 tests/fixtures/adb
 tests/fixtures/brew
 tests/fixtures/gh
+tests/fixtures/npx
+tests/fixtures/spctl
+tests/fixtures/terminal-notifier
 tests/validate.sh
 "
 
@@ -67,15 +74,29 @@ fi
 /usr/bin/plutil -lint launchd/com.arthack.funk.update.plist.in >/dev/null
 /usr/bin/plutil -lint system/com.arthack.funk.harden-boot.plist >/dev/null
 update_plist=launchd/com.arthack.funk.update.plist.in
-[ "$(/usr/libexec/PlistBuddy -c 'Print :StartCalendarInterval:Hour' "$update_plist")" = 10 ] \
-    || fail "daily updater hour is not 10"
-[ "$(/usr/libexec/PlistBuddy -c 'Print :StartCalendarInterval:Minute' "$update_plist")" = 0 ] \
-    || fail "daily updater minute is not 00"
+expected_update_hours='0
+6
+12
+18'
+actual_update_hours=$(
+    for index in 0 1 2 3; do
+        /usr/libexec/PlistBuddy \
+            -c "Print :StartCalendarInterval:$index:Hour" "$update_plist"
+    done
+)
+[ "$actual_update_hours" = "$expected_update_hours" ] \
+    || fail "updater does not run every six hours"
+for index in 0 1 2 3; do
+    [ "$(/usr/libexec/PlistBuddy -c "Print :StartCalendarInterval:$index:Minute" "$update_plist")" = 0 ] \
+        || fail "updater minute is not 00"
+done
 [ "$(/usr/libexec/PlistBuddy -c 'Print :ProgramArguments:1' "$update_plist")" = update ] \
-    || fail "daily updater does not invoke funk update"
+    || fail "scheduled updater does not invoke funk update"
+[ "$(/usr/libexec/PlistBuddy -c 'Print :ProgramArguments:2' "$update_plist")" = --notify ] \
+    || fail "scheduled updater does not request a notification"
 if /usr/libexec/PlistBuddy -c 'Print :RunAtLoad' "$update_plist" >/dev/null 2>&1 \
     || /usr/libexec/PlistBuddy -c 'Print :KeepAlive' "$update_plist" >/dev/null 2>&1; then
-    fail "daily updater has an unapproved extra trigger"
+    fail "scheduled updater has an unapproved extra trigger"
 fi
 
 if command -v ruby >/dev/null 2>&1; then
@@ -165,6 +186,7 @@ brew "tmux"
 brew "nvm"
 brew "gh"
 brew "jq"
+brew "terminal-notifier"
 brew "yq"
 brew "ripgrep"
 brew "fzf"
@@ -178,17 +200,17 @@ brew "llm"
 brew "scrcpy"
 brew "asmvik/formulae/yabai", trusted: true
 brew "asmvik/formulae/skhd", trusted: true
-cask "tailscale-app"
-cask "ghostty"
-cask "google-chrome"
-cask "google-chrome@canary"
-cask "brave-browser"
-cask "firefox"
-cask "obsidian"
-cask "raycast"
-cask "android-platform-tools"
-cask "karabiner-elements"
-cask "font-0xproto-nerd-font"'
+cask "tailscale-app", greedy: true
+cask "ghostty", greedy: true
+cask "google-chrome", greedy: true
+cask "google-chrome@canary", greedy: true
+cask "brave-browser", greedy: true
+cask "firefox", greedy: true
+cask "obsidian", greedy: true
+cask "raycast", greedy: true
+cask "android-platform-tools", greedy: true
+cask "karabiner-elements", greedy: true
+cask "font-0xproto-nerd-font", greedy: true'
 actual_brewfile=$(grep -Ev '^[[:space:]]*$' Brewfile)
 [ "$actual_brewfile" = "$expected_brewfile" ] \
     || fail "Brewfile declarations differ from the approved set"
@@ -198,24 +220,160 @@ if command -v brew >/dev/null 2>&1; then
     HOMEBREW_NO_AUTO_UPDATE=1 brew bundle list --file=Brewfile --cask >/dev/null
 fi
 
+update_test_dir=$(mktemp -d "${TMPDIR:-/tmp}/funk-update-test.XXXXXX")
+update_home="$update_test_dir/home"
+update_state="$update_test_dir/brew-state"
+update_brew_log="$update_test_dir/brew.log"
+update_npx_log="$update_test_dir/npx.log"
+update_notifier_log="$update_test_dir/notifier.log"
+mkdir -p "$update_home/.agents"
+printf '%s\n' \
+    $'formula:terminal-notifier\t1.0.0' \
+    $'cask:orca\t0.9.0' \
+    >"$update_state"
+cat >"$update_home/.agents/.skill-lock.json" <<'EOF'
+{
+  "skills": {
+    "orca-cli": {"skillFolderHash": "1111111111111111111111111111111111111111"},
+    "orchestration": {"skillFolderHash": "2222222222222222222222222222222222222222"},
+    "computer-use": {"skillFolderHash": "3333333333333333333333333333333333333333"}
+  }
+}
+EOF
+
 set +e
 update_output=$(
-    PATH="$root/tests/fixtures:/usr/bin:/bin:/usr/sbin:/sbin" \
+    HOME="$update_home" \
+        PATH="$root/tests/fixtures:/usr/bin:/bin:/usr/sbin:/sbin" \
         FUNK_TEST_BREW_EXIT=23 \
+        FUNK_TEST_BREW_PREFIX="$update_test_dir/prefix" \
+        FUNK_TEST_BREW_STATE="$update_state" \
+        FUNK_TEST_BREW_LOG="$update_brew_log" \
         "$root/bin/funk" update 2>&1
 )
 update_status=$?
 set -e
 [ "$update_status" -eq 23 ] || fail "funk update did not propagate brew exit 23"
-printf '%s\n' "$update_output" \
-    | grep -F "brew-stub <bundle> <install> <--file=$root/Brewfile>" >/dev/null \
-    || fail "funk update invoked an unexpected brew command"
+grep -F "brew-stub <bundle> <install> <--upgrade> <--file=$root/Brewfile>" \
+    "$update_brew_log" >/dev/null \
+    || fail "funk update did not explicitly request Brewfile upgrades"
 printf '%s\n' "$update_output" | grep -F 'FAILED with exit status 23' >/dev/null \
     || fail "funk update did not log failure"
 
-PATH="$root/tests/fixtures:/usr/bin:/bin:/usr/sbin:/sbin" \
+HOME="$update_home" \
+    PATH="$root/tests/fixtures:/usr/bin:/bin:/usr/sbin:/sbin" \
     FUNK_TEST_BREW_EXIT=0 \
-    "$root/bin/funk" update >/dev/null
+    FUNK_TEST_BREW_PREFIX="$update_test_dir/prefix" \
+    FUNK_TEST_BREW_STATE="$update_state" \
+    FUNK_TEST_BREW_LOG="$update_brew_log" \
+    FUNK_TEST_FORMULA_NEW=2.0.0 \
+    FUNK_TEST_ORCA_NEW=1.0.0 \
+    FUNK_TEST_ORCA_CLI_HASH=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
+    FUNK_TEST_NPX_LOG="$update_npx_log" \
+    FUNK_TEST_NOTIFIER_LOG="$update_notifier_log" \
+    FUNK_NPX_BIN="$root/tests/fixtures/npx" \
+    FUNK_TERMINAL_NOTIFIER_BIN="$root/tests/fixtures/terminal-notifier" \
+    "$root/bin/funk" update --notify >/dev/null
+grep -F 'brew-stub <upgrade> <--cask> <--greedy> <--yes> <stablyai/orca/orca>' \
+    "$update_brew_log" >/dev/null \
+    || fail "scheduled update did not explicitly upgrade installed Orca"
+grep -F 'npx-stub <--yes> <skills> <add> <https://github.com/stablyai/orca>' \
+    "$update_npx_log" >/dev/null \
+    || fail "scheduled update did not synchronize Orca skills"
+notification=$(tail -n 1 "$update_notifier_log")
+printf '%s\n' "$notification" | grep -F 'terminal-notifier 1.0.0 → 2.0.0' >/dev/null \
+    || fail "change-aware notification omitted the upgraded formula"
+printf '%s\n' "$notification" | grep -F 'Orca 0.9.0 → 1.0.0' >/dev/null \
+    || fail "change-aware notification omitted the upgraded Orca cask"
+printf '%s\n' "$notification" | grep -F 'orca-cli skill rev 11111111 → aaaaaaaa' >/dev/null \
+    || fail "change-aware notification omitted the updated Orca skill revision"
+if printf '%s\n' "$notification" | grep -Eq 'orchestration|computer-use'; then
+    fail "change-aware notification listed unchanged Orca skills"
+fi
+
+: >"$update_notifier_log"
+HOME="$update_home" \
+    PATH="$root/tests/fixtures:/usr/bin:/bin:/usr/sbin:/sbin" \
+    FUNK_TEST_BREW_EXIT=0 \
+    FUNK_TEST_BREW_PREFIX="$update_test_dir/prefix" \
+    FUNK_TEST_BREW_STATE="$update_state" \
+    FUNK_TEST_BREW_LOG="$update_brew_log" \
+    FUNK_TEST_FORMULA_NEW=2.0.0 \
+    FUNK_TEST_ORCA_NEW=1.0.0 \
+    FUNK_TEST_ORCA_CLI_HASH=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
+    FUNK_TEST_NPX_LOG="$update_npx_log" \
+    FUNK_TEST_NOTIFIER_LOG="$update_notifier_log" \
+    FUNK_NPX_BIN="$root/tests/fixtures/npx" \
+    FUNK_TERMINAL_NOTIFIER_BIN="$root/tests/fixtures/terminal-notifier" \
+    "$root/bin/funk" update --notify >/dev/null
+grep -F '<-message> <Installer ran; no updates.>' "$update_notifier_log" >/dev/null \
+    || fail "no-op scheduled update did not send the required concise notification"
+
+quarantine_home="$update_test_dir/quarantine-home"
+quarantine_app="$quarantine_home/Applications/Funk Test.app"
+quarantine_info="$update_test_dir/cask-info.json"
+quarantine_spctl_log="$update_test_dir/spctl.log"
+mkdir -p "$quarantine_app/Contents"
+quarantine_app_canonical=$(
+    cd -P -- "$(dirname -- "$quarantine_app")" && pwd
+)
+quarantine_app_canonical="$quarantine_app_canonical/$(basename -- "$quarantine_app")"
+touch "$quarantine_app/Contents/test"
+/usr/bin/xattr -w com.apple.quarantine '0081;funk-test' "$quarantine_app"
+/usr/bin/xattr -w com.apple.quarantine '0081;funk-test' "$quarantine_app/Contents/test"
+/usr/bin/jq -n --arg target "$quarantine_app" \
+    '{casks:[{artifacts:[{app:["Funk Test.app"],target:$target}]}]}' \
+    >"$quarantine_info"
+HOME="$quarantine_home" \
+    PATH="$root/tests/fixtures:/usr/bin:/bin:/usr/sbin:/sbin" \
+    FUNK_TEST_CASK_INFO="$quarantine_info" \
+    FUNK_TEST_SPCTL_LOG="$quarantine_spctl_log" \
+    FUNK_SPCTL_BIN="$root/tests/fixtures/spctl" \
+    "$root/libexec/release-cask-quarantine" funk-test >/dev/null
+grep -F "spctl-stub <--assess> <--type> <execute> <$quarantine_app_canonical>" \
+    "$quarantine_spctl_log" >/dev/null \
+    || fail "cask helper did not Gatekeeper-assess the exact declared app"
+remaining_quarantine=$(
+    /usr/bin/xattr -pr com.apple.quarantine "$quarantine_app" 2>/dev/null || true
+)
+[ -z "$remaining_quarantine" ] \
+    || fail "scoped cask helper left quarantine on a declared app artifact"
+
+/usr/bin/xattr -w com.apple.quarantine '0081;funk-test' "$quarantine_app"
+set +e
+HOME="$quarantine_home" \
+    PATH="$root/tests/fixtures:/usr/bin:/bin:/usr/sbin:/sbin" \
+    FUNK_TEST_CASK_INFO="$quarantine_info" \
+    FUNK_TEST_SPCTL_EXIT=42 \
+    FUNK_SPCTL_BIN="$root/tests/fixtures/spctl" \
+    "$root/libexec/release-cask-quarantine" rejected-test >/dev/null 2>&1
+gatekeeper_status=$?
+set -e
+[ "$gatekeeper_status" -ne 0 ] \
+    || fail "cask helper ignored a failed Gatekeeper assessment"
+/usr/bin/xattr -p com.apple.quarantine "$quarantine_app" >/dev/null \
+    || fail "cask helper removed quarantine after Gatekeeper rejection"
+
+outside_app="$update_test_dir/Outside.app"
+mkdir -p "$outside_app"
+/usr/bin/xattr -w com.apple.quarantine '0081;funk-test' "$outside_app"
+/usr/bin/jq -n --arg target "$outside_app" \
+    '{casks:[{artifacts:[{app:["Outside.app"],target:$target}]}]}' \
+    >"$quarantine_info"
+set +e
+HOME="$quarantine_home" \
+    PATH="$root/tests/fixtures:/usr/bin:/bin:/usr/sbin:/sbin" \
+    FUNK_TEST_CASK_INFO="$quarantine_info" \
+    FUNK_SPCTL_BIN="$root/tests/fixtures/spctl" \
+    "$root/libexec/release-cask-quarantine" hostile-test >/dev/null 2>&1
+outside_status=$?
+set -e
+[ "$outside_status" -ne 0 ] \
+    || fail "cask quarantine helper accepted an app outside approved directories"
+/usr/bin/xattr -p com.apple.quarantine "$outside_app" >/dev/null \
+    || fail "cask quarantine helper modified a rejected target"
+rm -rf "$update_test_dir"
+
 "$root/bin/funk" install-updater --check >/dev/null
 "$root/bin/funk" configure-macos --check
 
@@ -255,6 +413,8 @@ grep -F 'Upstream and third-party project clones live under `/Users/arthack/src`
 grep -F "The user's own projects live under \`/Users/arthack/code\`." \
     "$stow_home/AGENTS.md" >/dev/null \
     || fail "home-level agent guidance lost the user project location"
+grep -F 'archive it after its work is complete' "$stow_home/AGENTS.md" >/dev/null \
+    || fail "home-level agent guidance lost completed-task archival"
 HOME="$stow_home" "$root/bin/funk" stow --check >/dev/null 2>&1
 orca_state="$stow_home/Library/Application Support/orca/orca-data.json"
 mkdir -p "$(dirname "$orca_state")"
@@ -370,6 +530,9 @@ set -e
 
 grep -F "\"\$funk_command\" stow" install >/dev/null \
     || fail "default install does not stow user configuration"
+# shellcheck disable=SC2016 # Match the literal shared Brewfile helper path.
+grep -F '"$funk_root/libexec/converge-brewfile"' install >/dev/null \
+    || fail "default install does not converge Brewfile upgrades before Node setup"
 grep -F "\"\$funk_root/libexec/initialize-configs\"" install >/dev/null \
     || fail "default install does not initialize config dependencies"
 grep -F "\"\$funk_root/libexec/install-ai-tools\"" install >/dev/null \
@@ -419,16 +582,18 @@ fi
 
 ai_install_plan=$(libexec/install-ai-tools --check)
 for required_ai_install in \
-    'brew install gh  # intentional duplicate of the Brewfile' \
-    'brew install livekit-cli' \
-    'brew install --cask claude' \
-    'brew install --cask chatgpt' \
-    'brew install --cask stablyai/orca/orca' \
+    'brew install or upgrade gh  # intentional duplicate of the Brewfile' \
+    'brew install or upgrade livekit-cli' \
+    'brew install or upgrade --cask --greedy claude' \
+    'brew install or upgrade --cask --greedy chatgpt' \
+    'brew install --cask --yes stablyai/orca/orca  # when missing' \
+    'brew upgrade --cask --greedy --yes stablyai/orca/orca  # when installed' \
+    'remove com.apple.quarantine only from Homebrew'\''s declared Orca.app target' \
     'curl -fsSL https://claude.ai/install.sh | bash' \
     'curl -fsSL https://chatgpt.com/codex/install.sh | CODEX_NON_INTERACTIVE=1 sh' \
     'curl -fsSL https://opencode.ai/install | bash -s -- --no-modify-path' \
     'curl -fsSL https://pi.dev/install.sh | sh' \
-    'npm install --global @native-sdk/cli' \
+    'npm install --global @native-sdk/cli@latest' \
     'codex mcp add --url https://docs.livekit.io/mcp livekit-docs' \
     'claude mcp add --scope user --transport http livekit-docs https://docs.livekit.io/mcp' \
     'opencode mcp add livekit-docs --url https://docs.livekit.io/mcp' \
@@ -455,8 +620,8 @@ grep -F "\$art_hack_root/hack/SKILL.md" libexec/install-ai-tools >/dev/null \
     || fail "AI installer does not validate the Hack skill source"
 grep -F "\$art_hack_root/hack/agents/openai.yaml" libexec/install-ai-tools >/dev/null \
     || fail "AI installer does not validate the Hack skill manifest"
-grep -F "\"\$brew_bin\" install gh" libexec/install-ai-tools >/dev/null \
-    || fail "AI installer does not deliberately duplicate the GitHub CLI install"
+grep -F 'install_or_upgrade_formula gh' libexec/install-ai-tools >/dev/null \
+    || fail "AI installer does not deliberately converge the GitHub CLI"
 grep -F '^[[:space:]]*oauth_token:' libexec/install-ai-tools >/dev/null \
     || fail "GitHub CLI migration does not require a portable token"
 grep -F 'Preserving existing GitHub CLI credentials' libexec/install-ai-tools >/dev/null \
@@ -532,7 +697,7 @@ grep -F 'menu item "Open Location…"' bin/.local/bin/focus-address-bar >/dev/nu
     || fail "browser address-bar helper does not use the browser menu"
 grep -Fx 'brew "scrcpy"' Brewfile >/dev/null \
     || fail "scrcpy is missing from the Brewfile"
-grep -Fx 'cask "android-platform-tools"' Brewfile >/dev/null \
+grep -Fx 'cask "android-platform-tools", greedy: true' Brewfile >/dev/null \
     || fail "Android Platform Tools are missing from the Brewfile"
 "$root/tests/adb-wireless.sh"
 grep -F '@raycast.title Android (audio)' bin/.local/bin/raycast/scrcpy.sh >/dev/null \
@@ -544,10 +709,27 @@ grep -F '@raycast.title Android flex (audio)' bin/.local/bin/raycast/scrcpy-flex
 grep -F '@raycast.title Android flex (no audio)' bin/.local/bin/raycast/scrcpy-no-audio-flex.sh >/dev/null \
     || fail "flex no-audio scrcpy Raycast command is missing"
 
-if grep -Eqi 'bundle cleanup|uninstall|quarantine|fetch-head|telegram|notify|sudo' \
+# shellcheck disable=SC2016 # Match literal Brewfile convergence variables.
+grep -F '"$brew_bin" bundle install --upgrade --file="$brewfile"' \
+    libexec/converge-brewfile >/dev/null \
+    || fail "Brewfile convergence does not override Homebrew's no-upgrade setting"
+# shellcheck disable=SC2016 # Match the literal scoped target variable.
+grep -F '/usr/bin/xattr -dr com.apple.quarantine "$target"' \
+    libexec/release-cask-quarantine >/dev/null \
+    || fail "cask helper does not remove only the quarantine attribute"
+# shellcheck disable=SC2016 # Match the literal scoped Gatekeeper target.
+grep -F '"$spctl_bin" --assess --type execute "$target"' \
+    libexec/release-cask-quarantine >/dev/null \
+    || fail "cask helper does not Gatekeeper-assess an app before release"
+if grep -Eq '/usr/bin/xattr -(c|d[^r])|xattr[^[:cntrl:]]+(where_from|provenance)' \
+    libexec/release-cask-quarantine; then
+    fail "cask helper weakens extended attributes beyond recursive quarantine removal"
+fi
+if grep -Eqi 'bundle cleanup|uninstall|fetch-head|telegram|sudo' \
     bin/funk libexec/funk-update libexec/install-update-agent \
+    libexec/install-orca libexec/converge-brewfile libexec/converge-brew-casks \
     launchd/com.arthack.funk.update.plist.in; then
-    fail "daily updater contains a prohibited operation"
+    fail "scheduled updater contains a prohibited operation"
 fi
 
 if grep -R -E '/Users/[A-Za-z0-9._-]+|home.router|telegram|agentnotify|TCC\.db|security import|yabai-cert' \

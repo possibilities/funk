@@ -2,7 +2,83 @@
 
 set -u
 
-printf 'brew-stub'
-printf ' <%s>' "$@"
-printf '\n'
-exit "${FUNK_TEST_BREW_EXIT:-0}"
+log_call() {
+    if [ -n "${FUNK_TEST_BREW_LOG:-}" ]; then
+        {
+            printf 'brew-stub'
+            printf ' <%s>' "$@"
+            printf '\n'
+        } >>"$FUNK_TEST_BREW_LOG"
+    fi
+}
+
+state_value() {
+    local key="$1"
+
+    [ -f "${FUNK_TEST_BREW_STATE:-}" ] || return
+    /usr/bin/awk -F '\t' -v wanted="$key" \
+        '$1 == wanted { print $2; exit }' "$FUNK_TEST_BREW_STATE"
+}
+
+set_state_value() {
+    local key="$1"
+    local value="$2"
+    local state="${FUNK_TEST_BREW_STATE:?FUNK_TEST_BREW_STATE is not set}"
+    local staged="$state.tmp"
+
+    if [ -f "$state" ]; then
+        /usr/bin/awk -F '\t' -v wanted="$key" '$1 != wanted' "$state" >"$staged"
+    else
+        : >"$staged"
+    fi
+    printf '%s\t%s\n' "$key" "$value" >>"$staged"
+    mv "$staged" "$state"
+}
+
+log_call "$@"
+
+case "$*" in
+    --prefix)
+        printf '%s\n' "${FUNK_TEST_BREW_PREFIX:-/opt/homebrew}"
+        ;;
+    "bundle list "*"--formula")
+        printf '%s\n' "${FUNK_TEST_BUNDLE_FORMULAE:-terminal-notifier}"
+        ;;
+    "bundle list "*"--cask")
+        [ -z "${FUNK_TEST_BUNDLE_CASKS:-}" ] \
+            || printf '%s\n' "$FUNK_TEST_BUNDLE_CASKS"
+        ;;
+    "bundle install --upgrade "*)
+        status=${FUNK_TEST_BREW_EXIT:-0}
+        if [ "$status" -eq 0 ] && [ -n "${FUNK_TEST_FORMULA_NEW:-}" ]; then
+            set_state_value formula:terminal-notifier "$FUNK_TEST_FORMULA_NEW"
+        fi
+        exit "$status"
+        ;;
+    "list --formula --versions "*)
+        name=${*: -1}
+        version=$(state_value "formula:$name")
+        [ -z "$version" ] || printf '%s %s\n' "$name" "$version"
+        ;;
+    "list --cask --versions "*)
+        name=${*: -1}
+        version=$(state_value "cask:$name")
+        [ -z "$version" ] || printf '%s %s\n' "${name##*/}" "$version"
+        ;;
+    "upgrade --cask --greedy --yes "*|"install --cask --yes "*)
+        name=${*: -1}
+        receipt_name=${name##*/}
+        version=${FUNK_TEST_ORCA_NEW:-$(state_value "cask:$receipt_name")}
+        [ -n "$version" ] || version=1.0.0
+        set_state_value "cask:$receipt_name" "$version"
+        ;;
+    "info --cask --json=v2 "*)
+        if [ -n "${FUNK_TEST_CASK_INFO:-}" ]; then
+            /bin/cat "$FUNK_TEST_CASK_INFO"
+        else
+            printf '%s\n' '{"casks":[{"artifacts":[]}]}'
+        fi
+        ;;
+esac
+
+exit 0

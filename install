@@ -17,7 +17,7 @@ Default installation:
   - stows all user configuration packages into the target user's home
   - installs the window stack and converges Yabai Spaces 1-9
   - links the funk command into the active Homebrew bin directory
-  - installs and loads the daily 10:00 update LaunchAgent
+  - installs and loads the four-times-daily update LaunchAgent
   - applies Funk's user-level macOS preferences
 
 Options:
@@ -119,7 +119,7 @@ else
     ln -s "$funk_command" "$cli_path"
 fi
 
-"$funk_command" update
+FUNK_ROOT="$funk_root" "$funk_root/libexec/converge-brewfile"
 "$funk_command" stow
 "$funk_root/libexec/initialize-configs"
 "$funk_root/libexec/install-ai-tools"
@@ -142,5 +142,5 @@ Funk installation complete.
 
 Command: $cli_path
 Repository: $funk_root
-Daily log: $HOME/Library/Logs/Funk/update.log
+Update log: $HOME/Library/Logs/Funk/update.log
 EOF

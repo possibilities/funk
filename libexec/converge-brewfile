@@ -1,0 +1,45 @@
+#!/bin/bash
+
+set -euo pipefail
+
+die() {
+    printf 'Funk Brewfile installer: %s\n' "$*" >&2
+    exit 1
+}
+
+find_brew() {
+    if [ -n "${FUNK_BREW_BIN:-}" ] && [ -x "$FUNK_BREW_BIN" ]; then
+        printf '%s\n' "$FUNK_BREW_BIN"
+        return
+    fi
+    if command -v brew >/dev/null 2>&1; then
+        command -v brew
+        return
+    fi
+    for candidate in /opt/homebrew/bin/brew /usr/local/bin/brew; do
+        if [ -x "$candidate" ]; then
+            printf '%s\n' "$candidate"
+            return
+        fi
+    done
+    return 1
+}
+
+[ "$#" -eq 0 ] || {
+    printf 'Usage: converge-brewfile\n' >&2
+    exit 64
+}
+
+funk_root=${FUNK_ROOT:?FUNK_ROOT is not set}
+brewfile="$funk_root/Brewfile"
+release_quarantine="$funk_root/libexec/release-cask-quarantine"
+
+[ -f "$brewfile" ] || die "Brewfile not found: $brewfile"
+[ -x "$release_quarantine" ] || die "missing helper: $release_quarantine"
+
+brew_bin=$(find_brew) || die "Homebrew is not installed"
+export FUNK_BREW_BIN="$brew_bin"
+export HOMEBREW_NO_ASK=1
+
+"$brew_bin" bundle install --upgrade --file="$brewfile"
+"$release_quarantine" --brewfile "$brewfile"

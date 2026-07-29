@@ -1,0 +1,53 @@
+#!/bin/bash
+
+set -euo pipefail
+
+die() {
+    printf 'Funk cask installer: %s\n' "$*" >&2
+    exit 1
+}
+
+find_brew() {
+    if [ -n "${FUNK_BREW_BIN:-}" ] && [ -x "$FUNK_BREW_BIN" ]; then
+        printf '%s\n' "$FUNK_BREW_BIN"
+        return
+    fi
+    if command -v brew >/dev/null 2>&1; then
+        command -v brew
+        return
+    fi
+    for candidate in /opt/homebrew/bin/brew /usr/local/bin/brew; do
+        if [ -x "$candidate" ]; then
+            printf '%s\n' "$candidate"
+            return
+        fi
+    done
+    return 1
+}
+
+[ "$#" -gt 0 ] || {
+    printf 'Usage: converge-brew-casks CASK [...]\n' >&2
+    exit 64
+}
+
+script_dir=$(cd -P -- "$(dirname -- "$0")" && pwd)
+release_quarantine="$script_dir/release-cask-quarantine"
+[ -x "$release_quarantine" ] || die "missing helper: $release_quarantine"
+
+brew_bin=$(find_brew) || die "Homebrew is not installed"
+export HOMEBREW_NO_ASK=1
+
+for cask in "$@"; do
+    receipt_name=${cask##*/}
+    if "$brew_bin" list --cask --versions "$receipt_name" >/dev/null 2>&1; then
+        printf 'Upgrading Homebrew cask %s.\n' "$cask"
+        "$brew_bin" upgrade --cask --greedy --yes "$cask"
+    else
+        printf 'Installing Homebrew cask %s.\n' "$cask"
+        "$brew_bin" install --cask --yes "$cask"
+    fi
+
+    installed=$("$brew_bin" list --cask --versions "$receipt_name" 2>/dev/null || true)
+    [ -n "$installed" ] || die "Homebrew did not record cask as installed: $cask"
+    "$release_quarantine" "$cask"
+done

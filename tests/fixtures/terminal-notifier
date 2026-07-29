@@ -1,0 +1,10 @@
+#!/bin/bash
+
+set -u
+
+[ -n "${FUNK_TEST_NOTIFIER_LOG:-}" ] || exit 1
+{
+    printf 'terminal-notifier-stub'
+    printf ' <%s>' "$@"
+    printf '\n'
+} >>"$FUNK_TEST_NOTIFIER_LOG"

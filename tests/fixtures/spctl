@@ -1,0 +1,13 @@
+#!/bin/bash
+
+set -u
+
+if [ -n "${FUNK_TEST_SPCTL_LOG:-}" ]; then
+    {
+        printf 'spctl-stub'
+        printf ' <%s>' "$@"
+        printf '\n'
+    } >>"$FUNK_TEST_SPCTL_LOG"
+fi
+
+exit "${FUNK_TEST_SPCTL_EXIT:-0}"

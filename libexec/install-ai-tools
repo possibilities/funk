@@ -3,6 +3,7 @@
 set -euo pipefail
 
 check_only=0
+script_dir=$(cd -P -- "$(dirname -- "$0")" && pwd)
 
 usage() {
     cat <<'EOF'
@@ -139,18 +140,17 @@ esac
 if [ "$check_only" -eq 1 ]; then
     cat <<'EOF'
 Desktop applications:
-  brew install --cask claude
-  brew install --cask chatgpt
-  brew install --cask stablyai/orca/orca
+  brew install or upgrade --cask --greedy claude
+  brew install or upgrade --cask --greedy chatgpt
 
 Command-line tools:
-  brew install gh  # intentional duplicate of the Brewfile
-  brew install livekit-cli
+  brew install or upgrade gh  # intentional duplicate of the Brewfile
+  brew install or upgrade livekit-cli
   curl -fsSL https://claude.ai/install.sh | bash
   curl -fsSL https://chatgpt.com/codex/install.sh | CODEX_NON_INTERACTIVE=1 sh
   curl -fsSL https://opencode.ai/install | bash -s -- --no-modify-path
   curl -fsSL https://pi.dev/install.sh | sh
-  npm install --global @native-sdk/cli
+  npm install --global @native-sdk/cli@latest
 
 Agent documentation:
   codex mcp add --url https://docs.livekit.io/mcp livekit-docs
@@ -160,7 +160,9 @@ Agent documentation:
   native skills list
 
 Agent skills:
-  npx --yes skills add https://github.com/stablyai/orca --agent codex claude-code opencode pi --skill orca-cli orchestration computer-use --global --yes
+EOF
+    "$script_dir/install-orca" --check
+    cat <<'EOF'
   npx --yes skills add https://github.com/vercel-labs/skills --agent codex claude-code opencode pi --skill find-skills --global --yes
   npx --yes skills add https://github.com/anthropics/skills --agent codex claude-code opencode pi --skill frontend-design --global --yes
   npx --yes skills add https://github.com/vercel-labs/agent-skills --agent codex claude-code opencode pi --skill web-design-guidelines --global --yes
@@ -189,19 +191,33 @@ brew_owner=$(stat -f '%Su' "$brew_prefix")
 # Funk already owns these PATH entries in its Stow-managed zsh configuration.
 # Supplying them here prevents vendor installers from appending equivalent lines
 # to shell startup files during this run.
-export PATH="$HOME/.local/bin:$HOME/.opencode/bin:$brew_prefix/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+original_path=$PATH
+export FUNK_BREW_BIN="$brew_bin"
+export PATH="$HOME/.local/bin:$HOME/.opencode/bin:$brew_prefix/bin:/usr/bin:/bin:/usr/sbin:/sbin:$original_path"
 
-printf 'Installing GitHub CLI with Homebrew (intentional duplicate of the Brewfile).\n'
-"$brew_bin" install gh
+install_or_upgrade_formula() {
+    local formula="$1"
+
+    if "$brew_bin" list --formula --versions "$formula" >/dev/null 2>&1; then
+        "$brew_bin" upgrade --formula --yes "$formula"
+    else
+        "$brew_bin" install --formula --yes "$formula"
+    fi
+    "$brew_bin" list --formula --versions "$formula" >/dev/null \
+        || die "Homebrew formula verification failed: $formula"
+}
+
+export HOMEBREW_NO_ASK=1
+
+printf 'Installing or upgrading GitHub CLI with Homebrew (intentional duplicate of the Brewfile).\n'
+install_or_upgrade_formula gh
 migrate_gh_credentials
 
-printf 'Installing the LiveKit CLI for agent, simulation, and documentation workflows.\n'
-"$brew_bin" install livekit-cli
+printf 'Installing or upgrading the LiveKit CLI for agent, simulation, and documentation workflows.\n'
+install_or_upgrade_formula livekit-cli
 
-printf 'Installing AI desktop applications with their supported Homebrew casks.\n'
-"$brew_bin" install --cask claude
-"$brew_bin" install --cask chatgpt
-"$brew_bin" install --cask stablyai/orca/orca
+printf 'Installing or upgrading AI desktop applications with their supported Homebrew casks.\n'
+"$script_dir/converge-brew-casks" claude chatgpt
 
 install_official "Claude Code" \
     https://claude.ai/install.sh \
@@ -235,17 +251,13 @@ install_official "Pi" \
 command -v npm >/dev/null 2>&1 || die "npm is required to install the Native SDK CLI"
 
 printf 'Installing the Native SDK CLI and its version-matched agent helpers.\n'
-npm install --global @native-sdk/cli
+npm install --global @native-sdk/cli@latest
 
 configure_livekit_docs_mcp
 
 command -v npx >/dev/null 2>&1 || die "npx is required to install agent skills"
 
-printf 'Installing the globally managed Orca agent skills.\n'
-npx --yes skills add https://github.com/stablyai/orca \
-    --agent codex claude-code opencode pi \
-    --skill orca-cli orchestration computer-use \
-    --global --yes
+"$script_dir/install-orca"
 
 printf 'Installing the global skill discovery helper.\n'
 npx --yes skills add https://github.com/vercel-labs/skills \

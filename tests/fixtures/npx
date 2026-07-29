@@ -1,0 +1,48 @@
+#!/bin/bash
+
+set -u
+
+if [ -n "${FUNK_TEST_NPX_LOG:-}" ]; then
+    {
+        printf 'npx-stub'
+        printf ' <%s>' "$@"
+        printf '\n'
+    } >>"$FUNK_TEST_NPX_LOG"
+fi
+
+case "$*" in
+    "--yes skills add https://github.com/stablyai/orca "*)
+        if [ -n "${FUNK_TEST_ORCA_CLI_HASH:-}" ] \
+            && [ -f "$HOME/.agents/.skill-lock.json" ]; then
+            staged="$HOME/.agents/.skill-lock.json.tmp"
+            /usr/bin/jq --arg hash "$FUNK_TEST_ORCA_CLI_HASH" \
+                '.skills["orca-cli"].skillFolderHash = $hash' \
+                "$HOME/.agents/.skill-lock.json" >"$staged"
+            mv "$staged" "$HOME/.agents/.skill-lock.json"
+        fi
+        ;;
+    "--yes skills list --global --json")
+        cat <<'EOF'
+[
+  {
+    "name": "orca-cli",
+    "scope": "global",
+    "source": "stablyai/orca",
+    "agents": ["Codex", "Claude Code", "OpenCode", "Pi"]
+  },
+  {
+    "name": "orchestration",
+    "scope": "global",
+    "source": "stablyai/orca",
+    "agents": ["Codex", "Claude Code", "OpenCode", "Pi"]
+  },
+  {
+    "name": "computer-use",
+    "scope": "global",
+    "source": "stablyai/orca",
+    "agents": ["Codex", "Claude Code", "OpenCode", "Pi"]
+  }
+]
+EOF
+        ;;
+esac

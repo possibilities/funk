@@ -22,32 +22,225 @@ find_brew() {
     return 1
 }
 
-if [ "$#" -ne 0 ]; then
-    printf 'Usage: funk update\n' >&2
-    exit 64
-fi
+notify=0
+case "${1:-}" in
+    "")
+        ;;
+    --notify)
+        [ "$#" -eq 1 ] || {
+            printf 'Usage: funk update [--notify]\n' >&2
+            exit 64
+        }
+        notify=1
+        ;;
+    *)
+        printf 'Usage: funk update [--notify]\n' >&2
+        exit 64
+        ;;
+esac
 
 funk_root=${FUNK_ROOT:?FUNK_ROOT is not set}
 brewfile="$funk_root/Brewfile"
+orca_installer="$funk_root/libexec/install-orca"
+brewfile_installer="$funk_root/libexec/converge-brewfile"
 
 if [ ! -f "$brewfile" ]; then
     log "FAILED: Brewfile not found at $brewfile" >&2
     exit 66
 fi
+[ -x "$orca_installer" ] || {
+    log "FAILED: Orca installer not found at $orca_installer" >&2
+    exit 66
+}
+[ -x "$brewfile_installer" ] || {
+    log "FAILED: Brewfile installer not found at $brewfile_installer" >&2
+    exit 66
+}
 
 if ! brew_bin=$(find_brew); then
     log "FAILED: Homebrew is not installed" >&2
     exit 127
 fi
 
-log "starting: $brew_bin bundle install --file=$brewfile"
-"$brew_bin" bundle install --file="$brewfile"
-status=$?
+brew_prefix=$("$brew_bin" --prefix)
+original_path=$PATH
+export FUNK_BREW_BIN="$brew_bin"
+export PATH="$HOME/.local/bin:$HOME/.opencode/bin:$brew_prefix/bin:/usr/bin:/bin:/usr/sbin:/sbin:$original_path"
+export HOMEBREW_NO_ASK=1
+
+tmpdir=$(mktemp -d "${TMPDIR:-/tmp}/funk-update.XXXXXX")
+trap 'rm -rf "$tmpdir"' EXIT
+before="$tmpdir/before"
+after="$tmpdir/after"
+changes="$tmpdir/changes"
+
+snapshot_versions() {
+    local destination="$1"
+    local kind
+    local name
+    local output
+    local version
+    local label
+    local lock_file="$HOME/.agents/.skill-lock.json"
+
+    : >"$destination"
+    for kind in formula cask; do
+        while IFS= read -r name; do
+            [ -n "$name" ] || continue
+            output=$("$brew_bin" list --"$kind" --versions "$name" 2>/dev/null || true)
+            [ -n "$output" ] || continue
+            version=${output#* }
+            label=${name##*/}
+            printf 'brew:%s:%s\t%s\t%s\n' "$kind" "$name" "$label" "$version" \
+                >>"$destination"
+        done < <("$brew_bin" bundle list --file="$brewfile" --"$kind" 2>/dev/null || true)
+    done
+
+    name=stablyai/orca/orca
+    output=$("$brew_bin" list --cask --versions orca 2>/dev/null || true)
+    if [ -n "$output" ]; then
+        version=${output#* }
+        printf 'brew:cask:%s\tOrca\t%s\n' "$name" "$version" >>"$destination"
+    fi
+
+    if [ -f "$lock_file" ]; then
+        for name in orca-cli orchestration computer-use; do
+            version=$(
+                /usr/bin/jq -r --arg name "$name" \
+                    '.skills[$name].skillFolderHash // empty' \
+                    "$lock_file" 2>/dev/null || true
+            )
+            [ -n "$version" ] || continue
+            printf 'skill:%s\t%s skill\t%s\n' "$name" "$name" "$version" \
+                >>"$destination"
+        done
+    fi
+
+    LC_ALL=C sort -o "$destination" "$destination"
+}
+
+collect_changes() {
+    local key
+    local label
+    local new_version
+    local old_version
+    local old_short
+    local new_short
+
+    : >"$changes"
+    while IFS=$'\t' read -r key label new_version; do
+        [ -n "$key" ] || continue
+        old_version=$(
+            /usr/bin/awk -F '\t' -v wanted="$key" \
+                '$1 == wanted { print $3; exit }' "$before"
+        )
+        [ "$old_version" != "$new_version" ] || continue
+
+        case "$key" in
+            skill:*)
+                old_short=${old_version:0:8}
+                new_short=${new_version:0:8}
+                if [ -n "$old_version" ]; then
+                    printf '%s rev %s → %s\n' "$label" "$old_short" "$new_short" \
+                        >>"$changes"
+                else
+                    printf '%s installed @ rev %s\n' "$label" "$new_short" \
+                        >>"$changes"
+                fi
+                ;;
+            *)
+                if [ -n "$old_version" ]; then
+                    printf '%s %s → %s\n' "$label" "$old_version" "$new_version" \
+                        >>"$changes"
+                else
+                    printf '%s installed @ %s\n' "$label" "$new_version" \
+                        >>"$changes"
+                fi
+                ;;
+        esac
+    done <"$after"
+}
+
+send_notification() {
+    local title="$1"
+    local message="$2"
+    local notifier
+    local notifier_app
+    local lsregister
+
+    if [ -n "${FUNK_TERMINAL_NOTIFIER_BIN:-}" ] \
+        && [ -x "$FUNK_TERMINAL_NOTIFIER_BIN" ]; then
+        notifier="$FUNK_TERMINAL_NOTIFIER_BIN"
+    elif command -v terminal-notifier >/dev/null 2>&1; then
+        notifier=$(command -v terminal-notifier)
+    elif [ -x "$brew_prefix/bin/terminal-notifier" ]; then
+        notifier="$brew_prefix/bin/terminal-notifier"
+    else
+        log "FAILED: terminal-notifier is unavailable" >&2
+        return 1
+    fi
+
+    notifier_app="$brew_prefix/opt/terminal-notifier/terminal-notifier.app"
+    lsregister=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
+    if [ -d "$notifier_app" ] && [ -x "$lsregister" ]; then
+        "$lsregister" -f "$notifier_app" >/dev/null 2>&1 \
+            || log "warning: could not register terminal-notifier with Launch Services"
+    fi
+
+    "$notifier" \
+        -title "$title" \
+        -message "$message" \
+        -group com.arthack.funk.update
+}
+
+snapshot_versions "$before"
+
+status=0
+log "starting: $brew_bin bundle install --upgrade --file=$brewfile"
+"$brewfile_installer" || status=$?
+if [ "$status" -eq 0 ]; then
+    "$orca_installer" || status=$?
+fi
+
+snapshot_versions "$after"
+collect_changes
+
+if [ -s "$changes" ]; then
+    change_summary=$(
+        /usr/bin/awk '
+          NR == 1 { summary = $0; next }
+          { summary = summary "; " $0 }
+          END { print summary }
+        ' "$changes"
+    )
+    log "changed: $change_summary"
+else
+    change_summary=
+    log "no version changes"
+fi
 
 if [ "$status" -eq 0 ]; then
     log "complete"
 else
     log "FAILED with exit status $status" >&2
+fi
+
+if [ "$notify" -eq 1 ]; then
+    if [ "$status" -eq 0 ]; then
+        if [ -n "$change_summary" ]; then
+            notification_body="Updated: $change_summary"
+        else
+            notification_body="Installer ran; no updates."
+        fi
+        send_notification "Funk Update" "$notification_body" || status=1
+    else
+        if [ -n "$change_summary" ]; then
+            notification_body="Installer failed after updating: $change_summary. See update.log."
+        else
+            notification_body="Installer failed; no updates completed. See update.log."
+        fi
+        send_notification "Funk Update Failed" "$notification_body" || true
+    fi
 fi
 
 exit "$status"

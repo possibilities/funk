@@ -18,7 +18,7 @@ installers:
   discovery, and the Hack agent skill
 - Yabai, skhd, and the narrowly justified Karabiner-Elements layer
 - Git Delta, Neovim, tmux, Starship, btop, GNU Stow, and supporting
-  shell/development tools
+  shell/development tools, including `terminal-notifier`
 
 `libexec/install-ai-tools` uses the official shell installers for
 [Claude Code](https://code.claude.com/docs/en/terminal-guide),
@@ -29,6 +29,21 @@ personal macOS downloads do not provide unattended installer commands. Orca
 uses the cask documented by the [Orca project](https://github.com/stablyai/orca).
 Run `libexec/install-ai-tools --check` to inspect the exact plan without making
 changes.
+
+Homebrew formula and cask calls are install-or-upgrade operations. The
+dedicated `libexec/install-orca` helper installs or greedily upgrades the Orca
+cask, synchronizes `orca-cli`, `orchestration`, and `computer-use` globally for
+Codex, Claude Code, OpenCode, and Pi, then verifies both the cask receipt and
+the global skill records. Hermes is not part of this harness set.
+
+After any Funk-managed cask pass, Funk reads Homebrew's cask metadata, requires
+Gatekeeper's policy assessment to accept each app, and then removes only
+`com.apple.quarantine`, recursively, from declared `.app` targets directly
+under `/Applications` or the current user's `~/Applications`. It rejects
+symlinks, non-app targets, path traversal, missing apps, assessment failures,
+and targets in any other directory. It does not clear other extended
+attributes, alter Gatekeeper policy, disable assessment, or touch arbitrary
+downloads.
 
 The AI installer also reproduces the globally managed agent skills with the
 same `npx skills add` mechanism used by Orca's setup UI. For Codex, Claude Code,
@@ -164,11 +179,12 @@ Run from the checked-out repository as the new account, never with `sudo`:
 ./install
 ```
 
-This installs Homebrew when absent, runs `brew bundle install`, stows every user
-configuration package, initializes tmux-fzf, the pinned Node runtime, and
-shell-gpt, installs the AI tools listed above, links `funk` into the active
-Homebrew `bin` directory, installs the daily updater, starts the Yabai/skhd/
-Karabiner stack, and converges Yabai Spaces 1–9.
+This installs Homebrew when absent, explicitly upgrades every eligible
+Brewfile dependency, stows every user configuration package, initializes
+tmux-fzf, the pinned Node runtime, and shell-gpt, installs or upgrades the AI
+tools listed above, links `funk` into the active Homebrew `bin` directory,
+installs the four-times-daily updater, starts the Yabai/skhd/Karabiner stack,
+and converges Yabai Spaces 1–9.
 Optional system layers and the window-stack opt-out are explicit:
 
 ```sh
@@ -196,22 +212,40 @@ Homebrew is single-prefix software. Funk refuses to operate if the detected
 Homebrew prefix belongs to another macOS account; resolve that ownership choice
 before installing from a new account.
 
-## Daily updates
+## Scheduled updates
 
-`funk update` runs only:
+`funk update` converges the unattended-safe update set:
 
 ```sh
-brew bundle install --file=/resolved/path/to/Funk/Brewfile
+brew bundle install --upgrade --file=/resolved/path/to/Funk/Brewfile
+# release quarantine only from Brewfile casks' declared .app targets
+# install or greedily upgrade Orca, release its app quarantine, and sync its skills
 ```
 
-The user LaunchAgent runs it daily at 10:00 local time and appends stdout/stderr
-to `~/Library/Logs/Funk/update.log`. Failures retain their exit status. Funk
-never performs bundle cleanup, uninstalls, quarantine removal, HEAD refreshes,
-notifications, or privileged post-update hooks.
+The explicit `--upgrade` overrides `HOMEBREW_BUNDLE_NO_UPGRADE`; every Brewfile
+cask is also marked `greedy: true`, so Homebrew considers casks that declare
+their own updater or an unversioned latest release. Homebrew still honors a
+deliberately pinned formula or cask, and an application that updates itself
+outside Homebrew can have a version different from its Homebrew receipt.
 
-AI tools are intentionally outside the daily Brewfile update: their vendor
-installers and application updaters own upgrades. Re-running `./install` also
-reapplies their supported installation methods.
+The user LaunchAgent runs `funk update --notify` at 00:00, 06:00, 12:00, and
+18:00 local time and appends stdout/stderr to
+`~/Library/Logs/Funk/update.log`. The updater snapshots the Homebrew receipt
+versions for the managed Brewfile entries and Orca, plus the three Orca skill
+revision hashes, before and after convergence. A notification lists only
+components whose recorded version or revision actually changed. A no-op says
+`Installer ran; no updates.` Failures retain their exit status and send a short
+failure notification when `terminal-notifier` is available.
+
+Other AI tools remain outside the scheduled path: their vendor installers,
+application updaters, account-sensitive MCP setup, and local Hack skill source
+are not all suitable for a background LaunchAgent. Re-running `./install`
+reapplies their supported installation methods; Homebrew-backed Claude,
+ChatGPT, GitHub CLI, LiveKit CLI, and Orca are explicitly installed or upgraded,
+and the Native SDK CLI requests its latest npm release.
+
+Funk never performs bundle cleanup, uninstalls, HEAD refreshes, or privileged
+post-update hooks.
 
 After a Yabai upgrade, run `funk yabai maintain` manually. This refreshes the
 digest-pinned `yabai --load-sa` sudo rule, loads the current scripting addition,
@@ -287,7 +321,7 @@ The maintenance helper is root-owned; normal maintenance accepts no arguments
 root-owned configuration and Yabai code signature, uses bounded commands,
 writes only a SHA-256-pinned `yabai --load-sa` sudo rule, and rolls that rule
 back if loading fails. It never changes SIP, modifies TCC directly, mints
-certificates, or runs from the daily updater. See Yabai's current
+certificates, or runs from the scheduled updater. See Yabai's current
 [installation guide](https://github.com/asmvik/yabai/wiki/Installing-yabai-%28latest-release%29).
 
 ## Validate
@@ -297,7 +331,9 @@ tests/validate.sh
 ```
 
 The checks parse shell/config files, verify the exact Brewfile and approved
-Karabiner rule set, exercise updater success/failure with a stub Homebrew
-command, validate the macOS-preference command without applying it, render the
-LaunchAgent, and dry-parse the PF rules. They do not install packages, load
-services, change preferences or firewall state, or require accounts or secrets.
+Karabiner rule set, exercise updater success/failure and change-aware
+notifications with stub commands, verify scoped quarantine removal against
+temporary app bundles, validate the macOS-preference command without applying
+it, render the LaunchAgent, and dry-parse the PF rules. They do not install or
+upgrade packages, load services, change preferences or firewall state, or
+require accounts or secrets.
