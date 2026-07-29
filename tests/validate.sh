@@ -227,6 +227,15 @@ HOME="$stow_home" "$root/bin/funk" stow
     || fail "LLM package was not stowed"
 [ -L "$stow_home/.config/orca" ] && [ -f "$stow_home/.config/orca/settings.json" ] \
     || fail "Orca settings overlay was not stowed with normal directory folding"
+[ -L "$stow_home/AGENTS.md" ] \
+    || fail "home-level agent guidance was not stowed"
+# shellcheck disable=SC2016 # Match the literal Markdown path.
+grep -F 'Upstream and third-party project clones live under `/Users/arthack/src`.' \
+    "$stow_home/AGENTS.md" >/dev/null \
+    || fail "home-level agent guidance lost the upstream project location"
+grep -F "The user's own projects live under \`/Users/arthack/code\`." \
+    "$stow_home/AGENTS.md" >/dev/null \
+    || fail "home-level agent guidance lost the user project location"
 HOME="$stow_home" "$root/bin/funk" stow --check >/dev/null 2>&1
 orca_state="$stow_home/Library/Application Support/orca/orca-data.json"
 mkdir -p "$(dirname "$orca_state")"
@@ -401,18 +410,21 @@ for required_ai_install in \
     'curl -fsSL https://pi.dev/install.sh | sh' \
     'npx --yes skills add https://github.com/stablyai/orca --agent codex claude-code opencode pi --skill orca-cli orchestration computer-use --global --yes' \
     'npx --yes skills add https://github.com/vercel-labs/skills --agent codex claude-code opencode pi --skill find-skills --global --yes' \
-    "npx --yes skills add \"\$HOME/code/arthack\" --agent codex claude-code opencode pi --skill funk hack --global --yes"; do
+    "npx --yes skills add \"\$HOME/code/arthack\" --agent codex claude-code opencode pi --skill hack --global --yes"; do
     printf '%s\n' "$ai_install_plan" | grep -F "$required_ai_install" >/dev/null \
         || fail "AI installation plan is missing: $required_ai_install"
 done
+if printf '%s\n' "$ai_install_plan" | grep -Eq -- '--skill ([^[:space:]]+ )*funk([[:space:]]|$)'; then
+    fail "AI installation plan still installs the retired Funk priming skill"
+fi
 grep -F "art_hack_root=\"\$HOME/code/arthack\"" libexec/install-ai-tools >/dev/null \
     || fail "AI installer does not own the Art Hack skill source"
 grep -F "npx --yes skills add \"\$art_hack_root\"" libexec/install-ai-tools >/dev/null \
-    || fail "AI installer does not synchronize the Art Hack skills"
-grep -F "\$art_hack_root/\$skill/SKILL.md" libexec/install-ai-tools >/dev/null \
-    || fail "AI installer does not validate Art Hack skill sources"
-grep -F "\$art_hack_root/\$skill/agents/openai.yaml" libexec/install-ai-tools >/dev/null \
-    || fail "AI installer does not validate Art Hack skill manifests"
+    || fail "AI installer does not synchronize the Hack skill"
+grep -F "\$art_hack_root/hack/SKILL.md" libexec/install-ai-tools >/dev/null \
+    || fail "AI installer does not validate the Hack skill source"
+grep -F "\$art_hack_root/hack/agents/openai.yaml" libexec/install-ai-tools >/dev/null \
+    || fail "AI installer does not validate the Hack skill manifest"
 grep -F "\"\$brew_bin\" install gh" libexec/install-ai-tools >/dev/null \
     || fail "AI installer does not deliberately duplicate the GitHub CLI install"
 grep -F '^[[:space:]]*oauth_token:' libexec/install-ai-tools >/dev/null \
