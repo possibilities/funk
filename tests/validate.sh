@@ -420,6 +420,7 @@ fi
 ai_install_plan=$(libexec/install-ai-tools --check)
 for required_ai_install in \
     'brew install gh  # intentional duplicate of the Brewfile' \
+    'brew install livekit-cli' \
     'brew install --cask claude' \
     'brew install --cask chatgpt' \
     'brew install --cask stablyai/orca/orca' \
@@ -427,8 +428,18 @@ for required_ai_install in \
     'curl -fsSL https://chatgpt.com/codex/install.sh | CODEX_NON_INTERACTIVE=1 sh' \
     'curl -fsSL https://opencode.ai/install | bash -s -- --no-modify-path' \
     'curl -fsSL https://pi.dev/install.sh | sh' \
+    'npm install --global @native-sdk/cli' \
+    'codex mcp add --url https://docs.livekit.io/mcp livekit-docs' \
+    'claude mcp add --scope user --transport http livekit-docs https://docs.livekit.io/mcp' \
+    'opencode mcp add livekit-docs --url https://docs.livekit.io/mcp' \
+    'lk docs overview' \
+    'native skills list' \
     'npx --yes skills add https://github.com/stablyai/orca --agent codex claude-code opencode pi --skill orca-cli orchestration computer-use --global --yes' \
     'npx --yes skills add https://github.com/vercel-labs/skills --agent codex claude-code opencode pi --skill find-skills --global --yes' \
+    'npx --yes skills add https://github.com/anthropics/skills --agent codex claude-code opencode pi --skill frontend-design --global --yes' \
+    'npx --yes skills add https://github.com/vercel-labs/agent-skills --agent codex claude-code opencode pi --skill web-design-guidelines --global --yes' \
+    'npx --yes skills add https://github.com/livekit/agent-skills --agent codex claude-code opencode pi --skill livekit-agents livekit-simulations --global --yes' \
+    'npx --yes skills add https://github.com/vercel-labs/native --agent codex claude-code opencode pi --skill native-sdk --global --yes' \
     "npx --yes skills add \"\$HOME/code/arthack\" --agent codex claude-code opencode pi --skill hack --global --yes"; do
     printf '%s\n' "$ai_install_plan" | grep -F "$required_ai_install" >/dev/null \
         || fail "AI installation plan is missing: $required_ai_install"

@@ -11,9 +11,11 @@ installers:
 
 - Tailscale, Ghostty, Google Chrome, Chrome Canary, Brave, Firefox
 - ChatGPT, Claude Desktop, Orca, Obsidian, Raycast
-- GitHub CLI, Claude Code, Codex CLI, OpenCode, and Pi
-- Orca CLI, orchestration, computer-use, skill-discovery, and the Hack agent
-  skill
+- GitHub CLI, LiveKit CLI, Native SDK CLI, Claude Code, Codex CLI, OpenCode,
+  and Pi
+- Orca CLI, orchestration, computer-use, skill-discovery, frontend design,
+  web-design review, LiveKit agent development and simulation, Native SDK
+  discovery, and the Hack agent skill
 - Yabai, skhd, and the narrowly justified Karabiner-Elements layer
 - Git Delta, Neovim, tmux, Starship, btop, GNU Stow, and supporting
   shell/development tools
@@ -29,14 +31,27 @@ Run `libexec/install-ai-tools --check` to inspect the exact plan without making
 changes.
 
 The AI installer also reproduces the globally managed agent skills with the
-same `npx skills add` mechanism used by Orca's setup UI. It installs `orca-cli`,
-`orchestration`, and `computer-use` from Orca plus `find-skills` from Vercel for
-Codex, Claude Code, OpenCode, and Pi. It also synchronizes the locally authored
-`hack` skill from `~/code/arthack` into the shared `~/.agents/skills` directory
-discovered by Codex Desktop and the other agent skill locations. Funk's own
-agent guidance lives in this repository's `AGENTS.md` instead of a priming
-skill. Funk is the sole owner of AI-stack installation; Art Hack remains the
-source of Hack and does not provide a second installer.
+same `npx skills add` mechanism used by Orca's setup UI. For Codex, Claude Code,
+OpenCode, and Pi, it installs:
+
+- `orca-cli`, `orchestration`, and `computer-use` from Orca.
+- `find-skills` from Vercel.
+- `frontend-design` from Anthropic and `web-design-guidelines` from Vercel.
+- `livekit-agents` and the beta `livekit-simulations` skill from LiveKit.
+- The `native-sdk` discovery skill from Vercel Labs Native. The globally
+  installed Native CLI supplies its deeper, version-matched skills.
+
+The installer also provides the LiveKit CLI, whose `lk docs` commands work from
+every shell-capable agent, and configures LiveKit's remote documentation MCP
+server for Codex, Claude Code, and OpenCode. Pi uses the official `lk docs`
+fallback rather than a third-party MCP extension.
+
+Finally, the installer synchronizes the locally authored `hack` skill from
+`~/code/arthack` into the shared `~/.agents/skills` directory discovered by
+Codex Desktop and the other agent skill locations. Funk's own agent guidance
+lives in this repository's `AGENTS.md` instead of a priming skill. Funk is the
+sole owner of AI-stack installation; Art Hack remains the source of Hack and
+does not provide a second installer.
 
 GitHub CLI is intentionally installed twice: once through the main Brewfile and
 again by the AI tool installer. The latter preserves an existing login and can

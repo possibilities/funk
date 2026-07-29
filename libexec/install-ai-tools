@@ -44,6 +44,21 @@ install_official() {
     /usr/bin/curl -fsSL "$url" | "$interpreter" "$@"
 }
 
+configure_livekit_docs_mcp() {
+    local livekit_docs_url="https://docs.livekit.io/mcp"
+
+    printf 'Configuring the LiveKit documentation MCP server for Codex.\n'
+    codex mcp remove livekit-docs >/dev/null 2>&1 || true
+    codex mcp add --url "$livekit_docs_url" livekit-docs
+
+    printf 'Configuring the LiveKit documentation MCP server for Claude Code.\n'
+    claude mcp remove --scope user livekit-docs >/dev/null 2>&1 || true
+    claude mcp add --scope user --transport http livekit-docs "$livekit_docs_url"
+
+    printf 'Configuring the LiveKit documentation MCP server for OpenCode.\n'
+    opencode mcp add livekit-docs --url "$livekit_docs_url"
+}
+
 migrate_gh_credentials() {
     local old_home
     local old_hosts
@@ -130,14 +145,27 @@ Desktop applications:
 
 Command-line tools:
   brew install gh  # intentional duplicate of the Brewfile
+  brew install livekit-cli
   curl -fsSL https://claude.ai/install.sh | bash
   curl -fsSL https://chatgpt.com/codex/install.sh | CODEX_NON_INTERACTIVE=1 sh
   curl -fsSL https://opencode.ai/install | bash -s -- --no-modify-path
   curl -fsSL https://pi.dev/install.sh | sh
+  npm install --global @native-sdk/cli
+
+Agent documentation:
+  codex mcp add --url https://docs.livekit.io/mcp livekit-docs
+  claude mcp add --scope user --transport http livekit-docs https://docs.livekit.io/mcp
+  opencode mcp add livekit-docs --url https://docs.livekit.io/mcp
+  lk docs overview
+  native skills list
 
 Agent skills:
   npx --yes skills add https://github.com/stablyai/orca --agent codex claude-code opencode pi --skill orca-cli orchestration computer-use --global --yes
   npx --yes skills add https://github.com/vercel-labs/skills --agent codex claude-code opencode pi --skill find-skills --global --yes
+  npx --yes skills add https://github.com/anthropics/skills --agent codex claude-code opencode pi --skill frontend-design --global --yes
+  npx --yes skills add https://github.com/vercel-labs/agent-skills --agent codex claude-code opencode pi --skill web-design-guidelines --global --yes
+  npx --yes skills add https://github.com/livekit/agent-skills --agent codex claude-code opencode pi --skill livekit-agents livekit-simulations --global --yes
+  npx --yes skills add https://github.com/vercel-labs/native --agent codex claude-code opencode pi --skill native-sdk --global --yes
   npx --yes skills add "$HOME/code/arthack" --agent codex claude-code opencode pi --skill hack --global --yes
 EOF
     exit 0
@@ -166,6 +194,9 @@ export PATH="$HOME/.local/bin:$HOME/.opencode/bin:$brew_prefix/bin:/usr/bin:/bin
 printf 'Installing GitHub CLI with Homebrew (intentional duplicate of the Brewfile).\n'
 "$brew_bin" install gh
 migrate_gh_credentials
+
+printf 'Installing the LiveKit CLI for agent, simulation, and documentation workflows.\n'
+"$brew_bin" install livekit-cli
 
 printf 'Installing AI desktop applications with their supported Homebrew casks.\n'
 "$brew_bin" install --cask claude
@@ -201,6 +232,13 @@ install_official "Pi" \
     https://pi.dev/install.sh \
     /bin/sh
 
+command -v npm >/dev/null 2>&1 || die "npm is required to install the Native SDK CLI"
+
+printf 'Installing the Native SDK CLI and its version-matched agent helpers.\n'
+npm install --global @native-sdk/cli
+
+configure_livekit_docs_mcp
+
 command -v npx >/dev/null 2>&1 || die "npx is required to install agent skills"
 
 printf 'Installing the globally managed Orca agent skills.\n'
@@ -215,8 +253,34 @@ npx --yes skills add https://github.com/vercel-labs/skills \
     --skill find-skills \
     --global --yes
 
+printf 'Installing the globally managed design skills.\n'
+npx --yes skills add https://github.com/anthropics/skills \
+    --agent codex claude-code opencode pi \
+    --skill frontend-design \
+    --global --yes
+npx --yes skills add https://github.com/vercel-labs/agent-skills \
+    --agent codex claude-code opencode pi \
+    --skill web-design-guidelines \
+    --global --yes
+
+printf 'Installing the globally managed LiveKit agent skills.\n'
+npx --yes skills add https://github.com/livekit/agent-skills \
+    --agent codex claude-code opencode pi \
+    --skill livekit-agents livekit-simulations \
+    --global --yes
+
+printf 'Installing the Native SDK discovery skill.\n'
+npx --yes skills add https://github.com/vercel-labs/native \
+    --agent codex claude-code opencode pi \
+    --skill native-sdk \
+    --global --yes
+
 printf 'Synchronizing the personal Hack agent skill.\n'
 npx --yes skills add "$art_hack_root" \
     --agent codex claude-code opencode pi \
     --skill hack \
     --global --yes
+
+printf 'Verifying the installed LiveKit and Native SDK agent documentation helpers.\n'
+lk docs overview >/dev/null
+native skills list >/dev/null
