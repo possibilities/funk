@@ -98,6 +98,20 @@ precedence where the two repositories overlapped. Privileged helpers,
 LaunchAgents, generated application state, credentials, and remote Termux
 configuration are intentionally not Stow-linked.
 
+## Android device utilities
+
+Funk installs `scrcpy`, `qrencode`, and Android Platform Tools. The `bin`
+package provides `adb-wireless-pair`, which prints a temporary wireless-debug
+pairing QR code and completes pairing after the phone advertises itself on the
+local network. `adb-wireless-connect` reconnects to a locally discoverable
+wireless device and can print its serial for scripts.
+
+The Raycast Script Commands in `~/.local/bin/raycast/` provide four `scrcpy`
+launch modes: Android with or without audio, and flex-display Android with or
+without audio. Add that directory to Raycast's Script Commands directories.
+They use the generic wireless-ADB helper; no phone name, network address, or
+pairing state is stored in Funk.
+
 Orca does not expose a standalone global preferences file: its settings share
 `orca-data.json` with projects, worktrees, sessions, account metadata, and
 other generated state, and Orca atomically replaces that file when saving.

@@ -1,0 +1,52 @@
+#!/bin/bash
+# Pair this Mac with an Android phone over wireless ADB using a QR code.
+# Phone: Settings -> Developer options -> Wireless debugging -> Pair device with QR code
+
+set -euo pipefail
+
+adb_bin=${ADB:-}
+if [ -z "$adb_bin" ]; then
+    adb_bin=$(command -v adb || true)
+fi
+[ -n "$adb_bin" ] || {
+    echo "adb is missing — run: brew install --cask android-platform-tools" >&2
+    exit 1
+}
+command -v qrencode >/dev/null 2>&1 || {
+    echo "qrencode is missing — run: brew install qrencode" >&2
+    exit 1
+}
+
+timeout_seconds=${ADB_WIRELESS_PAIR_TIMEOUT_SECONDS:-120}
+session="ADB_WIFI_$(openssl rand -hex 4)"
+password=$(openssl rand -hex 8)
+payload="WIFI:T:ADB;S:${session};P:${password};;"
+
+cat <<EOF
+On phone: Settings -> Developer options -> Wireless debugging -> Pair device with QR code
+Then scan this:
+
+EOF
+qrencode -t ANSIUTF8 -m 2 "$payload"
+
+echo
+echo "Waiting up to ${timeout_seconds}s for the phone to advertise pairing service..."
+deadline=$(( $(date +%s) + timeout_seconds ))
+host_port=""
+while [ "$(date +%s)" -lt "$deadline" ]; do
+    host_port=$("$adb_bin" mdns services 2>/dev/null |
+        awk -v session="$session" '$1 == session && $2 ~ /_adb-tls-pairing/ { print $3; exit }')
+    [ -n "$host_port" ] && break
+    sleep 1
+done
+
+[ -n "$host_port" ] || {
+    echo "Timed out — the phone never advertised ${session}._adb-tls-pairing._tcp" >&2
+    exit 1
+}
+
+echo "Phone advertising at ${host_port}; pairing..."
+"$adb_bin" pair "$host_port" "$password"
+echo
+echo "Paired. Connecting..."
+exec "$(dirname "$0")/adb-wireless-connect"

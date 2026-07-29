@@ -36,6 +36,12 @@ bin/.local/bin/tmux-move-window
 bin/.local/bin/focus-address-bar
 bin/.local/bin/ginit
 bin/.local/bin/ghinit
+bin/.local/bin/adb-wireless-connect
+bin/.local/bin/adb-wireless-pair
+bin/.local/bin/raycast/scrcpy.sh
+bin/.local/bin/raycast/scrcpy-no-audio.sh
+bin/.local/bin/raycast/scrcpy-flex.sh
+bin/.local/bin/raycast/scrcpy-no-audio-flex.sh
 tests/fixtures/brew
 tests/fixtures/gh
 tests/validate.sh
@@ -162,6 +168,8 @@ brew "stow"
 brew "pnpm"
 brew "oven-sh/bun/bun", trusted: true
 brew "llm"
+brew "scrcpy"
+brew "qrencode"
 brew "asmvik/formulae/yabai", trusted: true
 brew "asmvik/formulae/skhd", trusted: true
 cask "tailscale-app"
@@ -172,6 +180,7 @@ cask "brave-browser"
 cask "firefox"
 cask "obsidian"
 cask "raycast"
+cask "android-platform-tools"
 cask "karabiner-elements"
 cask "font-0xproto-nerd-font"'
 actual_brewfile=$(grep -Ev '^[[:space:]]*$' Brewfile)
@@ -223,6 +232,10 @@ HOME="$stow_home" "$root/bin/funk" stow
     || fail "ginit was not stowed as an executable"
 [ -x "$stow_home/.local/bin/ghinit" ] \
     || fail "ghinit was not stowed as an executable"
+[ -x "$stow_home/.local/bin/adb-wireless-pair" ] \
+    || fail "wireless ADB pairing helper was not stowed as an executable"
+[ -L "$stow_home/.local/bin/raycast/scrcpy.sh" ] \
+    || fail "Raycast scrcpy command was not stowed"
 [ -L "$stow_home/Library/Application Support/io.datasette.llm/extra-openai-models.yaml" ] \
     || fail "LLM package was not stowed"
 [ -L "$stow_home/.config/orca" ] && [ -f "$stow_home/.config/orca/settings.json" ] \
@@ -500,6 +513,20 @@ if grep -Eq '^cmd - (return|b) :' skhd/.config/skhd/skhdrc; then
 fi
 grep -F 'menu item "Open Location…"' bin/.local/bin/focus-address-bar >/dev/null \
     || fail "browser address-bar helper does not use the browser menu"
+grep -Fx 'brew "scrcpy"' Brewfile >/dev/null \
+    || fail "scrcpy is missing from the Brewfile"
+grep -Fx 'brew "qrencode"' Brewfile >/dev/null \
+    || fail "qrencode is missing from the Brewfile"
+grep -Fx 'cask "android-platform-tools"' Brewfile >/dev/null \
+    || fail "Android Platform Tools are missing from the Brewfile"
+grep -F '@raycast.title Android (audio)' bin/.local/bin/raycast/scrcpy.sh >/dev/null \
+    || fail "audio scrcpy Raycast command is missing"
+grep -F '@raycast.title Android (no audio)' bin/.local/bin/raycast/scrcpy-no-audio.sh >/dev/null \
+    || fail "no-audio scrcpy Raycast command is missing"
+grep -F '@raycast.title Android flex (audio)' bin/.local/bin/raycast/scrcpy-flex.sh >/dev/null \
+    || fail "flex audio scrcpy Raycast command is missing"
+grep -F '@raycast.title Android flex (no audio)' bin/.local/bin/raycast/scrcpy-no-audio-flex.sh >/dev/null \
+    || fail "flex no-audio scrcpy Raycast command is missing"
 
 if grep -Eqi 'bundle cleanup|uninstall|quarantine|fetch-head|telegram|notify|sudo' \
     bin/funk libexec/funk-update libexec/install-update-agent \

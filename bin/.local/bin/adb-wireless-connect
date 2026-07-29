@@ -1,0 +1,50 @@
+#!/bin/bash
+# Connect to a locally discoverable Android Wireless debugging service.
+
+set -euo pipefail
+
+adb_bin=${ADB:-}
+if [ -z "$adb_bin" ]; then
+    adb_bin=$(command -v adb || true)
+fi
+[ -n "$adb_bin" ] || {
+    echo "adb is missing — run: brew install --cask android-platform-tools" >&2
+    exit 1
+}
+
+print_serial=0
+[ "${1:-}" = "--print-serial" ] && print_serial=1
+
+wireless_serial() {
+    "$adb_bin" devices 2>/dev/null | awk '
+        NR > 1 && $2 == "device" && ($1 ~ /:/ || $1 ~ /_adb-tls-connect/) {
+            print $1
+            exit
+        }
+    '
+}
+
+serial=$(wireless_serial || true)
+if [ -z "$serial" ]; then
+    service=$(
+        "$adb_bin" mdns services 2>/dev/null |
+            awk '$2 ~ /_adb-tls-connect/ { print $3; exit }'
+    )
+    [ -n "$service" ] || {
+        echo "No wireless Android device is discoverable. Pair one on this LAN first." >&2
+        exit 1
+    }
+    "$adb_bin" connect "$service" >&2
+    serial=$(wireless_serial || true)
+fi
+
+[ -n "$serial" ] || {
+    echo "ADB did not report a connected wireless device." >&2
+    exit 1
+}
+
+if [ "$print_serial" -eq 1 ]; then
+    printf '%s\n' "$serial"
+else
+    printf 'Connected to %s\n' "$serial"
+fi

@@ -18,6 +18,8 @@ brew "stow"
 brew "pnpm"
 brew "oven-sh/bun/bun", trusted: true
 brew "llm"
+brew "scrcpy"
+brew "qrencode"
 brew "asmvik/formulae/yabai", trusted: true
 brew "asmvik/formulae/skhd", trusted: true
 
@@ -29,5 +31,6 @@ cask "brave-browser"
 cask "firefox"
 cask "obsidian"
 cask "raycast"
+cask "android-platform-tools"
 cask "karabiner-elements"
 cask "font-0xproto-nerd-font"
