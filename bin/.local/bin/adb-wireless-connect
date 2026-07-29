@@ -1,50 +1,176 @@
 #!/bin/bash
-# Connect to a locally discoverable Android Wireless debugging service.
+# Connect to Android Wireless debugging through a Tailnet DNS name.
 
 set -euo pipefail
 
-adb_bin=${ADB:-}
-if [ -z "$adb_bin" ]; then
-    adb_bin=$(command -v adb || true)
-fi
-[ -n "$adb_bin" ] || {
-    echo "adb is missing — run: brew install --cask android-platform-tools" >&2
+usage() {
+    cat <<'EOF'
+Usage: adb-wireless-connect [--host TAILNET_HOST] [--print-serial] [CONNECT_PORT]
+
+CONNECT_PORT is the port on the main Wireless debugging screen, not the
+temporary pairing port. A successful explicit connection is remembered for
+later calls from Raycast. The default host is smallbird.
+
+TAILNET_HOST must be a single-label MagicDNS name or a fully qualified *.ts.net
+name. ADB_WIRELESS_HOST, ADB_WIRELESS_CONNECT_PORT, and
+ADB_WIRELESS_STATE_FILE may be used to override the defaults.
+EOF
+}
+
+die() {
+    printf 'adb-wireless-connect: %s\n' "$*" >&2
     exit 1
 }
 
-print_serial=0
-[ "${1:-}" = "--print-serial" ] && print_serial=1
+validate_tailnet_host() {
+    local candidate=$1
+    local lower
 
-wireless_serial() {
-    "$adb_bin" devices 2>/dev/null | awk '
-        NR > 1 && $2 == "device" && ($1 ~ /:/ || $1 ~ /_adb-tls-connect/) {
+    case "$candidate" in
+        ''|.*|*..*|-*|*-|*[^A-Za-z0-9.-]*)
+            die "invalid Tailnet DNS hostname: $candidate"
+            ;;
+    esac
+
+    lower=$(printf '%s' "$candidate" | tr '[:upper:]' '[:lower:]')
+    case "$lower" in
+        *.*)
+            case "$lower" in
+                *.ts.net) ;;
+                *) die "host must be a MagicDNS name or end in .ts.net" ;;
+            esac
+            ;;
+    esac
+}
+
+validate_port() {
+    case "$1" in
+        ''|*[!0-9]*) die "connection port must be an integer from 1 to 65535" ;;
+    esac
+    [ "$1" -ge 1 ] 2>/dev/null && [ "$1" -le 65535 ] 2>/dev/null \
+        || die "connection port must be an integer from 1 to 65535"
+}
+
+connected_serial() {
+    "$adb_bin" devices 2>/dev/null | awk -v target="$1" '
+        NR > 1 && $1 == target && $2 == "device" {
             print $1
             exit
         }
     '
 }
 
-serial=$(wireless_serial || true)
-if [ -z "$serial" ]; then
-    service=$(
-        "$adb_bin" mdns services 2>/dev/null |
-            awk '$2 ~ /_adb-tls-connect/ { print $3; exit }'
-    )
-    [ -n "$service" ] || {
-        echo "No wireless Android device is discoverable. Pair one on this LAN first." >&2
-        exit 1
-    }
-    "$adb_bin" connect "$service" >&2
-    serial=$(wireless_serial || true)
+remember_target() {
+    local directory
+    local temporary
+
+    directory=$(dirname "$state_file")
+    umask 077
+    mkdir -p "$directory"
+    temporary="${state_file}.tmp.$$"
+    printf '%s\n' "$target" >"$temporary"
+    chmod 600 "$temporary"
+    mv -f "$temporary" "$state_file"
+}
+
+host=${ADB_WIRELESS_HOST:-smallbird}
+print_serial=0
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --host)
+            [ "$#" -ge 2 ] || die "--host requires a value"
+            host=$2
+            shift 2
+            ;;
+        --print-serial)
+            print_serial=1
+            shift
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        --)
+            shift
+            break
+            ;;
+        -*)
+            die "unknown option: $1"
+            ;;
+        *)
+            break
+            ;;
+    esac
+done
+
+[ "$#" -le 1 ] || {
+    usage >&2
+    exit 2
+}
+
+validate_tailnet_host "$host"
+
+state_file=${ADB_WIRELESS_STATE_FILE:-${XDG_STATE_HOME:-"$HOME/.local/state"}/funk/adb-wireless-target}
+port=${1:-${ADB_WIRELESS_CONNECT_PORT:-}}
+explicit_port=0
+if [ -n "$port" ]; then
+    explicit_port=1
+    validate_port "$port"
+    target="$host:$port"
+elif [ -r "$state_file" ]; then
+    IFS= read -r target <"$state_file" || true
+    case "$target" in
+        "$host":*)
+            port=${target##*:}
+            validate_port "$port"
+            ;;
+        *)
+            die "saved target does not match $host; supply the current connection port"
+            ;;
+    esac
+else
+    target=
 fi
 
-[ -n "$serial" ] || {
-    echo "ADB did not report a connected wireless device." >&2
-    exit 1
-}
+adb_bin=${ADB:-}
+if [ -z "$adb_bin" ]; then
+    adb_bin=$(command -v adb || true)
+fi
+[ -n "$adb_bin" ] || die "adb is missing; run: brew install --cask android-platform-tools"
+
+if [ -z "$target" ]; then
+    target=$(
+        "$adb_bin" devices 2>/dev/null | awk -v host="$host" '
+            NR > 1 && $2 == "device" && index($1, host ":") == 1 {
+                print $1
+                exit
+            }
+        '
+    )
+    [ -n "$target" ] \
+        || die "no saved connection for $host; supply the port from the Wireless debugging screen"
+fi
+
+serial=
+if [ "$explicit_port" -eq 1 ]; then
+    "$adb_bin" connect "$target" >&2
+    serial=$(connected_serial "$target" || true)
+else
+    serial=$(connected_serial "$target" || true)
+    if [ -z "$serial" ]; then
+        "$adb_bin" connect "$target" >&2
+        serial=$(connected_serial "$target" || true)
+    fi
+fi
+
+[ -n "$serial" ] || die "ADB did not report $target as a connected device"
+
+if [ "$explicit_port" -eq 1 ]; then
+    remember_target
+fi
 
 if [ "$print_serial" -eq 1 ]; then
     printf '%s\n' "$serial"
 else
-    printf 'Connected to %s\n' "$serial"
+    printf 'Connected to %s through the Tailnet.\n' "$serial"
 fi

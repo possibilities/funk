@@ -42,6 +42,8 @@ bin/.local/bin/raycast/scrcpy.sh
 bin/.local/bin/raycast/scrcpy-no-audio.sh
 bin/.local/bin/raycast/scrcpy-flex.sh
 bin/.local/bin/raycast/scrcpy-no-audio-flex.sh
+tests/adb-wireless.sh
+tests/fixtures/adb
 tests/fixtures/brew
 tests/fixtures/gh
 tests/validate.sh
@@ -50,6 +52,11 @@ tests/validate.sh
 for file in $shell_files; do
     /bin/bash -n "$file"
 done
+
+/bin/zsh -n zsh/.zshrc zsh/.zsh/aliases/agents.zsh
+if grep -R -Eqi 'keeper|KEEPER_ZSH_DROPINS' zsh; then
+    fail "removed Keeper shell integration is still present"
+fi
 
 if command -v shellcheck >/dev/null 2>&1; then
     # The checker treats the skhd DSL as shell, so it is intentionally excluded.
@@ -169,7 +176,6 @@ brew "pnpm"
 brew "oven-sh/bun/bun", trusted: true
 brew "llm"
 brew "scrcpy"
-brew "qrencode"
 brew "asmvik/formulae/yabai", trusted: true
 brew "asmvik/formulae/skhd", trusted: true
 cask "tailscale-app"
@@ -515,10 +521,9 @@ grep -F 'menu item "Open Location…"' bin/.local/bin/focus-address-bar >/dev/nu
     || fail "browser address-bar helper does not use the browser menu"
 grep -Fx 'brew "scrcpy"' Brewfile >/dev/null \
     || fail "scrcpy is missing from the Brewfile"
-grep -Fx 'brew "qrencode"' Brewfile >/dev/null \
-    || fail "qrencode is missing from the Brewfile"
 grep -Fx 'cask "android-platform-tools"' Brewfile >/dev/null \
     || fail "Android Platform Tools are missing from the Brewfile"
+"$root/tests/adb-wireless.sh"
 grep -F '@raycast.title Android (audio)' bin/.local/bin/raycast/scrcpy.sh >/dev/null \
     || fail "audio scrcpy Raycast command is missing"
 grep -F '@raycast.title Android (no audio)' bin/.local/bin/raycast/scrcpy-no-audio.sh >/dev/null \

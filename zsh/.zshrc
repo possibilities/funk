@@ -54,14 +54,6 @@ for file in ~/.zsh/aliases/*.zsh; do
   [[ -r $file ]] && source "$file"
 done
 
-# Tmux marks newly spawned shells that may load Keeper-owned alias drop-ins.
-# The marker is only a gate; startup code always comes from this fixed path.
-if [[ ${KEEPER_ZSH_DROPINS:-} == 1 ]]; then
-  for file in ~/code/keeper/shell/zsh/*.zsh(N); do
-    [[ -r $file ]] && source "$file"
-  done
-fi
-
 # History — one file, never truncate; each shell writes immediately,
 # but up-arrow stays per-shell (no live cross-pane interleave)
 HISTFILE=~/.local/share/zsh/history

@@ -1,52 +1,95 @@
 #!/bin/bash
-# Pair this Mac with an Android phone over wireless ADB using a QR code.
-# Phone: Settings -> Developer options -> Wireless debugging -> Pair device with QR code
+# Pair this Mac with an Android phone through its Tailnet DNS name.
 
 set -euo pipefail
+
+usage() {
+    cat <<'EOF'
+Usage: adb-wireless-pair [--host TAILNET_HOST] PAIRING_PORT
+
+Pair with the port shown under:
+  Wireless debugging -> Pair device with pairing code
+
+The default host is smallbird. TAILNET_HOST must be a single-label MagicDNS
+name or a fully qualified *.ts.net name. Enter the temporary pairing code only
+at adb's prompt; it is not accepted as a command-line argument or saved.
+EOF
+}
+
+die() {
+    printf 'adb-wireless-pair: %s\n' "$*" >&2
+    exit 1
+}
+
+validate_tailnet_host() {
+    local candidate=$1
+    local lower
+
+    case "$candidate" in
+        ''|.*|*..*|-*|*-|*[^A-Za-z0-9.-]*)
+            die "invalid Tailnet DNS hostname: $candidate"
+            ;;
+    esac
+
+    lower=$(printf '%s' "$candidate" | tr '[:upper:]' '[:lower:]')
+    case "$lower" in
+        *.*)
+            case "$lower" in
+                *.ts.net) ;;
+                *) die "host must be a MagicDNS name or end in .ts.net" ;;
+            esac
+            ;;
+    esac
+}
+
+validate_port() {
+    case "$1" in
+        ''|*[!0-9]*) die "pairing port must be an integer from 1 to 65535" ;;
+    esac
+    [ "$1" -ge 1 ] 2>/dev/null && [ "$1" -le 65535 ] 2>/dev/null \
+        || die "pairing port must be an integer from 1 to 65535"
+}
+
+host=${ADB_WIRELESS_HOST:-smallbird}
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --host)
+            [ "$#" -ge 2 ] || die "--host requires a value"
+            host=$2
+            shift 2
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        --)
+            shift
+            break
+            ;;
+        -*)
+            die "unknown option: $1"
+            ;;
+        *)
+            break
+            ;;
+    esac
+done
+
+[ "$#" -eq 1 ] || {
+    usage >&2
+    exit 2
+}
+port=$1
+
+validate_tailnet_host "$host"
+validate_port "$port"
 
 adb_bin=${ADB:-}
 if [ -z "$adb_bin" ]; then
     adb_bin=$(command -v adb || true)
 fi
-[ -n "$adb_bin" ] || {
-    echo "adb is missing — run: brew install --cask android-platform-tools" >&2
-    exit 1
-}
-command -v qrencode >/dev/null 2>&1 || {
-    echo "qrencode is missing — run: brew install qrencode" >&2
-    exit 1
-}
+[ -n "$adb_bin" ] || die "adb is missing; run: brew install --cask android-platform-tools"
 
-timeout_seconds=${ADB_WIRELESS_PAIR_TIMEOUT_SECONDS:-120}
-session="ADB_WIFI_$(openssl rand -hex 4)"
-password=$(openssl rand -hex 8)
-payload="WIFI:T:ADB;S:${session};P:${password};;"
-
-cat <<EOF
-On phone: Settings -> Developer options -> Wireless debugging -> Pair device with QR code
-Then scan this:
-
-EOF
-qrencode -t ANSIUTF8 -m 2 "$payload"
-
-echo
-echo "Waiting up to ${timeout_seconds}s for the phone to advertise pairing service..."
-deadline=$(( $(date +%s) + timeout_seconds ))
-host_port=""
-while [ "$(date +%s)" -lt "$deadline" ]; do
-    host_port=$("$adb_bin" mdns services 2>/dev/null |
-        awk -v session="$session" '$1 == session && $2 ~ /_adb-tls-pairing/ { print $3; exit }')
-    [ -n "$host_port" ] && break
-    sleep 1
-done
-
-[ -n "$host_port" ] || {
-    echo "Timed out — the phone never advertised ${session}._adb-tls-pairing._tcp" >&2
-    exit 1
-}
-
-echo "Phone advertising at ${host_port}; pairing..."
-"$adb_bin" pair "$host_port" "$password"
-echo
-echo "Paired. Connecting..."
-exec "$(dirname "$0")/adb-wireless-connect"
+printf 'Pairing with %s through the Tailnet.\n' "$host:$port"
+printf 'Enter the temporary six-digit pairing code at the adb prompt.\n'
+exec "$adb_bin" pair "$host:$port"

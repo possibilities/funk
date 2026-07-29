@@ -19,7 +19,6 @@ brew "pnpm"
 brew "oven-sh/bun/bun", trusted: true
 brew "llm"
 brew "scrcpy"
-brew "qrencode"
 brew "asmvik/formulae/yabai", trusted: true
 brew "asmvik/formulae/skhd", trusted: true
 

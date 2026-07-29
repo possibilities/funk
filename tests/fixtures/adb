@@ -1,0 +1,31 @@
+#!/bin/bash
+
+set -euo pipefail
+
+command=${1:-}
+shift || true
+
+if [ -n "${FUNK_TEST_ADB_LOG:-}" ]; then
+    {
+        printf '%s' "$command"
+        printf '\t%s' "$@"
+        printf '\n'
+    } >>"$FUNK_TEST_ADB_LOG"
+fi
+
+case "$command" in
+    devices)
+        printf 'List of devices attached\n'
+        [ -z "${FUNK_TEST_ADB_DEVICES:-}" ] || printf '%b\n' "$FUNK_TEST_ADB_DEVICES"
+        ;;
+    connect)
+        printf 'connected to %s\n' "${1:-unknown}"
+        ;;
+    pair)
+        printf 'Successfully paired to %s\n' "${1:-unknown}"
+        ;;
+    *)
+        printf 'unexpected adb fixture command: %s\n' "$command" >&2
+        exit 64
+        ;;
+esac

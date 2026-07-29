@@ -1,6 +1,3 @@
-alias claude="keeper agent claude"
-alias pi="keeper agent pi"
-
 function link-manager {
     cd ~/code/links && \
     arthack-claude-headless-clean.sh "$@" \

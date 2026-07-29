@@ -100,17 +100,32 @@ configuration are intentionally not Stow-linked.
 
 ## Android device utilities
 
-Funk installs `scrcpy`, `qrencode`, and Android Platform Tools. The `bin`
-package provides `adb-wireless-pair`, which prints a temporary wireless-debug
-pairing QR code and completes pairing after the phone advertises itself on the
-local network. `adb-wireless-connect` reconnects to a locally discoverable
-wireless device and can print its serial for scripts.
+Funk installs `scrcpy` and Android Platform Tools. The `bin` package provides
+Tailnet-only Wireless ADB helpers for the phone named `Smallbird`. They use its
+MagicDNS name `smallbird` by default and never use local-LAN mDNS discovery or
+an IP address.
+
+On the phone, open **Settings → Developer options → Wireless debugging**.
+Choose **Pair device with pairing code**, ignore the displayed IP address, and
+pass only its pairing port to `adb-wireless-pair PAIRING_PORT`. Enter the
+temporary six-digit code at `adb`'s prompt so it is neither exposed in the
+process list nor saved. Then return to the main Wireless debugging screen,
+ignore its IP address, and run `adb-wireless-connect CONNECT_PORT` with that
+screen's separate connection port.
+
+A successful explicit connection remembers only the non-secret Tailnet
+hostname and connection port under `~/.local/state/funk/`. This lets the
+Raycast commands reconnect without local discovery. Android may change the
+connection port when Wireless debugging is toggled; if so, run
+`adb-wireless-connect` again with the new port. Set `ADB_WIRELESS_HOST` or pass
+`--host PHONE.TAILNET.ts.net` to use another Tailnet DNS hostname. IP literals,
+`.local` names, and non-Tailnet domains are rejected.
 
 The Raycast Script Commands in `~/.local/bin/raycast/` provide four `scrcpy`
 launch modes: Android with or without audio, and flex-display Android with or
 without audio. Add that directory to Raycast's Script Commands directories.
-They use the generic wireless-ADB helper; no phone name, network address, or
-pairing state is stored in Funk.
+They use the same Tailnet-only helper and its last successful connection; no
+phone address, pairing code, or pairing state is stored in Funk.
 
 Orca does not expose a standalone global preferences file: its settings share
 `orca-data.json` with projects, worktrees, sessions, account metadata, and
