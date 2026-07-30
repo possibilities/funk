@@ -29,6 +29,7 @@ cask "google-chrome", greedy: true
 cask "google-chrome@canary", greedy: true
 cask "brave-browser", greedy: true
 cask "firefox", greedy: true
+cask "obs", greedy: true
 cask "obsidian", greedy: true
 cask "raycast", greedy: true
 cask "android-platform-tools", greedy: true
