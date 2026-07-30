@@ -9,10 +9,11 @@ Usage: adb-wireless-connect [--host TAILNET_HOST] [--print-serial] [CONNECT_PORT
 
 CONNECT_PORT is the port on the main Wireless debugging screen, not the
 temporary pairing port. A successful explicit connection is remembered for
-later calls from Raycast. The default host is smallbird.
+later calls from Raycast. The default host is smolbird.
 
 TAILNET_HOST must be a single-label MagicDNS name or a fully qualified *.ts.net
-name. ADB_WIRELESS_HOST, ADB_WIRELESS_CONNECT_PORT, and
+name. Single-label names are completed with the Tailnet's MagicDNS suffix
+before use. ADB_WIRELESS_HOST, ADB_WIRELESS_CONNECT_PORT, and
 ADB_WIRELESS_STATE_FILE may be used to override the defaults.
 EOF
 }
@@ -51,8 +52,66 @@ validate_port() {
         || die "connection port must be an integer from 1 to 65535"
 }
 
+tailscale_binary() {
+    local candidate
+    for candidate in "${TAILSCALE:-}" tailscale /usr/local/bin/tailscale \
+        /Applications/Tailscale.app/Contents/MacOS/Tailscale; do
+        [ -n "$candidate" ] || continue
+        if command -v "$candidate" >/dev/null 2>&1; then
+            command -v "$candidate"
+            return 0
+        fi
+    done
+    return 1
+}
+
+# Raycast does not run these through the interactive shell, so fall back to the
+# locations Homebrew uses instead of trusting the caller's PATH.
+adb_binary() {
+    local candidate
+    for candidate in "${ADB:-}" adb /opt/homebrew/bin/adb /usr/local/bin/adb; do
+        [ -n "$candidate" ] || continue
+        if command -v "$candidate" >/dev/null 2>&1; then
+            command -v "$candidate"
+            return 0
+        fi
+    done
+    return 1
+}
+
+tailnet_suffix() {
+    local binary
+    binary=$(tailscale_binary) || return 1
+    "$binary" status --json 2>/dev/null | sed -n \
+        's/.*"MagicDNSSuffix"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
+        | head -n 1
+}
+
+# macOS installs the Tailnet resolver as a resolver scoped to the Tailnet
+# domain, so it never answers a single-label query. Complete the short name to
+# the full MagicDNS name so it resolves the same way from a shell and Raycast.
+qualify_host() {
+    local suffix
+
+    case "$1" in
+        *.*)
+            printf '%s\n' "$1"
+            return 0
+            ;;
+    esac
+
+    suffix=$(tailnet_suffix || true)
+    if [ -n "$suffix" ]; then
+        printf '%s.%s\n' "$1" "${suffix%.}"
+    else
+        printf '%s\n' "$1"
+    fi
+}
+
+# adb separates the serial from the state with a tab, and a serial may itself
+# contain spaces, so split on tabs rather than on any whitespace.
 connected_serial() {
-    "$adb_bin" devices 2>/dev/null | awk -v target="$1" '
+    "$adb_bin" devices 2>/dev/null | awk -F '\t' -v target="$1" '
         NR > 1 && $1 == target && $2 == "device" {
             print $1
             exit
@@ -73,7 +132,7 @@ remember_target() {
     mv -f "$temporary" "$state_file"
 }
 
-host=${ADB_WIRELESS_HOST:-smallbird}
+host=${ADB_WIRELESS_HOST:-smolbird}
 print_serial=0
 while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -109,6 +168,7 @@ done
 }
 
 validate_tailnet_host "$host"
+host=$(qualify_host "$host")
 
 state_file=${ADB_WIRELESS_STATE_FILE:-${XDG_STATE_HOME:-"$HOME/.local/state"}/funk/adb-wireless-target}
 port=${1:-${ADB_WIRELESS_CONNECT_PORT:-}}
@@ -132,15 +192,12 @@ else
     target=
 fi
 
-adb_bin=${ADB:-}
-if [ -z "$adb_bin" ]; then
-    adb_bin=$(command -v adb || true)
-fi
+adb_bin=$(adb_binary || true)
 [ -n "$adb_bin" ] || die "adb is missing; run: brew install --cask android-platform-tools"
 
 if [ -z "$target" ]; then
     target=$(
-        "$adb_bin" devices 2>/dev/null | awk -v host="$host" '
+        "$adb_bin" devices 2>/dev/null | awk -F '\t' -v host="$host" '
             NR > 1 && $2 == "device" && index($1, host ":") == 1 {
                 print $1
                 exit

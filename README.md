@@ -138,9 +138,20 @@ configuration are intentionally not Stow-linked.
 ## Android device utilities
 
 Funk installs `scrcpy` and Android Platform Tools. The `bin` package provides
-Tailnet-only Wireless ADB helpers for the phone named `Smallbird`. They use its
-MagicDNS name `smallbird` by default and never use local-LAN mDNS discovery or
+Tailnet-only Wireless ADB helpers for the phone named `Smolbird`. They use its
+MagicDNS name `smolbird` by default and never use local-LAN mDNS discovery or
 an IP address.
+
+macOS installs the Tailnet resolver as a resolver scoped to the Tailnet domain,
+so it never answers a single-label query and `smolbird` alone does not resolve.
+The helpers therefore complete a short name to its full MagicDNS name using the
+suffix reported by `tailscale status --json` before handing it to `adb`.
+
+Only the `android-platform-tools` cask puts `adb` on `PATH`. The Android
+command line tools ship a second `adb` of a different version, and pointing
+`PATH` at that one makes each client restart the other's server and drop every
+wireless connection, so `ANDROID_HOME` names the SDK without adding its
+`platform-tools` directory to `PATH`.
 
 On the phone, open **Settings → Developer options → Wireless debugging**.
 Choose **Pair device with pairing code**, ignore the displayed IP address, and
@@ -162,7 +173,10 @@ The Raycast Script Commands in `~/.local/bin/raycast/` provide four `scrcpy`
 launch modes: Android with or without audio, and flex-display Android with or
 without audio. Add that directory to Raycast's Script Commands directories.
 They use the same Tailnet-only helper and its last successful connection; no
-phone address, pairing code, or pairing state is stored in Funk.
+phone address, pairing code, or pairing state is stored in Funk. Raycast runs
+them without the interactive shell's environment, so each one puts the Homebrew
+and Tailscale locations on `PATH` itself and reports the helper's own error
+text instead of failing silently.
 
 Orca does not expose a standalone global preferences file: its settings share
 `orca-data.json` with projects, worktrees, sessions, account metadata, and

@@ -8,6 +8,16 @@
 # @raycast.packageName Funk
 
 set -euo pipefail
-serial=$("$HOME/.local/bin/adb-wireless-connect" --print-serial)
+
+# Raycast runs this without the interactive shell's environment, so put the
+# Homebrew and Tailscale locations on PATH before looking for adb and scrcpy.
+PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
+export PATH
+
+if ! serial=$("$HOME/.local/bin/adb-wireless-connect" --print-serial 2>&1); then
+    printf 'Android: %s\n' "$serial" >&2
+    exit 1
+fi
+
 scrcpy -s "$serial" --stay-awake --keep-active --keyboard=uhid --no-audio --new-display --flex-display &
 disown

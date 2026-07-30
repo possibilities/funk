@@ -52,6 +52,7 @@ tests/fixtures/brew
 tests/fixtures/gh
 tests/fixtures/npx
 tests/fixtures/spctl
+tests/fixtures/tailscale
 tests/fixtures/terminal-notifier
 tests/validate.sh
 "

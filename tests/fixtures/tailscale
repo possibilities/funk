@@ -1,0 +1,21 @@
+#!/bin/bash
+
+set -euo pipefail
+
+if [ "${1:-}" = "status" ] && [ "${2:-}" = "--json" ]; then
+    cat <<'EOF'
+{
+  "Version": "1.999.0-test",
+  "BackendState": "Running",
+  "MagicDNSSuffix": "example-tailnet.ts.net",
+  "Self": {
+    "HostName": "greybird",
+    "DNSName": "greybird.example-tailnet.ts.net."
+  }
+}
+EOF
+    exit 0
+fi
+
+printf 'unexpected tailscale fixture command: %s\n' "$*" >&2
+exit 64

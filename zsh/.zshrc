@@ -95,8 +95,11 @@ if JAVA_17_HOME=$(/usr/libexec/java_home -v 17 2>/dev/null); then
 fi
 if [[ -d /opt/homebrew/share/android-commandlinetools ]]; then
   export ANDROID_HOME=/opt/homebrew/share/android-commandlinetools
-  export PATH="$ANDROID_HOME/platform-tools:$PATH"
 fi
+# Do not put the command line tools' platform-tools on PATH. It ships its own
+# adb that shadows the Brewfile's android-platform-tools cask, and a client
+# talking to a server of a different version restarts the server and drops
+# every wireless connection. ANDROID_HOME still points build tooling at the SDK.
 
 # opencode
 export PATH="$HOME/.opencode/bin:$PATH"
