@@ -202,6 +202,7 @@ brew "scrcpy"
 brew "asmvik/formulae/yabai", trusted: true
 brew "asmvik/formulae/skhd", trusted: true
 cask "tailscale-app", greedy: true
+cask "alt-tab", greedy: true
 cask "ghostty", greedy: true
 cask "google-chrome", greedy: true
 cask "google-chrome@canary", greedy: true
@@ -591,6 +592,7 @@ app="^System Settings$"
 app="^Tailscale$"
 app="^Karabiner-Elements$"
 app="^Karabiner-EventViewer$"
+app="^AltTab$"
 app="^Activity Monitor$"
 app="^Calculator$"
 app="^Archive Utility$"
@@ -606,12 +608,14 @@ if grep -E '^yabai -m rule --add ' yabai/.config/yabai/yabairc \
     | grep -qv 'app="\^'; then
     fail "a Yabai rule is not scoped to a named application"
 fi
-# Rules carried over from the old account for software this machine does not
-# install: AltTab was never in the Brewfile and browserctl-display belonged to
-# the retired virtual-display viewer.
-if grep -E 'app="\^(AltTab|browserctl-display)\$"' \
+# AltTab's switcher windows should float instead of entering the tiling stack.
+grep -Fx 'yabai -m rule --add app="^AltTab$" manage=off' \
+    yabai/.config/yabai/yabairc >/dev/null \
+    || fail "AltTab is missing its Yabai floating rule"
+# browserctl-display belonged to the retired virtual-display viewer.
+if grep -F 'app="^browserctl-display$"' \
     yabai/.config/yabai/yabairc >/dev/null; then
-    fail "Yabai floats an application that Funk does not install"
+    fail "Yabai floats browserctl-display even though Funk does not install it"
 fi
 
 ai_install_plan=$(libexec/install-ai-tools --check)

@@ -9,7 +9,7 @@ forward the old repository's Stow-based, fix-forward configuration workflow.
 The default installer applies the Brewfile plus the vendor-supported AI tool
 installers:
 
-- Tailscale, Ghostty, Google Chrome, Chrome Canary, Brave, Firefox
+- Tailscale, AltTab, Ghostty, Google Chrome, Chrome Canary, Brave, Firefox
 - ChatGPT, Claude Desktop, Orca, Obsidian, Raycast
 - GitHub CLI, LiveKit CLI, Native SDK CLI, Claude Code, Codex CLI, OpenCode,
   and Pi

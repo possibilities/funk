@@ -24,6 +24,7 @@ brew "asmvik/formulae/yabai", trusted: true
 brew "asmvik/formulae/skhd", trusted: true
 
 cask "tailscale-app", greedy: true
+cask "alt-tab", greedy: true
 cask "ghostty", greedy: true
 cask "google-chrome", greedy: true
 cask "google-chrome@canary", greedy: true
