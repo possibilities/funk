@@ -581,6 +581,38 @@ if grep -F 'Run: funk yabai maintain' libexec/install-window-manager >/dev/null;
     fail "window installer still delegates initial Yabai maintenance to the user"
 fi
 
+# The floating set is reviewed as a whole: every entry must name an application
+# that Funk installs or that macOS ships, and the order is asserted because
+# Yabai applies all matching rules in registration order, letting a later rule
+# override an earlier value.
+expected_float_rules='app="^Google Chrome$" title="^Picture in Picture$"
+app="^System Settings$"
+app="^Tailscale$"
+app="^Karabiner-Elements$"
+app="^Karabiner-EventViewer$"
+app="^Activity Monitor$"
+app="^Calculator$"
+app="^Archive Utility$"
+app="^Installer$"
+app="^scrcpy$"'
+actual_float_rules=$(
+    sed -n 's/^yabai -m rule --add \(.*\) manage=off$/\1/p' \
+        yabai/.config/yabai/yabairc
+)
+[ "$actual_float_rules" = "$expected_float_rules" ] \
+    || fail "Yabai floating rules do not match the reviewed set"
+if grep -E '^yabai -m rule --add ' yabai/.config/yabai/yabairc \
+    | grep -qv 'app="\^'; then
+    fail "a Yabai rule is not scoped to a named application"
+fi
+# Rules carried over from the old account for software this machine does not
+# install: AltTab was never in the Brewfile and browserctl-display belonged to
+# the retired virtual-display viewer.
+if grep -E 'app="\^(AltTab|browserctl-display)\$"' \
+    yabai/.config/yabai/yabairc >/dev/null; then
+    fail "Yabai floats an application that Funk does not install"
+fi
+
 ai_install_plan=$(libexec/install-ai-tools --check)
 for required_ai_install in \
     'brew install or upgrade gh  # intentional duplicate of the Brewfile' \
@@ -720,6 +752,12 @@ grep -F '@raycast.title Android flex (audio)' bin/.local/bin/raycast/scrcpy-flex
     || fail "flex audio scrcpy Raycast command is missing"
 grep -F '@raycast.title Android flex (no audio)' bin/.local/bin/raycast/scrcpy-no-audio-flex.sh >/dev/null \
     || fail "flex no-audio scrcpy Raycast command is missing"
+# The mirror window keeps the device aspect ratio and refuses resize, so the
+# stack layout must never hand it a tile. Matching on the application alone
+# covers the plain and --new-display Raycast variants.
+grep -Fx 'yabai -m rule --add app="^scrcpy$" manage=off' \
+    yabai/.config/yabai/yabairc >/dev/null \
+    || fail "scrcpy is missing its Yabai floating rule"
 
 # shellcheck disable=SC2016 # Match literal Brewfile convergence variables.
 grep -F '"$brew_bin" bundle install --upgrade --file="$brewfile"' \

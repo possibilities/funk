@@ -59,3 +59,9 @@ yabai -m rule --add app="^Activity Monitor$" manage=off
 yabai -m rule --add app="^Calculator$" manage=off
 yabai -m rule --add app="^Archive Utility$" manage=off
 yabai -m rule --add app="^Installer$" manage=off
+
+# scrcpy mirrors a phone at its device aspect ratio and cannot be resized, so
+# the stack layout would otherwise hand it a full-screen tile. One app rule
+# covers every Funk Raycast variant, including the --new-display windows: they
+# all report the same application name and carry no window title.
+yabai -m rule --add app="^scrcpy$" manage=off
