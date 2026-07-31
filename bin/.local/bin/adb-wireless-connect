@@ -70,11 +70,29 @@ validate_tailnet_node() {
     esac
 }
 
+resolve_self() {
+    local source_path=$1
+    local source_dir
+    local link_target
+
+    while [ -L "$source_path" ]; do
+        source_dir=$(cd -P -- "$(dirname -- "$source_path")" && pwd)
+        link_target=$(readlink "$source_path")
+        case "$link_target" in
+            /*) source_path=$link_target ;;
+            *) source_path="$source_dir/$link_target" ;;
+        esac
+    done
+
+    source_dir=$(cd -P -- "$(dirname -- "$source_path")" && pwd)
+    printf '%s/%s\n' "$source_dir" "$(basename -- "$source_path")"
+}
+
 ensure_online_binary() {
     local candidate
     local script_dir
 
-    script_dir=$(cd -P -- "$(dirname -- "$0")" && pwd)
+    script_dir=$(dirname -- "$(resolve_self "$0")")
     for candidate in "${TAILSCALE_ENSURE_ONLINE:-}" \
         "$script_dir/tailscale-ensure-online" tailscale-ensure-online \
         "$HOME/.local/bin/tailscale-ensure-online"; do

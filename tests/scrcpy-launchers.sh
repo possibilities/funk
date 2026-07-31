@@ -123,6 +123,86 @@ for launcher in \
         || fail "$launcher passed a contaminated serial or wrong arguments to scrcpy"
 done
 
+# Exercise the supported install path and the files it actually places in HOME,
+# then preserve one-click recovery if a newly added sibling has not yet been
+# re-stowed. Both launches omit the source-path overrides used above.
+installed_home="$test_home/installed-home"
+installed_adb_env_log="$test_home/installed-adb-env.log"
+mkdir -p "$installed_home"
+HOME="$installed_home" "$root/bin/funk" stow bin
+[ -L "$installed_home/.local/bin/adb-wireless-connect" ] \
+    || fail "Funk install did not stow the connection helper"
+[ -x "$installed_home/.local/bin/tailscale-ensure-online" ] \
+    || fail "Funk install did not stow the recovery helper"
+[ -L "$installed_home/.local/bin/raycast/scrcpy.sh" ] \
+    || fail "Funk install did not stow the Raycast launcher"
+
+run_installed_launcher() {
+    (
+        unset ADB_WIRELESS_CONNECT TAILSCALE_ENSURE_ONLINE
+        HOME="$installed_home" XDG_STATE_HOME="$xdg_state" \
+            PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin" \
+            ADB_USB=1 ADB_MDNS_AUTO_CONNECT=adb-tls-connect \
+            ADB_SERVER_SOCKET=tcp:localhost:5037 \
+            ADB="$adb_fixture" TAILSCALE="$tailscale_fixture" JQ="$jq_bin" \
+            DSCACHEUTIL="$resolver_fixture" DNS_SD="$dns_sd_fixture" \
+            NC="$nc_fixture" SHLOCK=/usr/bin/shlock \
+            ADB_WIRELESS_DISCOVERY_SECONDS=1 \
+            ADB_WIRELESS_STATE_FILE="$state" \
+            FUNK_TEST_TAILSCALE_STATE_FILE="$tailscale_state" \
+            FUNK_TEST_TAILSCALE_LOG="$tailscale_log" \
+            FUNK_TEST_ADB_LOG="$adb_log" \
+            FUNK_TEST_ADB_ENV_LOG="$installed_adb_env_log" \
+            FUNK_TEST_ADB_SIMULATE_MDNS_AUTOCONNECT=1 \
+            FUNK_TEST_ADB_SIMULATE_USB_CONTENTION=1 \
+            FUNK_TEST_ADB_CONNECTED_FILE="$connected_file" \
+            FUNK_TEST_REACHABLE_PORTS=39999 \
+            FUNK_TEST_ADB_IDENTITIES="$phone:39999\t$phone_id" \
+            SCRCPY="$scrcpy_fixture" FUNK_TEST_SCRCPY_LOG="$scrcpy_log" \
+            "$installed_home/.local/bin/raycast/scrcpy.sh"
+    )
+}
+
+assert_installed_launch() {
+    local label=$1
+
+    [ ! -s "$test_home/$label.out" ] \
+        || fail "$label launcher wrote diagnostics to stdout"
+    wait_for_scrcpy || fail "$label launcher did not execute scrcpy"
+    grep -Fx "arg=$phone:39999" "$scrcpy_log" >/dev/null \
+        || fail "$label launcher did not select the saved phone"
+    [ -s "$installed_adb_env_log" ] \
+        || fail "$label ADB fixture did not record its environment"
+    awk -F '\t' \
+        '$2 != "auto=0" || $3 != "socket=tcp:localhost:5038" || $4 != "usb=0" {
+            bad=1
+        }
+        END { exit bad }' "$installed_adb_env_log" \
+        || fail "$label launcher escaped the isolated ADB server"
+    if grep -Eq '^(auto-connect|usb-claim|pair)' "$adb_log"; then
+        fail "$label launcher touched an unrelated device or paired"
+    fi
+    grep -Fx 'status --json' "$tailscale_log" >/dev/null \
+        || fail "$label launcher did not find the recovery helper"
+}
+
+for installed_case in installed-fresh installed-without-helper-link; do
+    if [ "$installed_case" = installed-without-helper-link ]; then
+        rm "$installed_home/.local/bin/tailscale-ensure-online"
+        [ ! -e "$installed_home/.local/bin/tailscale-ensure-online" ] \
+            || fail "temporary recovery-helper link was not removed"
+    fi
+    write_state
+    printf 'Running\n' >"$tailscale_state"
+    rm -f "$connected_file" "$scrcpy_log"
+    : >"$tailscale_log"
+    : >"$adb_log"
+    : >"$installed_adb_env_log"
+    run_installed_launcher >"$test_home/$installed_case.out" \
+        2>"$test_home/$installed_case.err"
+    assert_installed_launch "$installed_case"
+done
+
 # An opt-out created with custom XDG state must also stop the Raycast path,
 # whose helper uses the same canonical HOME-relative marker as launchd.
 HOME="$test_home" XDG_STATE_HOME="$xdg_state" \
