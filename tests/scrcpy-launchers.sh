@@ -96,9 +96,13 @@ for launcher in \
 
     extra_args=
     case "$launcher" in
+        scrcpy.sh) extra_args='arg=--audio-source=playback' ;;
         scrcpy-no-audio.sh) extra_args='arg=--no-audio' ;;
         scrcpy-flex.sh)
-            extra_args=$(printf '%s\n' 'arg=--new-display' 'arg=--flex-display')
+            extra_args=$(printf '%s\n' \
+                'arg=--audio-source=playback' \
+                'arg=--new-display' \
+                'arg=--flex-display')
             ;;
         scrcpy-no-audio-flex.sh)
             extra_args=$(

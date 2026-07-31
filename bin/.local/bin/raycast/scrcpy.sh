@@ -28,5 +28,5 @@ case "$serial" in
 '*) printf 'Android: connection helper returned an invalid serial.\n' >&2; exit 1 ;;
 esac
 
-"$scrcpy_bin" -s "$serial" --stay-awake --keep-active --keyboard=uhid &
+"$scrcpy_bin" -s "$serial" --stay-awake --keep-active --keyboard=uhid --audio-source=playback &
 disown
