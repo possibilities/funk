@@ -17,7 +17,7 @@ Default installation:
   - stows all user configuration packages into the target user's home
   - installs the window stack and converges Yabai Spaces 1-9
   - links the funk command into the active Homebrew bin directory
-  - installs and loads the four-times-daily update LaunchAgent
+  - installs and loads the update and Tailscale recovery LaunchAgents
   - applies Funk's user-level macOS preferences
 
 Options:
@@ -144,6 +144,7 @@ elif [ "$orca_status" -ne 0 ]; then
 fi
 
 "$funk_command" install-updater
+"$funk_command" install-tailscale-recovery
 "$funk_command" configure-macos
 
 if [ "$with_system_settings" -eq 1 ]; then
@@ -162,6 +163,7 @@ Funk installation complete.
 Command: $cli_path
 Repository: $funk_root
 Update log: $HOME/Library/Logs/Funk/update.log
+Tailscale recovery log: $HOME/Library/Logs/Funk/tailscale-online.log
 EOF
 
 if [ "$orca_settings_deferred" -eq 1 ]; then

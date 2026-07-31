@@ -1,0 +1,287 @@
+#!/bin/bash
+# Idempotently restore the signed-in Tailscale GUI client to an online state.
+
+set -euo pipefail
+
+usage() {
+    cat <<'EOF'
+Usage: tailscale-ensure-online [--peer TAILNET_HOST] [--print-peer-id]
+       tailscale-ensure-online --disable
+       tailscale-ensure-online --enable
+
+With no state change required, this command is silent. A Stopped backend is
+reconnected with the GUI client's saved configuration. NeedsLogin, invalid
+daemon responses, offline nodes, and unsupported states are never changed
+silently.
+
+Use --disable before an intentional disconnect. The persistent opt-out prevents
+both scheduled and Screen Copy recovery until --enable removes it.
+EOF
+}
+
+die() {
+    printf 'tailscale-ensure-online: %s\n' "$*" >&2
+    exit 1
+}
+
+tailscale_binary() {
+    local candidate
+    for candidate in "${TAILSCALE:-}" tailscale \
+        /Applications/Tailscale.app/Contents/MacOS/Tailscale \
+        /opt/homebrew/bin/tailscale /usr/local/bin/tailscale; do
+        [ -n "$candidate" ] || continue
+        if command -v "$candidate" >/dev/null 2>&1; then
+            command -v "$candidate"
+            return 0
+        fi
+    done
+    return 1
+}
+
+jq_binary() {
+    local candidate
+    for candidate in "${JQ:-}" jq /opt/homebrew/bin/jq /usr/local/bin/jq; do
+        [ -n "$candidate" ] || continue
+        if command -v "$candidate" >/dev/null 2>&1; then
+            command -v "$candidate"
+            return 0
+        fi
+    done
+    return 1
+}
+
+write_disabled_marker() {
+    local directory
+    local temporary
+
+    directory=$(dirname "$disabled_file")
+    umask 077
+    mkdir -p "$directory"
+    temporary="${disabled_file}.tmp.$$"
+    printf 'Automatic recovery disabled by tailscale-ensure-online.\n' >"$temporary"
+    chmod 600 "$temporary"
+    mv -f "$temporary" "$disabled_file"
+}
+
+load_status() {
+    if ! tailnet_status=$("$tailscale_bin" status --json 2>/dev/null); then
+        die "the Tailscale CLI could not reach a valid daemon; open or restart the Tailscale app"
+    fi
+    "$jq_bin" -e '
+        type == "object"
+        and (.BackendState | type == "string" and length > 0)
+    ' >/dev/null 2>&1 <<<"$tailnet_status" \
+        || die "the Tailscale daemon returned invalid status; open or restart the Tailscale app"
+}
+
+backend_state() {
+    "$jq_bin" -r '.BackendState' <<<"$tailnet_status"
+}
+
+require_local_online() {
+    local online
+
+    online=$("$jq_bin" -r '
+        if (.Self.Online | type) == "boolean" then .Self.Online else "invalid" end
+    ' <<<"$tailnet_status")
+    case "$online" in
+        true) ;;
+        false)
+            die "the local Tailscale node is Running but offline; check this Mac's network and reopen Tailscale"
+            ;;
+        *)
+            die "the Tailscale daemon returned invalid local-node status; open or restart the Tailscale app"
+            ;;
+    esac
+}
+
+describe_nonrunning_state() {
+    case "$1" in
+        NeedsLogin)
+            die "Tailscale needs login; open Tailscale and sign in"
+            ;;
+        Stopped)
+            if [ -e "$disabled_file" ]; then
+                die "automatic recovery is disabled; run tailscale-ensure-online --enable or connect manually when ready"
+            fi
+            die "Tailscale remained Stopped after recovery; open Tailscale and choose Connect"
+            ;;
+        *)
+            die "Tailscale is in unsupported state $1; open Tailscale and resolve that state manually"
+            ;;
+    esac
+}
+
+qualify_peer() {
+    local suffix
+
+    case "$peer" in
+        *.*) printf '%s\n' "${peer%.}" ;;
+        *)
+            suffix=$("$jq_bin" -r '.MagicDNSSuffix // empty' <<<"$tailnet_status")
+            [ -n "$suffix" ] \
+                || die "Tailscale is online but did not report a MagicDNS suffix"
+            printf '%s.%s\n' "$peer" "${suffix%.}"
+            ;;
+    esac
+}
+
+check_peer() {
+    local allow_short=false
+    local count
+    local online
+    local peer_id
+    local peer_matches
+
+    case "$peer" in
+        *.*) ;;
+        *) allow_short=true ;;
+    esac
+    qualified_peer=$(qualify_peer)
+    # shellcheck disable=SC2016 # $peer and $short are jq variables.
+    peer_matches=$("$jq_bin" -c --arg peer "$qualified_peer" \
+        --arg short "${peer%%.*}" --argjson allow_short "$allow_short" '
+        [
+            (.Peer // {}) | to_entries[]
+            | select(
+                ((.value.DNSName // "") | ascii_downcase | rtrimstr("."))
+                    == ($peer | ascii_downcase)
+                or ($allow_short
+                    and ((.value.HostName // "") | ascii_downcase)
+                        == ($short | ascii_downcase))
+            )
+            | {id: .value.ID, online: .value.Online}
+        ]
+    ' <<<"$tailnet_status")
+    count=$("$jq_bin" -r 'length' <<<"$peer_matches")
+    case "$count" in
+        0)
+            die "Tailnet peer $qualified_peer is missing; confirm the hostname and that the phone still belongs to this tailnet"
+            ;;
+        1) ;;
+        *)
+            die "Tailnet peer $qualified_peer is ambiguous in Tailscale status; resolve duplicate device names"
+            ;;
+    esac
+
+    peer_id=$("$jq_bin" -r '
+        if (.[0].id | type) == "string" and (.[0].id | length) > 0
+        then .[0].id else "invalid" end
+    ' <<<"$peer_matches")
+    [ "$peer_id" != invalid ] \
+        || die "Tailscale returned invalid device identity for peer $qualified_peer"
+
+    online=$("$jq_bin" -r '
+        if (.[0].online | type) == "boolean" then .[0].online else "invalid" end
+    ' <<<"$peer_matches")
+    case "$online" in
+        true) ;;
+        false)
+            die "Tailnet peer $qualified_peer is offline; enable Tailscale and networking on the phone"
+            ;;
+        *)
+            die "Tailscale returned invalid online state for peer $qualified_peer"
+            ;;
+    esac
+
+    if [ "$print_peer_id" -eq 1 ]; then
+        printf '%s\n' "$peer_id"
+    fi
+}
+
+peer=
+print_peer_id=0
+mode=ensure
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --peer)
+            [ "$#" -ge 2 ] || die "--peer requires a hostname"
+            peer=$2
+            shift 2
+            ;;
+        --print-peer-id)
+            print_peer_id=1
+            shift
+            ;;
+        --disable)
+            [ "$mode" = ensure ] || die "choose only one state-change option"
+            mode=disable
+            shift
+            ;;
+        --enable)
+            [ "$mode" = ensure ] || die "choose only one state-change option"
+            mode=enable
+            shift
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        *)
+            die "unknown option: $1"
+            ;;
+    esac
+done
+
+[ "$print_peer_id" -eq 0 ] || [ -n "$peer" ] \
+    || die "--print-peer-id requires --peer"
+[ "$mode" = ensure ] || {
+    [ -z "$peer" ] && [ "$print_peer_id" -eq 0 ] \
+        || die "--disable and --enable cannot be combined with peer options"
+}
+
+# This path intentionally ignores XDG_STATE_HOME. Interactive shells, Raycast,
+# and launchd must observe the same deliberate-disconnect decision.
+disabled_file="$HOME/.local/state/funk/tailscale-auto-recovery.disabled"
+case "$mode" in
+    disable)
+        write_disabled_marker
+        printf 'Automatic Tailscale recovery disabled; disconnect manually when ready.\n'
+        exit 0
+        ;;
+    enable)
+        rm -f "$disabled_file"
+        printf 'Automatic Tailscale recovery enabled.\n'
+        ;;
+esac
+
+tailscale_bin=$(tailscale_binary || true)
+[ -n "$tailscale_bin" ] \
+    || die "Tailscale is missing; install or open the Tailscale app"
+jq_bin=$(jq_binary || true)
+[ -n "$jq_bin" ] || die "jq is missing; run: brew install jq"
+
+# The macOS GUI application and CLI share one executable. Scripts must set this
+# guard so a sparse launchd or Raycast environment selects CLI mode.
+export TAILSCALE_BE_CLI=1
+
+tailnet_status=
+load_status
+backend=$(backend_state)
+case "$backend" in
+    Running)
+        require_local_online
+        ;;
+    Stopped)
+        [ ! -e "$disabled_file" ] \
+            || describe_nonrunning_state "$backend"
+        printf 'Tailscale is stopped; reconnecting with saved settings.\n' >&2
+        "$tailscale_bin" up >&2 \
+            || die "tailscale up failed; open Tailscale and choose Connect"
+        wait_failed=0
+        "$tailscale_bin" wait --timeout=15s >/dev/null 2>&1 || wait_failed=1
+        load_status
+        backend=$(backend_state)
+        [ "$backend" = Running ] || describe_nonrunning_state "$backend"
+        require_local_online
+        [ "$wait_failed" -eq 0 ] \
+            || die "Tailscale reported Running, but its readiness check failed; reopen Tailscale and retry"
+        ;;
+    *)
+        describe_nonrunning_state "$backend"
+        ;;
+esac
+
+if [ -n "$peer" ]; then
+    check_peer
+fi

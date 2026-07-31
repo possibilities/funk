@@ -1,0 +1,18 @@
+#!/bin/bash
+
+set -euo pipefail
+
+[ "${1:-}" = -z ] && [ "${2:-}" = -G ] && [ "$#" -eq 5 ] || {
+    printf 'unexpected nc fixture command: %s\n' "$*" >&2
+    exit 64
+}
+
+if [ -n "${FUNK_TEST_NC_LOG:-}" ]; then
+    printf '%s\n' "$*" >>"$FUNK_TEST_NC_LOG"
+fi
+
+port=$5
+case " ${FUNK_TEST_REACHABLE_PORTS:-} " in
+    *" $port "*) exit 0 ;;
+    *) exit 1 ;;
+esac

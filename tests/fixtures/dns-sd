@@ -1,0 +1,46 @@
+#!/bin/bash
+
+set -euo pipefail
+
+if [ -n "${FUNK_TEST_DNSSD_LOG:-}" ]; then
+    printf '%s\n' "$*" >>"$FUNK_TEST_DNSSD_LOG"
+fi
+
+[ "${1:-}" = -Z ] \
+    && [ "${2:-}" = _adb-tls-connect._tcp ] \
+    && [ "${3:-}" = local. ] \
+    && [ "$#" -eq 3 ] || {
+    printf 'unexpected dns-sd fixture command: %s\n' "$*" >&2
+    exit 64
+}
+
+[ "${FUNK_TEST_DNSSD_FAIL:-0}" -eq 0 ] || exit 1
+
+# Match Darwin dns-sd -Z closely enough to catch parser assumptions: the
+# startup preamble, comments and PTR record are not SRV rows; escaped instance
+# names stay in field one; and an SRV comment follows the target in field six.
+printf '%s\n' \
+    'Browsing for _adb-tls-connect._tcp.local.' \
+    'DATE: ---Thu 30 Jul 2026---' \
+    '20:02:25.591  ...STARTING...' \
+    '' \
+    "; To direct clients to browse a different domain, substitute that domain in place of '@'" \
+    'lb._dns-sd._udp                                 PTR     @' \
+    '' \
+    '; In the list of services below, the SRV records will typically reference dot-local Multicast DNS names.' \
+    '; When transferring this zone file data to your unicast DNS server, replace those dot-local names.'
+printf '%b\n' "${FUNK_TEST_DNSSD_ZONE:-; no services}"
+
+terminate() {
+    if [ -n "${FUNK_TEST_DNSSD_TERM_LOG:-}" ]; then
+        printf 'terminated\n' >>"$FUNK_TEST_DNSSD_TERM_LOG"
+    fi
+    exit 0
+}
+
+trap terminate TERM INT HUP
+# Real dns-sd browsing continues until signalled. The production helper must
+# terminate this fixture rather than relying on it to exit after printing.
+while :; do
+    /bin/sleep 1
+done

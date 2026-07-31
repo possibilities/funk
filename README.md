@@ -138,9 +138,10 @@ configuration are intentionally not Stow-linked.
 ## Android device utilities
 
 Funk installs `scrcpy` and Android Platform Tools. The `bin` package provides
-Tailnet-only Wireless ADB helpers for the phone named `Smolbird`. They use its
-MagicDNS name `smolbird` by default and never use local-LAN mDNS discovery or
-an IP address.
+Wireless ADB helpers for the phone named `Smolbird`. ADB traffic always uses
+its fixed MagicDNS name `smolbird` by default. Local-LAN mDNS is used only to
+read the rotating port advertised by the same already-paired Android device;
+the discovered LAN address is never used as the ADB connection target.
 
 macOS installs the Tailnet resolver as a resolver scoped to the Tailnet domain,
 so it never answers a single-label query and `smolbird` alone does not resolve.
@@ -161,22 +162,73 @@ process list nor saved. Then return to the main Wireless debugging screen,
 ignore its IP address, and run `adb-wireless-connect CONNECT_PORT` with that
 screen's separate connection port.
 
-A successful explicit connection remembers only the non-secret Tailnet
-hostname and connection port under `~/.local/state/funk/`. This lets the
-Raycast commands reconnect without local discovery. Android may change the
-connection port when Wireless debugging is toggled; if so, run
-`adb-wireless-connect` again with the new port. Set `ADB_WIRELESS_HOST` or pass
+A successful explicit connection remembers the non-secret Tailnet hostname,
+Tailnet node identity, Android hardware identity, and connection port under
+`~/.local/state/funk/`. Later calls keep both identities fixed and read a
+passive Bonjour SRV snapshot for Android's rotating TLS-connect port. Service
+records are filtered by the saved Android hardware serial before any port is
+probed, and only matching ports are tested through the pinned Tailnet
+hostname. Rotating-port selection never asks ADB to enumerate mDNS services.
+Every connect, pair, and Raycast entry point exports the server-start policy
+before invoking ADB: the isolated server on `tcp:localhost:5038` has mDNS
+auto-connect disabled, so its multicast browser cannot connect to or query
+unrelated paired devices, and `ADB_USB=0` prevents it from claiming macOS USB
+interfaces from the user's normal ADB server on port 5037. Those settings are
+inherited by `scrcpy`. Saved state is replaced only after ADB confirms both
+identities. The Mac and phone must share a LAN for a rotated port to be
+discovered; a still-current saved port remains usable elsewhere.
+
+Pairing is never started by the connect helper. Existing state from an older
+Funk version is upgraded only when its saved Tailnet port still reaches the
+phone. If that legacy port has already rotated, run
+`adb-wireless-connect CONNECT_PORT` once with Smolbird's current main Wireless
+debugging port to bind both identities. Unbound or ambiguous services are
+refused rather than guessed, and unrelated services are never selected as the
+Tailnet target. An unexpected Android identity is disconnected without
+changing saved state. If pairing was explicitly forgotten or revoked, use
+`adb-wireless-pair` manually with the temporary pairing port and code.
+
+Before ADB runs, `tailscale-ensure-online` verifies that this Mac and the named
+phone peer are online. A `Stopped` local backend is reconnected with
+`tailscale up`, its saved GUI-client settings, and a bounded readiness check.
+`NeedsLogin`, invalid daemon responses, offline peers, unsupported states, and
+MagicDNS failure remain distinct actionable errors; the helper does not change
+authentication, DNS preferences, or pairing. Set `ADB_WIRELESS_HOST` or pass
 `--host PHONE.TAILNET.ts.net` to use another Tailnet DNS hostname. IP literals,
 `.local` names, and non-Tailnet domains are rejected.
 
 The Raycast Script Commands in `~/.local/bin/raycast/` provide four `scrcpy`
 launch modes: Android with or without audio, and flex-display Android with or
 without audio. Add that directory to Raycast's Script Commands directories.
-They use the same Tailnet-only helper and its last successful connection; no
-phone address, pairing code, or pairing state is stored in Funk. Raycast runs
-them without the interactive shell's environment, so each one puts the Homebrew
-and Tailscale locations on `PATH` itself and reports the helper's own error
-text instead of failing silently.
+They use the same recovery and last successful connection; no phone address,
+pairing code, or pairing state is stored in Funk. When Tailscale and the paired
+phone are available, the preflight and rotating-port refresh keep these
+launches one click. Raycast runs them without the interactive shell's
+environment, so each one puts the Homebrew and Tailscale locations on `PATH`
+itself and reports the helper's own error text instead of failing silently.
+
+The current-user `com.arthack.funk.tailscale-online` LaunchAgent invokes the
+same idempotent helper at login and every five minutes, appending only recovery
+or error output to `~/Library/Logs/Funk/tailscale-online.log`. It does not
+install a root daemon, a Homebrew `tailscaled` service, or an `/etc/resolver`
+file.
+
+The availability tradeoff is explicit: by default, a GUI disconnect or
+`tailscale down` appears as `Stopped` and is reversed within five minutes. To
+stay deliberately disconnected, persist the opt-out before disconnecting.
+The marker always lives at
+`~/.local/state/funk/tailscale-auto-recovery.disabled`; it deliberately ignores
+`XDG_STATE_HOME` so interactive shells, Raycast, and launchd make the same
+decision:
+
+```sh
+tailscale-ensure-online --disable
+tailscale down
+# Later, remove the opt-out and reconnect immediately:
+tailscale-ensure-online --enable
+```
+
+The Screen Copy path respects the same opt-out.
 
 Orca does not expose a standalone global preferences file: its settings share
 `orca-data.json` with projects, worktrees, sessions, account metadata, and
@@ -208,8 +260,8 @@ This installs Homebrew when absent, explicitly upgrades every eligible
 Brewfile dependency, stows every user configuration package, initializes
 tmux-fzf, the pinned Node runtime, and shell-gpt, installs or upgrades the AI
 tools listed above, links `funk` into the active Homebrew `bin` directory,
-installs the four-times-daily updater, starts the Yabai/skhd/Karabiner stack,
-and converges Yabai Spaces 1–9.
+installs the scheduled updater and Tailscale recovery agents, starts the
+Yabai/skhd/Karabiner stack, and converges Yabai Spaces 1–9.
 Optional system layers and the window-stack opt-out are explicit:
 
 ```sh

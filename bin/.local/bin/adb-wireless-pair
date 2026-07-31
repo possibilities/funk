@@ -13,7 +13,8 @@ Pair with the port shown under:
 The default host is smolbird. TAILNET_HOST must be a single-label MagicDNS
 name or a fully qualified *.ts.net name. Single-label names are completed with
 the Tailnet's MagicDNS suffix before use. Enter the temporary pairing code only
-at adb's prompt; it is not accepted as a command-line argument or saved.
+at adb's prompt; it is not accepted as a command-line argument or saved. Funk's
+isolated ADB server has automatic mDNS connections and USB access disabled.
 EOF
 }
 
@@ -144,6 +145,12 @@ host=$(qualify_host "$host")
 
 adb_bin=$(adb_binary || true)
 [ -n "$adb_bin" ] || die "adb is missing; run: brew install --cask android-platform-tools"
+
+# Share Funk's wireless-only ADB server with Screen Copy. Set server-start
+# policy before the first ADB command so it cannot auto-connect or claim USB.
+export ADB_MDNS_AUTO_CONNECT=0
+export ADB_USB=0
+export ADB_SERVER_SOCKET=tcp:localhost:5038
 
 printf 'Pairing with %s through the Tailnet.\n' "$host:$port"
 printf 'Enter the temporary six-digit pairing code at the adb prompt.\n'

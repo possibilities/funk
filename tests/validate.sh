@@ -26,6 +26,7 @@ libexec/initialize-configs
 libexec/configure-orca
 libexec/install-ai-tools
 libexec/install-update-agent
+libexec/install-tailscale-agent
 libexec/configure-macos
 libexec/configure-system
 libexec/funk-harden-client
@@ -43,6 +44,7 @@ bin/.local/bin/tmux-move-window
 bin/.local/bin/focus-address-bar
 bin/.local/bin/ginit
 bin/.local/bin/ghinit
+bin/.local/bin/tailscale-ensure-online
 bin/.local/bin/adb-wireless-connect
 bin/.local/bin/adb-wireless-pair
 bin/.local/bin/raycast/scrcpy.sh
@@ -50,10 +52,16 @@ bin/.local/bin/raycast/scrcpy-no-audio.sh
 bin/.local/bin/raycast/scrcpy-flex.sh
 bin/.local/bin/raycast/scrcpy-no-audio-flex.sh
 tests/adb-wireless.sh
+tests/scrcpy-launchers.sh
+tests/tailscale-online.sh
 tests/fixtures/adb
 tests/fixtures/brew
+tests/fixtures/dscacheutil
+tests/fixtures/dns-sd
 tests/fixtures/gh
+tests/fixtures/nc
 tests/fixtures/npx
+tests/fixtures/scrcpy
 tests/fixtures/spctl
 tests/fixtures/tailscale
 tests/fixtures/terminal-notifier
@@ -76,6 +84,7 @@ if command -v shellcheck >/dev/null 2>&1; then
 fi
 
 /usr/bin/plutil -lint launchd/com.arthack.funk.update.plist.in >/dev/null
+/usr/bin/plutil -lint launchd/com.arthack.funk.tailscale-online.plist.in >/dev/null
 /usr/bin/plutil -lint system/com.arthack.funk.harden-boot.plist >/dev/null
 update_plist=launchd/com.arthack.funk.update.plist.in
 expected_update_hours='0
@@ -101,6 +110,24 @@ done
 if /usr/libexec/PlistBuddy -c 'Print :RunAtLoad' "$update_plist" >/dev/null 2>&1 \
     || /usr/libexec/PlistBuddy -c 'Print :KeepAlive' "$update_plist" >/dev/null 2>&1; then
     fail "scheduled updater has an unapproved extra trigger"
+fi
+
+tailscale_plist=launchd/com.arthack.funk.tailscale-online.plist.in
+[ "$(/usr/libexec/PlistBuddy -c 'Print :RunAtLoad' "$tailscale_plist")" = true ] \
+    || fail "Tailscale recovery agent does not run at login"
+[ "$(/usr/libexec/PlistBuddy -c 'Print :StartInterval' "$tailscale_plist")" = 300 ] \
+    || fail "Tailscale recovery agent does not run every five minutes"
+[ "$(/usr/libexec/PlistBuddy -c 'Print :ProgramArguments:0' "$tailscale_plist")" \
+    = __TAILSCALE_ENSURE_ONLINE__ ] \
+    || fail "Tailscale recovery agent does not invoke the shared helper"
+[ "$(/usr/libexec/PlistBuddy -c 'Print :EnvironmentVariables:HOME' "$tailscale_plist")" \
+    = __FUNK_HOME__ ] \
+    || fail "Tailscale recovery agent does not pin the target user HOME"
+if /usr/libexec/PlistBuddy -c 'Print :ProgramArguments:1' "$tailscale_plist" \
+    >/dev/null 2>&1 \
+    || /usr/libexec/PlistBuddy -c 'Print :KeepAlive' "$tailscale_plist" \
+        >/dev/null 2>&1; then
+    fail "Tailscale recovery agent has an unapproved argument or trigger"
 fi
 
 if command -v ruby >/dev/null 2>&1; then
@@ -515,6 +542,7 @@ HOME="$ownership_home" \
 rm -rf "$update_test_dir"
 
 "$root/bin/funk" install-updater --check >/dev/null
+"$root/bin/funk" install-tailscale-recovery --check >/dev/null
 "$root/bin/funk" configure-macos --check
 
 stow_home=$(mktemp -d "${TMPDIR:-/tmp}/funk-stow-test.XXXXXX")
@@ -538,6 +566,8 @@ HOME="$stow_home" "$root/bin/funk" stow
     || fail "ghinit was not stowed as an executable"
 [ -x "$stow_home/.local/bin/adb-wireless-pair" ] \
     || fail "wireless ADB pairing helper was not stowed as an executable"
+[ -x "$stow_home/.local/bin/tailscale-ensure-online" ] \
+    || fail "Tailscale recovery helper was not stowed as an executable"
 [ -L "$stow_home/.local/bin/raycast/scrcpy.sh" ] \
     || fail "Raycast scrcpy command was not stowed"
 [ -L "$stow_home/Library/Application Support/io.datasette.llm/extra-openai-models.yaml" ] \
@@ -683,6 +713,8 @@ grep -F "\"\$funk_root/libexec/install-ai-tools\"" install >/dev/null \
     || fail "default install does not install AI tools"
 grep -F "\"\$funk_command\" configure-orca" install >/dev/null \
     || fail "default install does not reconcile Orca settings"
+grep -F "\"\$funk_command\" install-tailscale-recovery" install >/dev/null \
+    || fail "default install does not load Tailscale recovery"
 # Reopening Karabiner on every install only raises a window the user did not ask
 # for; it exists to request permissions that are already granted once its
 # per-user services are up.
@@ -928,7 +960,9 @@ grep -Fx 'brew "scrcpy"' Brewfile >/dev/null \
     || fail "scrcpy is missing from the Brewfile"
 grep -Fx 'cask "android-platform-tools", greedy: true' Brewfile >/dev/null \
     || fail "Android Platform Tools are missing from the Brewfile"
+"$root/tests/tailscale-online.sh"
 "$root/tests/adb-wireless.sh"
+"$root/tests/scrcpy-launchers.sh"
 grep -F '@raycast.title Android (audio)' bin/.local/bin/raycast/scrcpy.sh >/dev/null \
     || fail "audio scrcpy Raycast command is missing"
 grep -F '@raycast.title Android (no audio)' bin/.local/bin/raycast/scrcpy-no-audio.sh >/dev/null \

@@ -1,0 +1,17 @@
+#!/bin/bash
+
+set -euo pipefail
+
+[ -n "${FUNK_TEST_SCRCPY_LOG:-}" ] || {
+    printf 'scrcpy fixture requires FUNK_TEST_SCRCPY_LOG\n' >&2
+    exit 64
+}
+
+{
+    printf 'server_socket=%s\n' "${ADB_SERVER_SOCKET:-}"
+    printf 'mdns_auto_connect=%s\n' "${ADB_MDNS_AUTO_CONNECT:-}"
+    printf 'usb=%s\n' "${ADB_USB:-}"
+    for argument in "$@"; do
+        printf 'arg=%s\n' "$argument"
+    done
+} >>"$FUNK_TEST_SCRCPY_LOG"

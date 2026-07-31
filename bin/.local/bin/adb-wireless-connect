@@ -8,13 +8,23 @@ usage() {
 Usage: adb-wireless-connect [--host TAILNET_HOST] [--print-serial] [CONNECT_PORT]
 
 CONNECT_PORT is the port on the main Wireless debugging screen, not the
-temporary pairing port. A successful explicit connection is remembered for
-later calls from Raycast. The default host is smolbird.
+temporary pairing port. A successful explicit connection binds the Android
+hardware identity and Tailnet node for later Screen Copy launches. Without a
+port, a matching already-paired mDNS service may refresh Android's rotating
+connection port while the saved Tailnet host stays fixed. The default host is
+smolbird.
 
 TAILNET_HOST must be a single-label MagicDNS name or a fully qualified *.ts.net
 name. Single-label names are completed with the Tailnet's MagicDNS suffix
 before use. ADB_WIRELESS_HOST, ADB_WIRELESS_CONNECT_PORT, and
 ADB_WIRELESS_STATE_FILE may be used to override the defaults.
+
+Funk uses a dedicated wireless-only ADB server socket with mDNS auto-connect
+and USB disabled, so unrelated paired devices are never connected during port
+discovery and the user's normal ADB server retains USB ownership.
+
+This command never pairs automatically. If pairing was revoked, use
+adb-wireless-pair manually with the temporary pairing port and code.
 EOF
 }
 
@@ -52,10 +62,48 @@ validate_port() {
         || die "connection port must be an integer from 1 to 65535"
 }
 
+validate_tailnet_node() {
+    case "$1" in
+        ''|*[^A-Za-z0-9:+/._=-]*)
+            die "Tailscale returned an invalid peer identity for $host"
+            ;;
+    esac
+}
+
+ensure_online_binary() {
+    local candidate
+    local script_dir
+
+    script_dir=$(cd -P -- "$(dirname -- "$0")" && pwd)
+    for candidate in "${TAILSCALE_ENSURE_ONLINE:-}" \
+        "$script_dir/tailscale-ensure-online" tailscale-ensure-online \
+        "$HOME/.local/bin/tailscale-ensure-online"; do
+        [ -n "$candidate" ] || continue
+        if command -v "$candidate" >/dev/null 2>&1; then
+            command -v "$candidate"
+            return 0
+        fi
+    done
+    return 1
+}
+
 tailscale_binary() {
     local candidate
-    for candidate in "${TAILSCALE:-}" tailscale /usr/local/bin/tailscale \
-        /Applications/Tailscale.app/Contents/MacOS/Tailscale; do
+    for candidate in "${TAILSCALE:-}" tailscale \
+        /Applications/Tailscale.app/Contents/MacOS/Tailscale \
+        /opt/homebrew/bin/tailscale /usr/local/bin/tailscale; do
+        [ -n "$candidate" ] || continue
+        if command -v "$candidate" >/dev/null 2>&1; then
+            command -v "$candidate"
+            return 0
+        fi
+    done
+    return 1
+}
+
+resolver_binary() {
+    local candidate
+    for candidate in "${DSCACHEUTIL:-}" dscacheutil /usr/bin/dscacheutil; do
         [ -n "$candidate" ] || continue
         if command -v "$candidate" >/dev/null 2>&1; then
             command -v "$candidate"
@@ -70,6 +118,30 @@ tailscale_binary() {
 adb_binary() {
     local candidate
     for candidate in "${ADB:-}" adb /opt/homebrew/bin/adb /usr/local/bin/adb; do
+        [ -n "$candidate" ] || continue
+        if command -v "$candidate" >/dev/null 2>&1; then
+            command -v "$candidate"
+            return 0
+        fi
+    done
+    return 1
+}
+
+dns_sd_binary() {
+    local candidate
+    for candidate in "${DNS_SD:-}" /usr/bin/dns-sd dns-sd; do
+        [ -n "$candidate" ] || continue
+        if command -v "$candidate" >/dev/null 2>&1; then
+            command -v "$candidate"
+            return 0
+        fi
+    done
+    return 1
+}
+
+nc_binary() {
+    local candidate
+    for candidate in "${NC:-}" /usr/bin/nc nc; do
         [ -n "$candidate" ] || continue
         if command -v "$candidate" >/dev/null 2>&1; then
             command -v "$candidate"
@@ -101,10 +173,41 @@ qualify_host() {
     esac
 
     suffix=$(tailnet_suffix || true)
-    if [ -n "$suffix" ]; then
-        printf '%s.%s\n' "$1" "${suffix%.}"
-    else
-        printf '%s\n' "$1"
+    [ -n "$suffix" ] \
+        || die "Tailscale is online but did not report a MagicDNS suffix"
+    printf '%s.%s\n' "$1" "${suffix%.}"
+}
+
+ensure_magicdns() {
+    local resolver
+    resolver=$(resolver_binary || true)
+    [ -n "$resolver" ] \
+        || die "cannot check MagicDNS because dscacheutil is missing"
+
+    if ! "$resolver" -q host -a name "$host" 2>/dev/null \
+        | grep -E '^(name|ip_address|ipv6_address):[[:space:]]' >/dev/null; then
+        die "Tailscale and $host are online, but MagicDNS cannot resolve it; enable Tailscale DNS with: tailscale set --accept-dns=true"
+    fi
+}
+
+acquire_state_lock() {
+    local directory
+    local shlock_bin
+
+    directory=$(dirname "$state_file")
+    umask 077
+    mkdir -p "$directory"
+    state_lock="${state_file}.lock"
+    shlock_bin=${SHLOCK:-/usr/bin/shlock}
+    [ -x "$shlock_bin" ] || die "cannot serialize ADB state because shlock is missing"
+    "$shlock_bin" -f "$state_lock" -p "$$" \
+        || die "another adb-wireless-connect process is already updating $state_file"
+    state_locked=1
+}
+
+release_state_lock() {
+    if [ "${state_locked:-0}" -eq 1 ]; then
+        rm -f "$state_lock"
     fi
 }
 
@@ -119,6 +222,52 @@ connected_serial() {
     '
 }
 
+device_identity() {
+    local device_id
+    device_id=$("$adb_bin" -s "$1" shell getprop ro.serialno 2>/dev/null) || return 1
+    case "$device_id" in
+        ''|unknown|*[^A-Za-z0-9._:-]*) return 1 ;;
+    esac
+    printf '%s\n' "$device_id"
+}
+
+load_saved_target() {
+    local key
+    local value
+
+    IFS= read -r target <"$state_file" || true
+    case "$target" in
+        "$host":*)
+            port=${target##*:}
+            validate_port "$port"
+            ;;
+        *)
+            die "saved target does not match $host; supply the current connection port"
+            ;;
+    esac
+
+    while IFS='=' read -r key value; do
+        case "$key" in
+            serial)
+                case "$value" in
+                    ''|*[^A-Za-z0-9._:-]*)
+                        die "saved ADB device identity is invalid; supply the current connection port"
+                        ;;
+                esac
+                saved_identity=$value
+                ;;
+            tailnet_node)
+                case "$value" in
+                    ''|*[^A-Za-z0-9:+/._=-]*)
+                        die "saved Tailnet node identity is invalid; supply the current connection port"
+                        ;;
+                esac
+                saved_tailnet_node=$value
+                ;;
+        esac
+    done <"$state_file"
+}
+
 remember_target() {
     local directory
     local temporary
@@ -127,9 +276,137 @@ remember_target() {
     umask 077
     mkdir -p "$directory"
     temporary="${state_file}.tmp.$$"
-    printf '%s\n' "$target" >"$temporary"
+    {
+        printf '%s\n' "$target"
+        printf 'serial=%s\n' "$identity"
+        printf 'tailnet_node=%s\n' "$tailnet_node"
+    } >"$temporary"
     chmod 600 "$temporary"
     mv -f "$temporary" "$state_file"
+}
+
+# Query Bonjour directly instead of asking the ADB server to discover services.
+# Android prefixes a TLS-connect instance with `adb-<ro.serialno>-`; filter the
+# passive SRV snapshot by the already-bound hardware serial before probing any
+# port. Probes and ADB traffic use only the pinned Tailnet hostname.
+probe_target_port() {
+    local probe_timeout=${ADB_WIRELESS_PROBE_TIMEOUT:-2}
+
+    case "$probe_timeout" in
+        ''|*[!0-9]*) return 2 ;;
+    esac
+    [ "$probe_timeout" -ge 1 ] 2>/dev/null \
+        && [ "$probe_timeout" -le 10 ] 2>/dev/null || return 2
+    "$nc_bin" -z -G "$probe_timeout" "$host" "$1" >/dev/null 2>&1
+}
+
+discover_paired_target() {
+    local candidates
+    local discovery_pid
+    local discovery_seconds=${ADB_WIRELESS_DISCOVERY_SECONDS:-1}
+    local discovery_status
+    local probe_status
+    local reachable
+    local reachable_count
+    local port_candidate
+    local zone_output
+
+    case "$discovery_seconds" in
+        ''|*[!0-9]*) return 4 ;;
+    esac
+    [ "$discovery_seconds" -ge 1 ] 2>/dev/null \
+        && [ "$discovery_seconds" -le 10 ] 2>/dev/null || return 4
+
+    # dns-sd browse operations do not exit on their own. Always run the browse
+    # in the bounded background path; accepting zero here would run it forever.
+    discovery_status=0
+    zone_output=$(
+        "$dns_sd_bin" -Z _adb-tls-connect._tcp local. 2>/dev/null &
+        discovery_pid=$!
+        sleep "$discovery_seconds"
+        if kill -0 "$discovery_pid" 2>/dev/null; then
+            kill "$discovery_pid" 2>/dev/null || true
+            wait "$discovery_pid" 2>/dev/null || true
+        else
+            wait "$discovery_pid"
+        fi
+    ) || discovery_status=$?
+    [ "$discovery_status" -eq 0 ] || return 3
+
+    candidates=$(
+        printf '%s\n' "$zone_output" | awk -v identity="$saved_identity" '
+            $2 == "SRV" {
+                marker = "._adb-tls-connect._tcp"
+                position = index($1, marker)
+                if (!position) {
+                    next
+                }
+                instance = substr($1, 1, position - 1)
+                prefix = "adb-" identity "-"
+                if (index(instance, prefix) != 1) {
+                    next
+                }
+                port = $5
+                if (port ~ /^[0-9]+$/ && port >= 1 && port <= 65535 &&
+                    !seen[port]++) {
+                    print port
+                }
+            }
+        '
+    )
+    [ -n "$candidates" ] || return 1
+
+    reachable=
+    while IFS= read -r port_candidate; do
+        [ -n "$port_candidate" ] || continue
+        if probe_target_port "$port_candidate"; then
+            reachable="${reachable}${port_candidate}
+"
+        else
+            probe_status=$?
+            [ "$probe_status" -ne 2 ] || return 3
+        fi
+    done <<EOF
+$candidates
+EOF
+
+    reachable_count=$(
+        printf '%s' "$reachable" | awk 'NF { count++ } END { print count + 0 }'
+    )
+    [ "$reachable_count" -gt 0 ] || return 1
+    [ "$reachable_count" -eq 1 ] || return 2
+    port=$(printf '%s' "$reachable" | awk 'NF { print; exit }')
+    target="$host:$port"
+    return 0
+}
+
+connect_target() {
+    local connect_output
+    local context=${1:-normal}
+
+    if ! connect_output=$("$adb_bin" connect "$target" 2>&1); then
+        printf '%s\n' "$connect_output" >&2
+        case "$connect_output" in
+            *authenticate*|*Authentication*)
+                die "ADB authentication failed for $target; pairing may have been revoked, so pair manually with adb-wireless-pair"
+                ;;
+        esac
+        if [ "$context" = legacy ]; then
+            die "the unbound saved target $target could not be verified; supply Smolbird's current Wireless debugging port once—pairing was not changed"
+        fi
+        die "ADB could not reach $target; pairing was not changed—confirm Wireless debugging is enabled on the phone"
+    fi
+    printf '%s\n' "$connect_output" >&2
+    serial=$(connected_serial "$target" || true)
+    [ -n "$serial" ] || die "ADB connected but did not report $target as a device"
+    identity=$(device_identity "$serial" || true)
+    [ -n "$identity" ] \
+        || die "ADB did not report a stable device identity for $target"
+    if [ "$context" != explicit ] && [ -n "$saved_identity" ] \
+        && [ "$identity" != "$saved_identity" ]; then
+        "$adb_bin" disconnect "$target" >/dev/null 2>&1 || true
+        die "ADB identity mismatch for $target; disconnected the unexpected device and preserved saved state"
+    fi
 }
 
 host=${ADB_WIRELESS_HOST:-smolbird}
@@ -168,26 +445,38 @@ done
 }
 
 validate_tailnet_host "$host"
+requested_port=${1:-${ADB_WIRELESS_CONNECT_PORT:-}}
+if [ -n "$requested_port" ]; then
+    validate_port "$requested_port"
+fi
+ensure_online_bin=$(ensure_online_binary || true)
+[ -n "$ensure_online_bin" ] \
+    || die "tailscale-ensure-online is missing; run: funk stow bin"
+if ! tailnet_node=$("$ensure_online_bin" --peer "$host" --print-peer-id); then
+    exit 1
+fi
+validate_tailnet_node "$tailnet_node"
+
+export TAILSCALE_BE_CLI=1
 host=$(qualify_host "$host")
+ensure_magicdns
 
 state_file=${ADB_WIRELESS_STATE_FILE:-${XDG_STATE_HOME:-"$HOME/.local/state"}/funk/adb-wireless-target}
-port=${1:-${ADB_WIRELESS_CONNECT_PORT:-}}
+state_locked=0
+state_lock=
+acquire_state_lock
+trap release_state_lock EXIT
+
+port=$requested_port
 explicit_port=0
+saved_identity=
+saved_tailnet_node=
+identity=
 if [ -n "$port" ]; then
     explicit_port=1
-    validate_port "$port"
     target="$host:$port"
 elif [ -r "$state_file" ]; then
-    IFS= read -r target <"$state_file" || true
-    case "$target" in
-        "$host":*)
-            port=${target##*:}
-            validate_port "$port"
-            ;;
-        *)
-            die "saved target does not match $host; supply the current connection port"
-            ;;
-    esac
+    load_saved_target
 else
     target=
 fi
@@ -195,34 +484,106 @@ fi
 adb_bin=$(adb_binary || true)
 [ -n "$adb_bin" ] || die "adb is missing; run: brew install --cask android-platform-tools"
 
+# Isolate Funk from the default ADB server. This server never auto-connects to
+# mDNS advertisements or claims USB interfaces from the user's normal server.
+export ADB_MDNS_AUTO_CONNECT=0
+export ADB_USB=0
+export ADB_SERVER_SOCKET=tcp:localhost:5038
+
+if [ "$explicit_port" -eq 0 ] && [ -n "$saved_tailnet_node" ] \
+    && [ "$tailnet_node" != "$saved_tailnet_node" ]; then
+    die "Tailnet identity mismatch for $host; the hostname now names a different node, so no ADB connection was attempted"
+fi
+
 if [ -z "$target" ]; then
-    target=$(
+    existing_targets=$(
         "$adb_bin" devices 2>/dev/null | awk -F '\t' -v host="$host" '
             NR > 1 && $2 == "device" && index($1, host ":") == 1 {
                 print $1
-                exit
             }
         '
     )
+    [ "$(printf '%s\n' "$existing_targets" | awk 'NF { count++ } END { print count + 0 }')" -le 1 ] \
+        || die "multiple connected ADB targets use $host; supply the current connection port"
+    target=$existing_targets
     [ -n "$target" ] \
-        || die "no saved connection for $host; supply the port from the Wireless debugging screen"
+        || die "no device identity is bound to $host; supply Smolbird's current Wireless debugging port once"
 fi
 
 serial=
-if [ "$explicit_port" -eq 1 ]; then
-    "$adb_bin" connect "$target" >&2
+if [ "$explicit_port" -eq 0 ]; then
     serial=$(connected_serial "$target" || true)
-else
-    serial=$(connected_serial "$target" || true)
-    if [ -z "$serial" ]; then
-        "$adb_bin" connect "$target" >&2
-        serial=$(connected_serial "$target" || true)
+    if [ -n "$serial" ]; then
+        identity=$(device_identity "$serial" || true)
     fi
 fi
 
-[ -n "$serial" ] || die "ADB did not report $target as a connected device"
+state_is_bound=0
+if [ -n "$saved_identity" ] && [ -n "$saved_tailnet_node" ]; then
+    state_is_bound=1
+fi
 
-if [ "$explicit_port" -eq 1 ]; then
+if [ -z "$serial" ] && [ "$explicit_port" -eq 0 ] && [ "$state_is_bound" -eq 1 ]; then
+    nc_bin=$(nc_binary || true)
+    [ -n "$nc_bin" ] || die "cannot probe the saved ADB port because nc is missing"
+    if probe_target_port "$port"; then
+        connect_target
+    else
+        probe_status=$?
+        [ "$probe_status" -ne 2 ] \
+            || die "the saved ADB port probe configuration is invalid"
+        dns_sd_bin=$(dns_sd_binary || true)
+        [ -n "$dns_sd_bin" ] \
+            || die "cannot discover the rotating ADB port because dns-sd is missing"
+        if discover_paired_target; then
+            connect_target
+        else
+            discovery_status=$?
+            case "$discovery_status" in
+                1)
+                    die "no reachable mDNS port matches the saved phone identity; confirm both devices share a LAN and Wireless debugging is enabled"
+                    ;;
+                2)
+                    die "multiple reachable mDNS ports match the saved phone identity; no ADB connection was attempted"
+                    ;;
+                3)
+                    die "passive DNS-SD discovery failed; the saved target was not changed"
+                    ;;
+                4)
+                    die "ADB_WIRELESS_DISCOVERY_SECONDS must be an integer from 1 to 10; zero would leave dns-sd running indefinitely"
+                    ;;
+            esac
+        fi
+    fi
+elif [ -z "$serial" ] && [ "$explicit_port" -eq 0 ]; then
+    nc_bin=$(nc_binary || true)
+    [ -n "$nc_bin" ] || die "cannot verify the legacy ADB port because nc is missing"
+    if probe_target_port "$port"; then
+        connect_target legacy
+    else
+        probe_status=$?
+        [ "$probe_status" -ne 2 ] \
+            || die "the saved ADB port probe configuration is invalid"
+        die "the unbound saved target $target could not be verified; supply Smolbird's current Wireless debugging port once—pairing was not changed"
+    fi
+elif [ -z "$serial" ]; then
+    connect_target explicit
+fi
+
+[ -n "$serial" ] || die "ADB did not report $target as a connected device"
+if [ -z "$identity" ]; then
+    identity=$(device_identity "$serial" || true)
+fi
+[ -n "$identity" ] || die "ADB did not report a stable device identity for $target"
+if [ "$explicit_port" -eq 0 ] && [ -n "$saved_identity" ] \
+    && [ "$identity" != "$saved_identity" ]; then
+    die "ADB identity mismatch for $target; the saved phone is $saved_identity but the endpoint reported ${identity}—state was not changed"
+fi
+
+if [ "$explicit_port" -eq 1 ] || [ ! -r "$state_file" ] \
+    || [ "$target" != "$(head -n 1 "$state_file")" ] \
+    || [ "$identity" != "$saved_identity" ] \
+    || [ "$tailnet_node" != "$saved_tailnet_node" ]; then
     remember_target
 fi
 

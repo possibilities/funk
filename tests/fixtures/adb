@@ -8,18 +8,85 @@ shift || true
 if [ -n "${FUNK_TEST_ADB_LOG:-}" ]; then
     {
         printf '%s' "$command"
-        printf '\t%s' "$@"
+        for argument in "$@"; do
+            printf '\t%s' "$argument"
+        done
         printf '\n'
     } >>"$FUNK_TEST_ADB_LOG"
 fi
 
+if [ -n "${FUNK_TEST_ADB_ENV_LOG:-}" ]; then
+    printf '%s\tauto=%s\tsocket=%s\tusb=%s\n' \
+        "$command" "${ADB_MDNS_AUTO_CONNECT:-}" "${ADB_SERVER_SOCKET:-}" \
+        "${ADB_USB:-}" \
+        >>"$FUNK_TEST_ADB_ENV_LOG"
+fi
+
+if [ "${FUNK_TEST_ADB_SIMULATE_MDNS_AUTOCONNECT:-0}" -eq 1 ] \
+    && [ "${ADB_MDNS_AUTO_CONNECT:-adb-tls-connect}" != 0 ]; then
+    [ -z "${FUNK_TEST_ADB_LOG:-}" ] \
+        || printf 'auto-connect\tunrelated-paired-device\n' >>"$FUNK_TEST_ADB_LOG"
+fi
+if [ "${FUNK_TEST_ADB_SIMULATE_USB_CONTENTION:-0}" -eq 1 ] \
+    && [ "${ADB_USB:-1}" != 0 ]; then
+    [ -z "${FUNK_TEST_ADB_LOG:-}" ] \
+        || printf 'usb-claim\texclusive-interface\n' >>"$FUNK_TEST_ADB_LOG"
+fi
+
 case "$command" in
+    -s)
+        selected_serial=${1:-}
+        selected_command=${2:-}
+        selected_argument=${3:-}
+        selected_property=${4:-}
+        [ "$selected_command" = shell ] \
+            && [ "$selected_argument" = getprop ] \
+            && [ "$selected_property" = ro.serialno ] || {
+            printf 'unexpected adb fixture selected command: %s %s %s\n' \
+                "$selected_command" "$selected_argument" "$selected_property" >&2
+            exit 64
+        }
+        [ "${FUNK_TEST_ADB_IDENTITY_FAIL:-0}" -eq 0 ] || exit 1
+        identity=${FUNK_TEST_ADB_DEFAULT_IDENTITY:-R5CT91TW4RP}
+        if [ -n "${FUNK_TEST_ADB_IDENTITIES:-}" ]; then
+            mapped=$(
+                printf '%b\n' "$FUNK_TEST_ADB_IDENTITIES" | awk -F '\t' \
+                    -v selected="$selected_serial" '$1 == selected { print $2; exit }'
+            )
+            [ -z "$mapped" ] || identity=$mapped
+        fi
+        printf '%s\n' "$identity"
+        ;;
     devices)
+        [ "${FUNK_TEST_ADB_DEVICES_FAIL:-0}" -eq 0 ] || exit 1
         printf 'List of devices attached\n'
         [ -z "${FUNK_TEST_ADB_DEVICES:-}" ] || printf '%b\n' "$FUNK_TEST_ADB_DEVICES"
+        if [ -n "${FUNK_TEST_ADB_CONNECTED_FILE:-}" ] \
+            && [ -r "$FUNK_TEST_ADB_CONNECTED_FILE" ]; then
+            printf '%s\tdevice\n' "$(cat "$FUNK_TEST_ADB_CONNECTED_FILE")"
+        fi
         ;;
     connect)
+        [ -z "${FUNK_TEST_ADB_CONNECT_ERROR:-}" ] || {
+            printf '%s\n' "$FUNK_TEST_ADB_CONNECT_ERROR" >&2
+            exit 1
+        }
+        if [ -n "${FUNK_TEST_ADB_CONNECTED_FILE:-}" ]; then
+            printf '%s\n' "${1:-unknown}" >"$FUNK_TEST_ADB_CONNECTED_FILE"
+        fi
         printf 'connected to %s\n' "${1:-unknown}"
+        ;;
+    disconnect)
+        if [ -n "${FUNK_TEST_ADB_CONNECTED_FILE:-}" ] \
+            && [ -r "$FUNK_TEST_ADB_CONNECTED_FILE" ] \
+            && [ "$(cat "$FUNK_TEST_ADB_CONNECTED_FILE")" = "${1:-}" ]; then
+            rm -f "$FUNK_TEST_ADB_CONNECTED_FILE"
+        fi
+        printf 'disconnected %s\n' "${1:-unknown}"
+        ;;
+    mdns)
+        printf 'unsafe adb mdns discovery invoked\n' >&2
+        exit 70
         ;;
     pair)
         printf 'Successfully paired to %s\n' "${1:-unknown}"
