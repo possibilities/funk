@@ -36,3 +36,4 @@ cask "raycast", greedy: true
 cask "android-platform-tools", greedy: true
 cask "karabiner-elements", greedy: true
 cask "font-0xproto-nerd-font", greedy: true
+cask "finetune", greedy: true
