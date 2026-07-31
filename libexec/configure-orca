@@ -157,7 +157,11 @@ if [ "$converged" -eq 1 ]; then
 fi
 
 if orca_is_running; then
-    die "Orca is running and its settings differ; quit Orca, then rerun funk configure-orca"
+    # Writing now would race Orca's own writer and lose settings. This is a
+    # deferrable condition, not a broken installation, so it exits EX_TEMPFAIL
+    # rather than a general error: ./install reports it and keeps going.
+    printf 'funk configure-orca: Orca is running and its settings differ; quit Orca, then rerun funk configure-orca\n' >&2
+    exit 75
 fi
 
 data_dir=$(dirname "$data_file")

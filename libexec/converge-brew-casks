@@ -32,10 +32,16 @@ find_brew() {
 
 script_dir=$(cd -P -- "$(dirname -- "$0")" && pwd)
 release_quarantine="$script_dir/release-cask-quarantine"
+repair_artifacts="$script_dir/repair-cask-artifacts"
 [ -x "$release_quarantine" ] || die "missing helper: $release_quarantine"
+[ -x "$repair_artifacts" ] || die "missing helper: $repair_artifacts"
 
 brew_bin=$(find_brew) || die "Homebrew is not installed"
+export FUNK_BREW_BIN="$brew_bin"
 export HOMEBREW_NO_ASK=1
+
+# Undo any aborted-upgrade Caskroom state before Homebrew tries to move an app.
+"$repair_artifacts" "$@"
 
 for cask in "$@"; do
     receipt_name=${cask##*/}

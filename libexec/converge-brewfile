@@ -33,13 +33,19 @@ find_brew() {
 funk_root=${FUNK_ROOT:?FUNK_ROOT is not set}
 brewfile="$funk_root/Brewfile"
 release_quarantine="$funk_root/libexec/release-cask-quarantine"
+repair_artifacts="$funk_root/libexec/repair-cask-artifacts"
 
 [ -f "$brewfile" ] || die "Brewfile not found: $brewfile"
 [ -x "$release_quarantine" ] || die "missing helper: $release_quarantine"
+[ -x "$repair_artifacts" ] || die "missing helper: $repair_artifacts"
 
 brew_bin=$(find_brew) || die "Homebrew is not installed"
 export FUNK_BREW_BIN="$brew_bin"
 export HOMEBREW_NO_ASK=1
 
+# An upgrade that aborted after Homebrew's backup step leaves a real directory
+# where the Caskroom expects a symlink, and every later upgrade of that cask
+# fails until it is undone. Repair that before asking Homebrew to converge.
+"$repair_artifacts" --brewfile "$brewfile"
 "$brew_bin" bundle install --upgrade --file="$brewfile"
 "$release_quarantine" --brewfile "$brewfile"

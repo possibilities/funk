@@ -21,6 +21,45 @@ find_brew() {
     return 1
 }
 
+# Every check below is unprivileged and none of them can prompt: sudo runs with
+# -n purely to ask whether the digest-pinned rule still matches the installed
+# binary. When all four hold there is nothing for the root installer or the
+# maintenance helper to converge, so asking for a password would buy nothing.
+# Karabiner is opened here only so a first install can request its input
+# monitoring and Accessibility permissions. Its per-user session services run
+# only once that has been granted, so when they are up there is nothing to
+# approve and raising the settings window on every install is pure noise.
+karabiner_is_active() {
+    if [ -n "${FUNK_TEST_KARABINER_ACTIVE:-}" ]; then
+        [ "$FUNK_TEST_KARABINER_ACTIVE" = 1 ]
+        return
+    fi
+    /usr/bin/pgrep -x karabiner_console_user_server >/dev/null 2>&1 && return 0
+    /usr/bin/pgrep -x Karabiner-Core-Service >/dev/null 2>&1
+}
+
+windows_converged() {
+    local helper=/usr/local/libexec/funk-yabai-maintain
+    local config=/etc/funk/yabai.conf
+    local installed_digest
+    local source_digest
+
+    [ -f "$helper" ] && [ ! -L "$helper" ] || return 1
+    [ "$(stat -f '%Su' "$helper")" = root ] || return 1
+    [ -f "$config" ] && [ ! -L "$config" ] || return 1
+
+    source_digest=$(/usr/bin/shasum -a 256 "$funk_root/system/funk-yabai-maintain" \
+        | /usr/bin/awk '{print $1}')
+    installed_digest=$(/usr/bin/shasum -a 256 "$helper" | /usr/bin/awk '{print $1}')
+    [ -n "$source_digest" ] && [ "$source_digest" = "$installed_digest" ] || return 1
+
+    grep -Fxq "user=$(id -un)" "$config" || return 1
+    grep -Fxq "binary=$yabai_bin" "$config" || return 1
+
+    /usr/bin/sudo -n -l "$yabai_bin" --load-sa >/dev/null 2>&1 || return 1
+    "$yabai_bin" -m query --spaces --space 9 >/dev/null 2>&1 || return 1
+}
+
 if [ "$#" -ne 0 ]; then
     printf 'Usage: funk install-windows\n' >&2
     exit 64
@@ -49,22 +88,35 @@ brew_owner=$(stat -f '%Su' "$brew_prefix")
 
 "$stow_config" yabai skhd karabiner
 
-printf 'Installing the root-owned Yabai maintenance helper (no SIP change or SA load yet).\n'
-/usr/bin/sudo "$root_installer" \
-    --user "$(id -un)" \
-    --binary "$yabai_bin" \
-    --source-root "$funk_root"
+if windows_converged; then
+    converged=1
+    printf 'Root helper, its configuration, the digest-pinned rule for the installed\n'
+    printf 'Yabai, and Spaces 1-9 are already converged; skipping the privileged step.\n'
+else
+    converged=0
+    printf 'Installing the root-owned Yabai maintenance helper (no SIP change or SA load yet).\n'
+    /usr/bin/sudo "$root_installer" \
+        --user "$(id -un)" \
+        --binary "$yabai_bin" \
+        --source-root "$funk_root"
+fi
 
 export PATH="$brew_prefix/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 "$skhd_bin" --start-service || printf 'skhd start needs Accessibility approval; retry after granting it.\n' >&2
-/usr/bin/open -a Karabiner-Elements \
-    || printf 'Open Karabiner-Elements manually to approve its requested permissions.\n' >&2
+if karabiner_is_active; then
+    printf 'Karabiner-Elements is already running with its permissions granted.\n'
+else
+    /usr/bin/open -a Karabiner-Elements \
+        || printf 'Open Karabiner-Elements manually to approve its requested permissions.\n' >&2
+fi
 
-printf 'Loading Yabai scripting addition and converging Spaces 1-9.\n'
-if ! "$funk_root/bin/funk" yabai maintain; then
-    "$yabai_bin" --start-service \
-        || printf 'Yabai start needs Accessibility approval; retry after granting it.\n' >&2
-    die "numbered-Space setup failed; complete the documented SIP and boot-argument prerequisites, then rerun funk install-windows"
+if [ "$converged" -eq 0 ]; then
+    printf 'Loading Yabai scripting addition and converging Spaces 1-9.\n'
+    if ! "$funk_root/bin/funk" yabai maintain; then
+        "$yabai_bin" --start-service \
+            || printf 'Yabai start needs Accessibility approval; retry after granting it.\n' >&2
+        die "numbered-Space setup failed; complete the documented SIP and boot-argument prerequisites, then rerun funk install-windows"
+    fi
 fi
 
 cat <<'EOF'

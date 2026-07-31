@@ -1,0 +1,218 @@
+#!/bin/bash
+
+set -euo pipefail
+
+die() {
+    printf 'Funk cask repair: %s\n' "$*" >&2
+    exit 1
+}
+
+find_brew() {
+    if [ -n "${FUNK_BREW_BIN:-}" ] && [ -x "$FUNK_BREW_BIN" ]; then
+        printf '%s\n' "$FUNK_BREW_BIN"
+        return
+    fi
+    if command -v brew >/dev/null 2>&1; then
+        command -v brew
+        return
+    fi
+    for candidate in /opt/homebrew/bin/brew /usr/local/bin/brew; do
+        if [ -x "$candidate" ]; then
+            printf '%s\n' "$candidate"
+            return
+        fi
+    done
+    return 1
+}
+
+usage() {
+    cat <<'EOF'
+Usage: repair-cask-artifacts [--check] [--brewfile FILE] [CASK ...]
+
+Restore Homebrew's Caskroom invariant for installed cask .app artifacts.
+
+A completed cask install leaves a symlink at
+$(brew --prefix)/Caskroom/<token>/<version>/<App>.app pointing at the app's
+declared target. An upgrade that aborts after Homebrew's backup step leaves a
+real directory there instead, and every later upgrade of that cask fails with
+"It seems there is already an App at '<caskroom path>'". This helper deletes
+that stale backup and recreates the symlink Homebrew itself would have written.
+
+Options:
+  --check           Report the repairs without changing anything
+  --brewfile FILE   Also select every cask declared by FILE
+EOF
+}
+
+check_only=0
+brewfile=
+casks=()
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --check) check_only=1 ;;
+        --brewfile)
+            [ "$#" -ge 2 ] || {
+                usage >&2
+                exit 64
+            }
+            brewfile="$2"
+            shift
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        -*)
+            usage >&2
+            exit 64
+            ;;
+        *)
+            casks+=("$1")
+            ;;
+    esac
+    shift
+done
+
+[ "$(id -u)" -ne 0 ] || die "run as the target user, not root"
+
+brew_bin=$(find_brew) || die "Homebrew is not installed"
+brew_prefix=$("$brew_bin" --prefix)
+caskroom="$brew_prefix/Caskroom"
+
+if [ -n "$brewfile" ]; then
+    [ -f "$brewfile" ] || die "Brewfile not found: $brewfile"
+    while IFS= read -r cask; do
+        [ -n "$cask" ] && casks+=("$cask")
+    done < <("$brew_bin" bundle list --file="$brewfile" --cask)
+fi
+
+if [ "${#casks[@]}" -eq 0 ]; then
+    printf 'Funk cask repair: no casks selected\n'
+    exit 0
+fi
+
+tmpdir=$(mktemp -d "${TMPDIR:-/tmp}/funk-cask-repair.XXXXXX")
+trap 'rm -rf "$tmpdir"' EXIT
+json="$tmpdir/casks.json"
+records="$tmpdir/records"
+
+"$brew_bin" info --cask --json=v2 "${casks[@]}" >"$json"
+
+# One record per installed cask .app artifact: token, receipt version, the name
+# Homebrew stages inside the Caskroom, and the artifact's declared target.
+/usr/bin/jq -r '
+  .casks[]
+  | select(.installed != null and .installed != "")
+  | select(.token != null and .token != "")
+  | . as $cask
+  | $cask.artifacts[]
+  | select(has("app"))
+  | . as $artifact
+  | $artifact.app[]?
+  | select(type == "string")
+  | . as $staged
+  | [
+      $cask.token,
+      $cask.installed,
+      $staged,
+      ($artifact.target // ("/Applications/" + $staged))
+    ]
+  | @tsv
+' "$json" | LC_ALL=C sort -u >"$records"
+
+repaired=0
+healthy=0
+while IFS=$'\t' read -r token version staged target; do
+    [ -n "$token" ] && [ -n "$version" ] && [ -n "$staged" ] && [ -n "$target" ] \
+        || continue
+
+    case "$token" in
+        */*|.|..|"") die "refusing unsupported cask token: $token" ;;
+    esac
+    case "$version" in
+        */*|.|..|"") die "refusing unsupported cask version: $version" ;;
+    esac
+    case "$staged" in
+        */*|.|..) die "refusing unsupported staged artifact name: $staged" ;;
+        *.app) ;;
+        *) continue ;;
+    esac
+
+    # shellcheck disable=SC2088 # Match Homebrew's literal ~/ target form.
+    case "$target" in
+        "~/"*) target="$HOME/${target#~/}" ;;
+    esac
+    case "$target" in
+        /*.app) ;;
+        *) die "refusing non-app cask artifact target: $target" ;;
+    esac
+    case "$target" in
+        *"/../"*|*"/./"*)
+            die "refusing non-canonical cask artifact target: $target"
+            ;;
+    esac
+
+    source_dir="$caskroom/$token/$version"
+    source_path="$source_dir/$staged"
+
+    [ -d "$source_dir" ] || continue
+    [ -e "$source_path" ] || [ -L "$source_path" ] || continue
+
+    if [ -L "$source_path" ]; then
+        healthy=$((healthy + 1))
+        continue
+    fi
+    [ -d "$source_path" ] || die "unexpected Caskroom artifact: $source_path"
+
+    # Only a real directory beside a live target is the aborted-upgrade backup.
+    # A Caskroom copy whose target is gone is the app's only remaining copy, so
+    # leave it for Homebrew rather than guessing at a reinstall.
+    if [ ! -d "$target" ] || [ -L "$target" ]; then
+        printf 'Funk cask repair: %s has a Caskroom backup but no installed app at %s; leaving it for Homebrew\n' \
+            "$token" "$target" >&2
+        continue
+    fi
+
+    source_owner=$(stat -f '%Su' "$source_path")
+    [ "$source_owner" = "$(id -un)" ] \
+        || die "Caskroom backup $source_path is owned by $source_owner, not $(id -un)"
+
+    target_parent=$(cd -P -- "$(dirname -- "$target")" 2>/dev/null && pwd) \
+        || die "app target parent is unavailable: $target"
+    home_applications=$(
+        cd -P -- "$HOME/Applications" 2>/dev/null && pwd
+    ) || home_applications=
+    if [ "$target_parent" != /Applications ] \
+        && [ "$target_parent" != "$home_applications" ]; then
+        die "refusing app target outside an approved Applications directory: $target"
+    fi
+    target="$target_parent/$(basename -- "$target")"
+
+    # Never delete outside the Caskroom, whatever Homebrew reported.
+    resolved_source_dir=$(cd -P -- "$source_dir" && pwd) \
+        || die "Caskroom directory is unavailable: $source_dir"
+    resolved_caskroom=$(cd -P -- "$caskroom" && pwd) \
+        || die "Caskroom is unavailable: $caskroom"
+    case "$resolved_source_dir" in
+        "$resolved_caskroom"/*) ;;
+        *) die "refusing to repair outside the Caskroom: $resolved_source_dir" ;;
+    esac
+    source_path="$resolved_source_dir/$staged"
+
+    if [ "$check_only" -eq 1 ]; then
+        printf 'Would replace stale Caskroom backup %s with a symlink to %s\n' \
+            "$source_path" "$target"
+        repaired=$((repaired + 1))
+        continue
+    fi
+
+    printf 'Replacing the stale Caskroom backup for %s with the symlink Homebrew expects.\n' \
+        "$token"
+    rm -rf "$source_path"
+    ln -s "$target" "$source_path"
+    [ -L "$source_path" ] && [ "$(readlink "$source_path")" = "$target" ] \
+        || die "could not restore the Caskroom symlink: $source_path"
+    repaired=$((repaired + 1))
+done <"$records"
+
+printf 'Funk cask repair: %d repaired, %d already linked\n' "$repaired" "$healthy"

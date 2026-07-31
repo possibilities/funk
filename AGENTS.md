@@ -42,6 +42,26 @@ configuration, root-owned helpers, LaunchDaemons, or rendered LaunchAgents.
 Install privileged files through Funk's guarded helpers; never link a root
 execution path into this user-writable checkout.
 
+## Unprivileged convergence
+
+A default `./install` must not ask for a password once the machine has
+converged. Two rules keep that true, and both are asserted by
+`tests/validate.sh`:
+
+- The scheduled `funk update` path never elevates. Anything needing
+  administrator authentication is identified by `libexec/list-unattendable-casks`
+  and skipped through `HOMEBREW_BUNDLE_CASK_SKIP`, then reported, rather than
+  attempted and failed.
+- A privileged step runs only when it would actually change something. Compare
+  the installed state first, as `libexec/install-window-manager` does before
+  invoking `system/install-yabai-root`, and skip the step when it already
+  matches.
+
+Repair state that makes Homebrew elevate instead of letting it recur:
+`libexec/reclaim-app-ownership` for applications left by a previous account,
+and `libexec/repair-cask-artifacts` for Caskroom state left by an aborted
+upgrade.
+
 ## AI tooling and skills
 
 Funk is the sole owner of AI-stack installation. Keep desktop applications,

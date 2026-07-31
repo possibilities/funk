@@ -17,6 +17,9 @@ libexec/funk-update
 libexec/converge-brewfile
 libexec/converge-brew-casks
 libexec/release-cask-quarantine
+libexec/repair-cask-artifacts
+libexec/reclaim-app-ownership
+libexec/list-unattendable-casks
 libexec/install-orca
 libexec/stow-config
 libexec/initialize-configs
@@ -375,6 +378,140 @@ set -e
     || fail "cask quarantine helper accepted an app outside approved directories"
 /usr/bin/xattr -p com.apple.quarantine "$outside_app" >/dev/null \
     || fail "cask quarantine helper modified a rejected target"
+
+# An upgrade that aborts after Homebrew's backup step leaves a real directory in
+# the Caskroom where a completed install leaves a symlink to the app. Homebrew
+# then fails every later upgrade of that cask, so the repair helper must restore
+# the symlink whenever the installed application is still in place.
+repair_home="$update_test_dir/repair-home"
+repair_prefix="$update_test_dir/repair-prefix"
+repair_info="$update_test_dir/repair-info.json"
+repair_target="$repair_home/Applications/Funk Repair.app"
+repair_backup="$repair_prefix/Caskroom/funk-repair/1.0.0/Funk Repair.app"
+mkdir -p "$repair_target/Contents" "$repair_backup/Contents"
+touch "$repair_target/Contents/live" "$repair_backup/Contents/stale"
+/usr/bin/jq -n --arg target "$repair_target" \
+    '{casks:[{token:"funk-repair",installed:"1.0.0",
+              artifacts:[{app:["Funk Repair.app"],target:$target}]}]}' \
+    >"$repair_info"
+HOME="$repair_home" \
+    FUNK_BREW_BIN="$root/tests/fixtures/brew" \
+    FUNK_TEST_BREW_PREFIX="$repair_prefix" \
+    FUNK_TEST_CASK_INFO="$repair_info" \
+    "$root/libexec/repair-cask-artifacts" funk-repair >/dev/null \
+    || fail "cask repair helper failed on an aborted-upgrade backup"
+[ -L "$repair_backup" ] \
+    || fail "cask repair helper did not replace the stale backup with a symlink"
+repair_target_canonical=$(cd -P -- "$(dirname -- "$repair_target")" && pwd)
+repair_target_canonical="$repair_target_canonical/$(basename -- "$repair_target")"
+[ "$(readlink "$repair_backup")" = "$repair_target_canonical" ] \
+    || fail "cask repair helper linked the Caskroom at the wrong target"
+[ -f "$repair_target/Contents/live" ] \
+    || fail "cask repair helper modified the installed application"
+
+# A healthy Caskroom is already a symlink and must be left exactly as it is.
+HOME="$repair_home" \
+    FUNK_BREW_BIN="$root/tests/fixtures/brew" \
+    FUNK_TEST_BREW_PREFIX="$repair_prefix" \
+    FUNK_TEST_CASK_INFO="$repair_info" \
+    "$root/libexec/repair-cask-artifacts" funk-repair >/dev/null \
+    || fail "cask repair helper was not idempotent"
+[ -L "$repair_backup" ] && [ -f "$repair_target/Contents/live" ] \
+    || fail "cask repair helper disturbed an already-linked cask"
+
+# Without the installed application the Caskroom copy is the only one left, so
+# the helper must leave it for Homebrew instead of deleting or relinking it.
+rm -rf "$repair_target" "$repair_backup"
+mkdir -p "$repair_backup/Contents"
+touch "$repair_backup/Contents/only-copy"
+HOME="$repair_home" \
+    FUNK_BREW_BIN="$root/tests/fixtures/brew" \
+    FUNK_TEST_BREW_PREFIX="$repair_prefix" \
+    FUNK_TEST_CASK_INFO="$repair_info" \
+    "$root/libexec/repair-cask-artifacts" funk-repair >/dev/null 2>&1 \
+    || fail "cask repair helper failed when the installed application was absent"
+[ -f "$repair_backup/Contents/only-copy" ] && [ ! -L "$repair_backup" ] \
+    || fail "cask repair helper destroyed the only remaining copy of an app"
+
+# The helper deletes directories, so an artifact target outside an approved
+# Applications directory must be refused rather than followed.
+repair_outside="$update_test_dir/Repair Outside.app"
+repair_outside_backup="$repair_prefix/Caskroom/funk-repair/1.0.0/Repair Outside.app"
+mkdir -p "$repair_outside" "$repair_outside_backup/Contents"
+touch "$repair_outside_backup/Contents/stale"
+/usr/bin/jq -n --arg target "$repair_outside" \
+    '{casks:[{token:"funk-repair",installed:"1.0.0",
+              artifacts:[{app:["Repair Outside.app"],target:$target}]}]}' \
+    >"$repair_info"
+set +e
+HOME="$repair_home" \
+    FUNK_BREW_BIN="$root/tests/fixtures/brew" \
+    FUNK_TEST_BREW_PREFIX="$repair_prefix" \
+    FUNK_TEST_CASK_INFO="$repair_info" \
+    "$root/libexec/repair-cask-artifacts" funk-repair >/dev/null 2>&1
+repair_outside_status=$?
+set -e
+[ "$repair_outside_status" -ne 0 ] \
+    || fail "cask repair helper accepted an app outside approved directories"
+[ -d "$repair_outside" ] && [ ! -L "$repair_outside" ] \
+    || fail "cask repair helper modified a rejected target"
+[ -f "$repair_outside_backup/Contents/stale" ] \
+    || fail "cask repair helper deleted a backup before rejecting its target"
+
+# The scheduled LaunchAgent has no terminal, so a cask that installs a pkg or
+# runs a sudo uninstall script must be named for HOMEBREW_BUNDLE_CASK_SKIP
+# instead of failing the whole unattended run.
+unattendable_info="$update_test_dir/unattendable-info.json"
+unattendable_home="$update_test_dir/unattendable-home"
+mkdir -p "$unattendable_home/Applications"
+/usr/bin/jq -n '{casks:[
+    {token:"funk-pkg",installed:"1.0.0",artifacts:[{pkg:["Funk.pkg"]}]},
+    {token:"funk-sudo-script",installed:"1.0.0",
+     artifacts:[{uninstall:[{early_script:{executable:"/x",sudo:true}}]}]},
+    {token:"funk-zap-sudo",installed:"1.0.0",
+     artifacts:[{zap:[{script:{executable:"/x",sudo:true}}]}]},
+    {token:"funk-plain-script",installed:"1.0.0",
+     artifacts:[{uninstall:[{script:{executable:"/x"}}]}]},
+    {token:"funk-ordinary",installed:"1.0.0",
+     artifacts:[{app:["Funk Ordinary.app"]}]}
+]}' >"$unattendable_info"
+unattendable=$(
+    HOME="$unattendable_home" \
+        FUNK_BREW_BIN="$root/tests/fixtures/brew" \
+        FUNK_TEST_BREW_PREFIX="$repair_prefix" \
+        FUNK_TEST_CASK_INFO="$unattendable_info" \
+        "$root/libexec/list-unattendable-casks" funk-ordinary
+)
+expected_unattendable='funk-pkg
+funk-sudo-script
+funk-zap-sudo'
+[ "$unattendable" = "$expected_unattendable" ] \
+    || fail "unattendable cask triage did not match the required set: $unattendable"
+
+# Ownership reclamation must stay silent when every application already belongs
+# to this account, so ./install never asks for a password it does not need.
+ownership_home="$update_test_dir/ownership-home"
+ownership_info="$update_test_dir/ownership-info.json"
+ownership_app="$ownership_home/Applications/Funk Owned.app"
+mkdir -p "$ownership_app/Contents"
+/usr/bin/jq -n --arg target "$ownership_app" \
+    '{casks:[{token:"funk-owned",installed:"1.0.0",
+              artifacts:[{app:["Funk Owned.app"],target:$target}]}]}' \
+    >"$ownership_info"
+ownership_casks=$(
+    HOME="$ownership_home" \
+        FUNK_BREW_BIN="$root/tests/fixtures/brew" \
+        FUNK_TEST_CASK_INFO="$ownership_info" \
+        "$root/libexec/reclaim-app-ownership" --list-casks funk-owned
+)
+[ -z "$ownership_casks" ] \
+    || fail "ownership helper flagged an application this account already owns"
+HOME="$ownership_home" \
+    FUNK_BREW_BIN="$root/tests/fixtures/brew" \
+    FUNK_TEST_CASK_INFO="$ownership_info" \
+    "$root/libexec/reclaim-app-ownership" --check funk-owned >/dev/null \
+    || fail "ownership helper failed its no-op check"
+
 rm -rf "$update_test_dir"
 
 "$root/bin/funk" install-updater --check >/dev/null
@@ -456,6 +593,10 @@ orca_running_status=$?
 set -e
 [ "$orca_running_status" -ne 0 ] \
     || fail "Orca settings reconciliation raced a running divergent profile"
+# EX_TEMPFAIL distinguishes "repeat this after quitting Orca" from a broken
+# installation, so ./install can report it instead of failing the whole run.
+[ "$orca_running_status" -eq 75 ] \
+    || fail "running-Orca guard did not exit EX_TEMPFAIL: $orca_running_status"
 printf '%s\n' "$orca_running_output" | grep -F 'quit Orca' >/dev/null \
     || fail "Orca running-profile guard did not explain how to reconcile"
 HOME="$stow_home" FUNK_TEST_ORCA_RUNNING=0 "$root/bin/funk" configure-orca >/dev/null
@@ -542,6 +683,19 @@ grep -F "\"\$funk_root/libexec/install-ai-tools\"" install >/dev/null \
     || fail "default install does not install AI tools"
 grep -F "\"\$funk_command\" configure-orca" install >/dev/null \
     || fail "default install does not reconcile Orca settings"
+# Reopening Karabiner on every install only raises a window the user did not ask
+# for; it exists to request permissions that are already granted once its
+# per-user services are up.
+grep -F 'if karabiner_is_active; then' libexec/install-window-manager >/dev/null \
+    || fail "window installer reopens Karabiner even when it is already running"
+grep -F 'pgrep -x karabiner_console_user_server' libexec/install-window-manager >/dev/null \
+    || fail "Karabiner activity check does not test its per-user session service"
+
+# A running Orca must not fail the whole installation.
+grep -F 'orca_status" -eq 75' install >/dev/null \
+    || fail "default install treats a deferred Orca reconciliation as a failure"
+grep -F 'funk configure-orca' install >/dev/null \
+    || fail "default install does not report how to finish a deferred Orca step"
 grep -F 'with_windows=1' install >/dev/null \
     || fail "default install does not enable the window stack"
 grep -F -- '--without-windows) with_windows=0' install >/dev/null \
@@ -629,8 +783,9 @@ for required_ai_install in \
     'remove com.apple.quarantine only from Homebrew'\''s declared Orca.app target' \
     'curl -fsSL https://claude.ai/install.sh | bash' \
     'curl -fsSL https://chatgpt.com/codex/install.sh | CODEX_NON_INTERACTIVE=1 sh' \
-    'curl -fsSL https://opencode.ai/install | bash -s -- --no-modify-path' \
-    'curl -fsSL https://pi.dev/install.sh | sh' \
+    'gh release view --repo anomalyco/opencode --json tagName  # avoids the anonymous API limit' \
+    'curl -fsSL https://opencode.ai/install | VERSION=<resolved> bash -s -- --no-modify-path' \
+    'curl -fsSL https://pi.dev/install.sh | sh  # in its own session, no controlling terminal' \
     'npm install --global @native-sdk/cli@latest' \
     'codex mcp add --url https://docs.livekit.io/mcp livekit-docs' \
     'claude mcp add --scope user --transport http livekit-docs https://docs.livekit.io/mcp' \
@@ -671,6 +826,23 @@ grep -F "\$art_hack_root/hack/agents/openai.yaml" libexec/install-ai-tools >/dev
     || fail "AI installer does not validate the Hack skill manifest"
 grep -F 'install_or_upgrade_formula gh' libexec/install-ai-tools >/dev/null \
     || fail "AI installer does not deliberately converge the GitHub CLI"
+
+# OpenCode's installer fails the whole run once the 60-an-hour anonymous GitHub
+# API limit is exhausted, so the release must be resolved through gh instead.
+# shellcheck disable=SC2016 # Match the literal shell variables in the script.
+grep -F 'VERSION="$version" /bin/bash -s -- --no-modify-path' \
+    libexec/install-ai-tools >/dev/null \
+    || fail "OpenCode install does not supply a gh-resolved release version"
+# shellcheck disable=SC2016 # Match the literal scoped repository variable.
+grep -F 'gh release view --repo "$repo"' libexec/install-ai-tools >/dev/null \
+    || fail "OpenCode release is not resolved with the authenticated GitHub CLI"
+
+# Pi reads its prompts from /dev/tty, so only removing the controlling terminal
+# keeps ./install unattended and stops it editing Funk's Stow-managed profile.
+grep -F 'run_without_controlling_terminal /bin/sh' libexec/install-ai-tools >/dev/null \
+    || fail "Pi installer is not detached from the controlling terminal"
+grep -F 'POSIX::setsid()' libexec/install-ai-tools >/dev/null \
+    || fail "Pi installer detachment does not start a new session"
 grep -F '^[[:space:]]*oauth_token:' libexec/install-ai-tools >/dev/null \
     || fail "GitHub CLI migration does not require a portable token"
 grep -F 'Preserving existing GitHub CLI credentials' libexec/install-ai-tools >/dev/null \
@@ -696,6 +868,14 @@ for required_setting in \
 done
 grep -F '/usr/bin/killall Raycast' libexec/configure-macos >/dev/null \
     || fail "Raycast is not stopped before its hotkey preference is written"
+# Stopping Raycast discards what the user was doing and forces it to re-register
+# its global hotkey, so it must happen only when a preference actually differs.
+grep -F 'raycast_default_matches raycastGlobalHotkey "Command-2"' \
+    libexec/configure-macos >/dev/null \
+    || fail "Raycast is stopped without first reading its current preferences"
+grep -F 'Raycast preferences already match; leaving it running.' \
+    libexec/configure-macos >/dev/null \
+    || fail "converged Raycast is not left running"
 if grep -Eqi 'wallpaper|desktop-image|DesktopImageURL' libexec/configure-macos; then
     fail "user-level macOS preferences still enforce a wallpaper"
 fi
@@ -783,9 +963,35 @@ fi
 if grep -Eqi 'bundle cleanup|uninstall|fetch-head|telegram|sudo' \
     bin/funk libexec/funk-update libexec/install-update-agent \
     libexec/install-orca libexec/converge-brewfile libexec/converge-brew-casks \
+    libexec/repair-cask-artifacts \
     launchd/com.arthack.funk.update.plist.in; then
     fail "scheduled updater contains a prohibited operation"
 fi
+
+# The triage helper reads Homebrew's removal metadata, so it names the privileged
+# stanzas it looks for and cannot join the literal scan above. It still runs on
+# the scheduled path, so assert directly that it can never elevate.
+if grep -Eq '(^|[[:space:];&|(])(/usr/bin/)?sudo([[:space:]]|$)' \
+    libexec/list-unattendable-casks; then
+    fail "unattended cask triage can invoke sudo"
+fi
+if grep -Fq 'reclaim-app-ownership' libexec/list-unattendable-casks; then
+    fail "unattended cask triage depends on the privileged ownership helper"
+fi
+grep -F 'HOMEBREW_BUNDLE_CASK_SKIP' libexec/funk-update >/dev/null \
+    || fail "scheduled updater does not skip casks that need administrator authentication"
+
+# Homebrew fails every later upgrade of a cask left in the aborted-upgrade state,
+# so both convergence paths must repair it before asking Homebrew to move an app.
+# shellcheck disable=SC2016 # Match the literal repair invocation in the script.
+grep -F '"$repair_artifacts" --brewfile "$brewfile"' \
+    libexec/converge-brewfile >/dev/null \
+    || fail "Brewfile convergence does not repair aborted-upgrade Caskroom state"
+# shellcheck disable=SC2016 # Match the literal repair invocation in the script.
+grep -F '"$repair_artifacts" "$@"' libexec/converge-brew-casks >/dev/null \
+    || fail "cask convergence does not repair aborted-upgrade Caskroom state"
+grep -F 'libexec/reclaim-app-ownership' install >/dev/null \
+    || fail "installer does not reclaim applications left by a previous account"
 
 if grep -R -E '/Users/[A-Za-z0-9._-]+|home.router|telegram|agentnotify|TCC\.db|security import|yabai-cert' \
     Brewfile bin launchd libexec system yabai skhd karabiner >/dev/null; then

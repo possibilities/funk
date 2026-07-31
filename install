@@ -119,11 +119,30 @@ else
     ln -s "$funk_command" "$cli_path"
 fi
 
+# Applications left behind by a previous account cannot be upgraded by this one,
+# so Homebrew would fall back to its own sudo chown on every run and the
+# scheduled updater, which has no terminal, could never converge them. Reclaim
+# them once here; the step is a silent no-op once ownership is correct.
+"$funk_root/libexec/reclaim-app-ownership" \
+    --brewfile "$funk_root/Brewfile" \
+    claude chatgpt stablyai/orca/orca
+
 FUNK_ROOT="$funk_root" "$funk_root/libexec/converge-brewfile"
 "$funk_command" stow
 "$funk_root/libexec/initialize-configs"
 "$funk_root/libexec/install-ai-tools"
-"$funk_command" configure-orca
+# Orca owns its own settings file while it runs, so configure-orca refuses to
+# race it and exits EX_TEMPFAIL. That is a step to repeat after quitting Orca,
+# not a failed installation, so record it and finish everything else.
+orca_settings_deferred=0
+orca_status=0
+"$funk_command" configure-orca || orca_status=$?
+if [ "$orca_status" -eq 75 ]; then
+    orca_settings_deferred=1
+elif [ "$orca_status" -ne 0 ]; then
+    exit "$orca_status"
+fi
+
 "$funk_command" install-updater
 "$funk_command" configure-macos
 
@@ -144,3 +163,11 @@ Command: $cli_path
 Repository: $funk_root
 Update log: $HOME/Library/Logs/Funk/update.log
 EOF
+
+if [ "$orca_settings_deferred" -eq 1 ]; then
+    cat <<'EOF'
+
+Deferred: Orca was running, so its settings overlay was left alone rather than
+raced. Quit Orca and run: funk configure-orca
+EOF
+fi

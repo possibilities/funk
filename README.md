@@ -184,8 +184,12 @@ other generated state, and Orca atomically replaces that file when saving.
 Funk therefore stows a credential-free settings overlay at
 `~/.config/orca/settings.json` and `funk configure-orca` reconciles only those
 keys into the active profile. If Orca is open and the profile differs, the
-command stops instead of racing Orca's writer; quit Orca and rerun it. The
-default installer runs this reconciliation after installing Orca.
+command stops instead of racing Orca's writer; quit Orca and rerun it. It exits
+`75` (`EX_TEMPFAIL`) in that case, which marks a step to repeat rather than a
+broken installation. The default installer runs this reconciliation after
+installing Orca, and treats `75` as deferred: it finishes every remaining step,
+still succeeds, and closes by naming the one command left to run. Any other
+non-zero status still fails the installation.
 
 Run `funk stow` after changing or adding a package. Existing target files are
 never silently replaced: inspect a dry run with `funk stow --check`, then use
@@ -233,15 +237,73 @@ Homebrew is single-prefix software. Funk refuses to operate if the detected
 Homebrew prefix belongs to another macOS account; resolve that ownership choice
 before installing from a new account.
 
+### Applications left by a previous account
+
+An application in `/Applications` that still belongs to a previous local
+account cannot be replaced by this one, so Homebrew falls back to its own
+`chown` on every upgrade. That prompt cannot be answered by the scheduled
+updater, and cancelling it leaves the Caskroom in the aborted-upgrade state
+described below.
+
+`./install` therefore reclaims those bundles first. It reassigns only installed
+cask `.app` targets that are currently owned by another non-root local account,
+in one scoped `chown`, and it is a silent no-op once ownership is correct. A
+root-owned application installed from a pkg is never touched. Inspect the plan
+without changing anything:
+
+```sh
+libexec/reclaim-app-ownership --check --brewfile Brewfile
+```
+
+This is the only step of a default `./install` that can ask for a password, and
+only until it has run once.
+
+### Aborted cask upgrades
+
+A completed cask install leaves a symlink at
+`$(brew --prefix)/Caskroom/<token>/<version>/<App>.app` pointing at the
+installed application. An upgrade interrupted after Homebrew's backup step
+leaves a real directory there instead, and every later upgrade of that cask
+fails with `It seems there is already an App at '<caskroom path>'`.
+
+Both convergence paths repair that before asking Homebrew to move an
+application, so the failure cannot persist across runs:
+
+```sh
+libexec/repair-cask-artifacts --check --brewfile Brewfile
+```
+
+The helper only replaces a stale backup whose application is still installed in
+an approved Applications directory. When the application is gone the Caskroom
+copy is the only one left, so it is reported and left for Homebrew.
+
 ## Scheduled updates
 
 `funk update` converges the unattended-safe update set:
 
 ```sh
+# repair any aborted-upgrade Caskroom state left by an interrupted run
+# skip the casks that cannot converge without administrator authentication
 brew bundle install --upgrade --file=/resolved/path/to/Funk/Brewfile
 # release quarantine only from Brewfile casks' declared .app targets
 # install or greedily upgrade Orca, release its app quarantine, and sync its skills
 ```
+
+The LaunchAgent has no terminal, so a cask that needs administrator
+authentication would fail the entire run rather than only itself. Before
+converging, the updater names those casks for `HOMEBREW_BUNDLE_CASK_SKIP`:
+
+```sh
+libexec/list-unattendable-casks --brewfile Brewfile
+```
+
+A cask qualifies when it installs a pkg, when its removal steps run a
+privileged script, or when its installed application still belongs to another
+local account. `karabiner-elements` and `tailscale-app` are permanently in this
+set because both install a pkg. Skipped casks are logged and named in the
+notification as `Needs ./install: ...`, so an interactive `./install` still
+upgrades them. The helper only reads Homebrew metadata and file ownership; the
+scheduled path never elevates.
 
 The explicit `--upgrade` overrides `HOMEBREW_BUNDLE_NO_UPGRADE`; every Brewfile
 cask is also marked `greedy: true`, so Homebrew considers casks that declare

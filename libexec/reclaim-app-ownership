@@ -1,0 +1,221 @@
+#!/bin/bash
+
+set -euo pipefail
+
+die() {
+    printf 'Funk app ownership: %s\n' "$*" >&2
+    exit 1
+}
+
+find_brew() {
+    if [ -n "${FUNK_BREW_BIN:-}" ] && [ -x "$FUNK_BREW_BIN" ]; then
+        printf '%s\n' "$FUNK_BREW_BIN"
+        return
+    fi
+    if command -v brew >/dev/null 2>&1; then
+        command -v brew
+        return
+    fi
+    for candidate in /opt/homebrew/bin/brew /usr/local/bin/brew; do
+        if [ -x "$candidate" ]; then
+            printf '%s\n' "$candidate"
+            return
+        fi
+    done
+    return 1
+}
+
+usage() {
+    cat <<'EOF'
+Usage: reclaim-app-ownership [--check|--list-casks] [--brewfile FILE] [CASK ...]
+
+Give the current account ownership of installed cask .app bundles that still
+belong to another local account.
+
+An application directory owned by a different account cannot be modified by
+this account, so Homebrew falls back to "Using sudo to gain ownership of path"
+on every upgrade. That prompt cannot be answered by the scheduled update
+LaunchAgent, and cancelling it leaves the Caskroom in the aborted-upgrade state
+that repair-cask-artifacts exists to undo. One scoped chown removes the prompt
+permanently.
+
+Only bundles currently owned by a non-root local account are reclaimed, so
+root-owned applications installed from a pkg are never touched.
+
+Options:
+  --check           Report the affected bundles without changing anything
+  --list-casks      Print only the cask tokens with foreign-owned bundles
+  --brewfile FILE   Also select every cask declared by FILE
+EOF
+}
+
+mode=reclaim
+brewfile=
+casks=()
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --check) mode=check ;;
+        --list-casks) mode=list ;;
+        --brewfile)
+            [ "$#" -ge 2 ] || {
+                usage >&2
+                exit 64
+            }
+            brewfile="$2"
+            shift
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        -*)
+            usage >&2
+            exit 64
+            ;;
+        *)
+            casks+=("$1")
+            ;;
+    esac
+    shift
+done
+
+[ "$(uname -s)" = Darwin ] || die "macOS is required"
+[ "$(id -u)" -ne 0 ] || die "run as the target user, not root"
+
+target_user=$(id -un)
+brew_bin=$(find_brew) || die "Homebrew is not installed"
+
+if [ -n "$brewfile" ]; then
+    [ -f "$brewfile" ] || die "Brewfile not found: $brewfile"
+    while IFS= read -r cask; do
+        [ -n "$cask" ] && casks+=("$cask")
+    done < <("$brew_bin" bundle list --file="$brewfile" --cask)
+fi
+
+if [ "${#casks[@]}" -eq 0 ]; then
+    [ "$mode" = list ] || printf 'Funk app ownership: no casks selected\n'
+    exit 0
+fi
+
+tmpdir=$(mktemp -d "${TMPDIR:-/tmp}/funk-app-ownership.XXXXXX")
+trap 'rm -rf "$tmpdir"' EXIT
+json="$tmpdir/casks.json"
+records="$tmpdir/records"
+
+"$brew_bin" info --cask --json=v2 "${casks[@]}" >"$json"
+
+/usr/bin/jq -r '
+  .casks[]
+  | select(.installed != null and .installed != "")
+  | select(.token != null and .token != "")
+  | . as $cask
+  | $cask.artifacts[]
+  | select(has("app"))
+  | . as $artifact
+  | $artifact.app[]?
+  | select(type == "string")
+  | . as $staged
+  | [$cask.token, ($artifact.target // ("/Applications/" + $staged))]
+  | @tsv
+' "$json" | LC_ALL=C sort -u >"$records"
+
+foreign_paths=()
+foreign_casks=()
+while IFS=$'\t' read -r token target; do
+    [ -n "$token" ] && [ -n "$target" ] || continue
+
+    # shellcheck disable=SC2088 # Match Homebrew's literal ~/ target form.
+    case "$target" in
+        "~/"*) target="$HOME/${target#~/}" ;;
+    esac
+    case "$target" in
+        /*.app) ;;
+        *) die "refusing non-app cask artifact target: $target" ;;
+    esac
+    case "$target" in
+        *"/../"*|*"/./"*)
+            die "refusing non-canonical cask artifact target: $target"
+            ;;
+    esac
+
+    [ -d "$target" ] || continue
+    [ ! -L "$target" ] || continue
+
+    target_parent=$(cd -P -- "$(dirname -- "$target")" 2>/dev/null && pwd) \
+        || die "app target parent is unavailable: $target"
+    home_applications=$(
+        cd -P -- "$HOME/Applications" 2>/dev/null && pwd
+    ) || home_applications=
+    if [ "$target_parent" != /Applications ] \
+        && [ "$target_parent" != "$home_applications" ]; then
+        die "refusing app target outside an approved Applications directory: $target"
+    fi
+    target="$target_parent/$(basename -- "$target")"
+
+    owner=$(stat -f '%Su' "$target")
+    owner_uid=$(stat -f '%u' "$target")
+    [ "$owner" != "$target_user" ] || continue
+
+    # A root-owned bundle belongs to a pkg installer, not to a migrated account.
+    # Reassigning it would fight the installer that owns it.
+    if [ "$owner_uid" -lt 500 ]; then
+        continue
+    fi
+
+    foreign_paths+=("$target")
+    foreign_casks+=("$token")
+done <"$records"
+
+if [ "${#foreign_paths[@]}" -eq 0 ]; then
+    case "$mode" in
+        list) ;;
+        *) printf 'Funk app ownership: every installed cask app belongs to %s\n' \
+            "$target_user" ;;
+    esac
+    exit 0
+fi
+
+if [ "$mode" = list ]; then
+    printf '%s\n' "${foreign_casks[@]}" | LC_ALL=C sort -u
+    exit 0
+fi
+
+printf 'These installed applications still belong to another local account, so\n'
+printf 'Homebrew cannot upgrade them without administrator authentication:\n'
+for index in "${!foreign_paths[@]}"; do
+    printf '  %s (owned by %s, cask %s)\n' \
+        "${foreign_paths[$index]}" \
+        "$(stat -f '%Su' "${foreign_paths[$index]}")" \
+        "${foreign_casks[$index]}"
+done
+
+if [ "$mode" = check ]; then
+    printf 'Would run: sudo /usr/sbin/chown -R -- %s <the paths above>\n' "$target_user"
+    exit 0
+fi
+
+if [ ! -t 0 ] && ! /usr/bin/sudo -n true 2>/dev/null; then
+    printf 'Funk app ownership: no terminal is available to authenticate.\n' >&2
+    printf 'Run this once from a terminal:\n' >&2
+    printf '  sudo /usr/sbin/chown -R -- %s' "$target_user" >&2
+    printf ' %q' "${foreign_paths[@]}" >&2
+    printf '\n' >&2
+    exit 1
+fi
+
+printf 'Reassigning them to %s. This is the only step in ./install that needs a\n' \
+    "$target_user"
+printf 'password, it is skipped once ownership is correct, and it changes nothing\n'
+printf 'except the owner of the application bundles listed above.\n'
+
+/usr/bin/sudo /usr/sbin/chown -R -- "$target_user" "${foreign_paths[@]}" \
+    || die "could not reassign ownership of the installed applications"
+
+for path in "${foreign_paths[@]}"; do
+    owner=$(stat -f '%Su' "$path")
+    [ "$owner" = "$target_user" ] \
+        || die "ownership of $path is still $owner after chown"
+done
+
+printf 'Funk app ownership: reclaimed %d application bundle(s) for %s\n' \
+    "${#foreign_paths[@]}" "$target_user"

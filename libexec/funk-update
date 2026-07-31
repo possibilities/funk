@@ -43,6 +43,7 @@ funk_root=${FUNK_ROOT:?FUNK_ROOT is not set}
 brewfile="$funk_root/Brewfile"
 orca_installer="$funk_root/libexec/install-orca"
 brewfile_installer="$funk_root/libexec/converge-brewfile"
+unattendable_lister="$funk_root/libexec/list-unattendable-casks"
 
 if [ ! -f "$brewfile" ]; then
     log "FAILED: Brewfile not found at $brewfile" >&2
@@ -54,6 +55,10 @@ fi
 }
 [ -x "$brewfile_installer" ] || {
     log "FAILED: Brewfile installer not found at $brewfile_installer" >&2
+    exit 66
+}
+[ -x "$unattendable_lister" ] || {
+    log "FAILED: cask triage helper not found at $unattendable_lister" >&2
     exit 66
 }
 
@@ -195,6 +200,21 @@ send_notification() {
 
 snapshot_versions "$before"
 
+# A pkg cask, a cask whose removal steps run a privileged script, and an
+# application still owned by another local account all need administrator
+# authentication. This LaunchAgent has no terminal, so attempting one fails the
+# whole run. Leave them to ./install and report them instead of failing here.
+skipped_casks=$("$unattendable_lister" --brewfile "$brewfile" 2>/dev/null || true)
+skipped_summary=
+if [ -n "$skipped_casks" ]; then
+    export HOMEBREW_BUNDLE_CASK_SKIP="$skipped_casks"
+    skipped_summary=$(
+        printf '%s\n' "$skipped_casks" \
+            | /usr/bin/awk 'NF { list = list ? list ", " $0 : $0 } END { print list }'
+    )
+    log "skipping casks that require administrator authentication: $skipped_summary"
+fi
+
 status=0
 log "starting: $brew_bin bundle install --upgrade --file=$brewfile"
 "$brewfile_installer" || status=$?
@@ -231,6 +251,9 @@ if [ "$notify" -eq 1 ]; then
             notification_body="Updated: $change_summary"
         else
             notification_body="Installer ran; no updates."
+        fi
+        if [ -n "$skipped_summary" ]; then
+            notification_body="$notification_body Needs ./install: $skipped_summary."
         fi
         send_notification "Funk Update" "$notification_body" || status=1
     else

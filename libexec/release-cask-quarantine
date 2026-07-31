@@ -67,8 +67,22 @@ spctl_bin=${FUNK_SPCTL_BIN:-/usr/sbin/spctl}
 
 if [ -n "$brewfile" ]; then
     [ -f "$brewfile" ] || die "Brewfile not found: $brewfile"
+    # A cask the convergence skipped was not installed or upgraded in this run,
+    # so it has no freshly staged artifact to release. Its application may also
+    # belong to another account, where reading extended attributes is denied.
+    skipped=" $(
+        printf '%s' "${HOMEBREW_BUNDLE_CASK_SKIP:-}" | /usr/bin/tr '\n' ' '
+    ) "
     while IFS= read -r cask; do
-        [ -n "$cask" ] && casks+=("$cask")
+        [ -n "$cask" ] || continue
+        case "$skipped" in
+            *" $cask "*)
+                printf 'Funk cask quarantine: skipping %s; it was not converged in this run\n' \
+                    "$cask"
+                continue
+                ;;
+        esac
+        casks+=("$cask")
     done < <("$brew_bin" bundle list --file="$brewfile" --cask)
 fi
 

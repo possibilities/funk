@@ -1,0 +1,157 @@
+#!/bin/bash
+
+set -euo pipefail
+
+die() {
+    printf 'Funk unattendable casks: %s\n' "$*" >&2
+    exit 1
+}
+
+find_brew() {
+    if [ -n "${FUNK_BREW_BIN:-}" ] && [ -x "$FUNK_BREW_BIN" ]; then
+        printf '%s\n' "$FUNK_BREW_BIN"
+        return
+    fi
+    if command -v brew >/dev/null 2>&1; then
+        command -v brew
+        return
+    fi
+    for candidate in /opt/homebrew/bin/brew /usr/local/bin/brew; do
+        if [ -x "$candidate" ]; then
+            printf '%s\n' "$candidate"
+            return
+        fi
+    done
+    return 1
+}
+
+usage() {
+    cat <<'EOF'
+Usage: list-unattendable-casks [--brewfile FILE] [CASK ...]
+
+Print the cask tokens that cannot converge without administrator
+authentication, one per line, for HOMEBREW_BUNDLE_CASK_SKIP.
+
+A cask is unattendable when it installs a pkg, when its removal steps run a
+privileged script, or when its installed application still belongs to another
+local account. The scheduled update LaunchAgent has no terminal, so attempting
+one of these fails the whole run; ./install converges them interactively.
+
+This helper only reads Homebrew metadata and file ownership. It changes
+nothing and never elevates, so the scheduled path stays unprivileged.
+
+Options:
+  --brewfile FILE   Also select every cask declared by FILE
+EOF
+}
+
+brewfile=
+casks=()
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --brewfile)
+            [ "$#" -ge 2 ] || {
+                usage >&2
+                exit 64
+            }
+            brewfile="$2"
+            shift
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        -*)
+            usage >&2
+            exit 64
+            ;;
+        *)
+            casks+=("$1")
+            ;;
+    esac
+    shift
+done
+
+brew_bin=$(find_brew) || die "Homebrew is not installed"
+
+if [ -n "$brewfile" ]; then
+    [ -f "$brewfile" ] || die "Brewfile not found: $brewfile"
+    while IFS= read -r cask; do
+        [ -n "$cask" ] && casks+=("$cask")
+    done < <("$brew_bin" bundle list --file="$brewfile" --cask)
+fi
+
+[ "${#casks[@]}" -gt 0 ] || exit 0
+
+tmpdir=$(mktemp -d "${TMPDIR:-/tmp}/funk-unattendable.XXXXXX")
+trap 'rm -rf "$tmpdir"' EXIT
+json="$tmpdir/casks.json"
+owned="$tmpdir/owned"
+
+"$brew_bin" info --cask --json=v2 "${casks[@]}" >"$json"
+
+# An application directory owned by another local account cannot be replaced by
+# this account, so Homebrew would have to elevate to converge it.
+/usr/bin/jq -r '
+  .casks[]
+  | select(.installed != null and .installed != "")
+  | select(.token != null and .token != "")
+  | . as $cask
+  | $cask.artifacts[]
+  | select(has("app"))
+  | . as $artifact
+  | $artifact.app[]?
+  | select(type == "string")
+  | . as $staged
+  | [$cask.token, ($artifact.target // ("/Applications/" + $staged))]
+  | @tsv
+' "$json" >"$owned"
+
+{
+    /usr/bin/jq -r '
+      def privileged_step($step):
+        ($step.script? // null) as $script
+        | ($step.early_script? // null) as $early
+        | ((($script | type) == "object" and $script.sudo == true)
+           or (($early | type) == "object" and $early.sudo == true));
+
+      .casks[]
+      | select(.token != null and .token != "")
+      | select(
+          ([.artifacts[]? | select(has("pkg"))] | length) > 0
+          or
+          ([
+             .artifacts[]?
+             | (.uninstall? // empty), (.zap? // empty)
+             | .[]?
+             | select(privileged_step(.))
+           ] | length) > 0
+        )
+      | .token
+    ' "$json"
+
+    current_user=$(id -un)
+    while IFS=$'\t' read -r token target; do
+        [ -n "$token" ] && [ -n "$target" ] || continue
+
+        # shellcheck disable=SC2088 # Match Homebrew's literal ~/ target form.
+        case "$target" in
+            "~/"*) target="$HOME/${target#~/}" ;;
+        esac
+        case "$target" in
+            /*.app) ;;
+            *) continue ;;
+        esac
+
+        [ -d "$target" ] && [ ! -L "$target" ] || continue
+
+        owner=$(stat -f '%Su' "$target" 2>/dev/null) || continue
+        owner_uid=$(stat -f '%u' "$target" 2>/dev/null) || continue
+        [ "$owner" != "$current_user" ] || continue
+        # A root-owned bundle belongs to a pkg installer, which the artifact
+        # scan above already reports.
+        [ "$owner_uid" -ge 500 ] || continue
+
+        printf '%s\n' "$token"
+    done <"$owned"
+} | LC_ALL=C sort -u
