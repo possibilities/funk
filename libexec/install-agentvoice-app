@@ -41,7 +41,10 @@ find_bun() {
 
 # AgentVoice remains its own repository and owns packaging, transactional bundle
 # replacement, launch, and readiness verification. Funk only provisions the
-# prerequisites and invokes that contract against a local checkout.
+# prerequisites and invokes that contract against a local checkout. Rerunning is
+# safe but is not a Funk-side no-op: AgentVoice replaces and relaunches an
+# inactive installed app, and refuses when the installed copy is running, whose
+# quit-and-rerun diagnostic and nonzero status this script simply propagates.
 agentvoice_root="$HOME/code/agentvoice"
 [ -f "$agentvoice_root/package.json" ] \
     || die "AgentVoice checkout not found: $agentvoice_root/package.json is missing"

@@ -518,15 +518,29 @@ grep -F "bun-stub <run> <--cwd> <$app_agentvoice_root> <app:install>" \
     "$app_bun_log" >/dev/null \
     || fail "AgentVoice app installer did not invoke the AgentVoice app:install contract"
 
-# Rerunning against an already-current app must stay a clean no-op.
+# Repeat interactive setup is not a Funk-side no-op: every run delegates to
+# AgentVoice again, and AgentVoice decides whether it can replace the bundle.
 : >"$app_bun_log"
 run_app_installer FUNK_TEST_ZIG_VERSION=0.16.1
 [ "$app_status" -eq 0 ] || fail "first AgentVoice app install run failed"
 run_app_installer FUNK_TEST_ZIG_VERSION=0.16.1
 [ "$app_status" -eq 0 ] \
-    || fail "AgentVoice app installer is not idempotent on an already-current app"
+    || fail "repeat AgentVoice app install failed against an inactive installed app"
 [ "$(grep -c -F "<app:install>" "$app_bun_log")" -eq 2 ] \
     || fail "AgentVoice app installer did not delegate both runs to AgentVoice"
+
+# An installed copy that is currently running makes AgentVoice refuse, and that
+# refusal must reach the user with its quit-and-rerun instruction and status.
+: >"$app_bun_log"
+run_app_installer FUNK_TEST_ZIG_VERSION=0.16.1 FUNK_TEST_AGENTVOICE_APP_RUNNING=1
+[ "$app_status" -eq 3 ] \
+    || fail "AgentVoice app installer did not propagate the running-app refusal status"
+printf '%s\n' "$app_output" \
+    | grep -F 'quit it and rerun this installer' >/dev/null \
+    || fail "AgentVoice app installer swallowed the running-app diagnostic"
+grep -F "bun-stub <run> <--cwd> <$app_agentvoice_root> <app:install>" \
+    "$app_bun_log" >/dev/null \
+    || fail "running-app refusal test did not reach the AgentVoice contract"
 
 : >"$app_bun_log"
 run_app_installer FUNK_TEST_ZIG_VERSION=0.16.1 FUNK_TEST_BUN_EXIT=19
@@ -1079,6 +1093,8 @@ ai_agentvoice_app_line=$(
 # shellcheck disable=SC2016 # Match the literal status variable in the script.
 grep -F 'exit "$agentvoice_app_status"' libexec/install-ai-tools >/dev/null \
     || fail "AI installer does not propagate an AgentVoice app installation failure"
+grep -F 'quit a running AgentVoice.app' libexec/install-ai-tools >/dev/null \
+    || fail "AI installer failure guidance omits quitting a running AgentVoice.app"
 
 # OpenCode's installer fails the whole run once the 60-an-hour anonymous GitHub
 # API limit is exhausted, so the release must be resolved through gh instead.

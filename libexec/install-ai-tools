@@ -418,11 +418,14 @@ native skills list >/dev/null
 # The pinned Native SDK CLI and Zig above are AgentVoice's packaging
 # prerequisites, so the desktop application is installed last. AgentVoice owns
 # packaging, bundle replacement, launch, and readiness verification; Funk only
-# invokes that contract. The scheduled updater deliberately stays skills-only.
+# invokes that contract. Every run delegates again: AgentVoice replaces and
+# relaunches an inactive installed app, and refuses when the installed copy is
+# running, which fails this install with its quit-and-rerun instruction. The
+# scheduled updater deliberately stays skills-only for exactly that reason.
 agentvoice_app_status=0
 "$script_dir/install-agentvoice-app" || agentvoice_app_status=$?
 if [ "$agentvoice_app_status" -ne 0 ]; then
-    printf 'Funk AI tools installer: AgentVoice desktop application install failed (exit %s). Fix the reported problem, then rerun ./install or libexec/install-agentvoice-app.\n' \
+    printf 'Funk AI tools installer: AgentVoice desktop application install failed (exit %s). Fix the reported problem — quit a running AgentVoice.app if that is what it reported — then rerun ./install or libexec/install-agentvoice-app.\n' \
         "$agentvoice_app_status" >&2
     exit "$agentvoice_app_status"
 fi
