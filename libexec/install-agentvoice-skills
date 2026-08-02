@@ -1,0 +1,46 @@
+#!/bin/bash
+
+set -euo pipefail
+
+die() {
+    printf 'Funk AgentVoice skill installer: %s\n' "$*" >&2
+    exit 1
+}
+
+find_bun() {
+    if [ -n "${FUNK_BUN_BIN:-}" ] && [ -x "$FUNK_BUN_BIN" ]; then
+        printf '%s\n' "$FUNK_BUN_BIN"
+        return
+    fi
+    if command -v bun >/dev/null 2>&1; then
+        command -v bun
+        return
+    fi
+    for candidate in /opt/homebrew/bin/bun /usr/local/bin/bun; do
+        if [ -x "$candidate" ]; then
+            printf '%s\n' "$candidate"
+            return
+        fi
+    done
+    return 1
+}
+
+[ "$#" -eq 0 ] || {
+    printf 'Usage: install-agentvoice-skills\n' >&2
+    exit 64
+}
+
+[ "$(uname -s)" = Darwin ] || die "macOS is required"
+[ "$(id -u)" -ne 0 ] || die "run as the target user, not root"
+
+# AgentVoice remains its own repository; Funk only invokes its already-landed
+# skill installer rather than reimplementing the symlink/manifest logic in
+# src/content/skill-installer.ts. A local checkout is required.
+agentvoice_root="$HOME/code/agentvoice"
+[ -f "$agentvoice_root/package.json" ] \
+    || die "AgentVoice checkout not found: $agentvoice_root/package.json is missing"
+
+bun_bin=$(find_bun) || die "bun is not installed"
+
+printf 'Installing AgentVoice native skills into Claude and Codex from %s.\n' "$agentvoice_root"
+"$bun_bin" run --cwd "$agentvoice_root" skills:install

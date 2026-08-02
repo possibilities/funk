@@ -21,6 +21,7 @@ libexec/repair-cask-artifacts
 libexec/reclaim-app-ownership
 libexec/list-unattendable-casks
 libexec/install-orca
+libexec/install-agentvoice-skills
 libexec/stow-config
 libexec/initialize-configs
 libexec/configure-orca
@@ -58,6 +59,7 @@ tests/scrcpy-launchers.sh
 tests/tailscale-online.sh
 tests/fixtures/adb
 tests/fixtures/brew
+tests/fixtures/bun
 tests/fixtures/chrome
 tests/fixtures/dscacheutil
 tests/fixtures/dns-sd
@@ -262,6 +264,7 @@ update_home="$update_test_dir/home"
 update_state="$update_test_dir/brew-state"
 update_brew_log="$update_test_dir/brew.log"
 update_npx_log="$update_test_dir/npx.log"
+update_bun_log="$update_test_dir/bun.log"
 update_notifier_log="$update_test_dir/notifier.log"
 mkdir -p "$update_home/.agents"
 printf '%s\n' \
@@ -277,6 +280,16 @@ cat >"$update_home/.agents/.skill-lock.json" <<'EOF'
   }
 }
 EOF
+update_agentvoice_root="$update_home/code/agentvoice"
+mkdir -p "$update_agentvoice_root"
+cat >"$update_agentvoice_root/package.json" <<'EOF'
+{
+  "name": "agentvoice",
+  "scripts": {
+    "skills:install": "bun run src/agentvoice.ts tools skills install"
+  }
+}
+EOF
 
 set +e
 update_output=$(
@@ -286,6 +299,7 @@ update_output=$(
         FUNK_TEST_BREW_PREFIX="$update_test_dir/prefix" \
         FUNK_TEST_BREW_STATE="$update_state" \
         FUNK_TEST_BREW_LOG="$update_brew_log" \
+        FUNK_TEST_BUN_LOG="$update_bun_log" \
         "$root/bin/funk" update 2>&1
 )
 update_status=$?
@@ -296,6 +310,8 @@ grep -F "brew-stub <bundle> <install> <--upgrade> <--file=$root/Brewfile>" \
     || fail "funk update did not explicitly request Brewfile upgrades"
 printf '%s\n' "$update_output" | grep -F 'FAILED with exit status 23' >/dev/null \
     || fail "funk update did not log failure"
+[ ! -s "$update_bun_log" ] \
+    || fail "funk update ran the AgentVoice installer after a Brewfile failure"
 
 HOME="$update_home" \
     PATH="$root/tests/fixtures:/usr/bin:/bin:/usr/sbin:/sbin" \
@@ -307,8 +323,10 @@ HOME="$update_home" \
     FUNK_TEST_ORCA_NEW=1.0.0 \
     FUNK_TEST_ORCA_CLI_HASH=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
     FUNK_TEST_NPX_LOG="$update_npx_log" \
+    FUNK_TEST_BUN_LOG="$update_bun_log" \
     FUNK_TEST_NOTIFIER_LOG="$update_notifier_log" \
     FUNK_NPX_BIN="$root/tests/fixtures/npx" \
+    FUNK_BUN_BIN="$root/tests/fixtures/bun" \
     FUNK_TERMINAL_NOTIFIER_BIN="$root/tests/fixtures/terminal-notifier" \
     "$root/bin/funk" update --notify >/dev/null
 grep -F 'brew-stub <upgrade> <--cask> <--greedy> <--yes> <stablyai/orca/orca>' \
@@ -317,6 +335,9 @@ grep -F 'brew-stub <upgrade> <--cask> <--greedy> <--yes> <stablyai/orca/orca>' \
 grep -F 'npx-stub <--yes> <skills> <add> <https://github.com/stablyai/orca>' \
     "$update_npx_log" >/dev/null \
     || fail "scheduled update did not synchronize Orca skills"
+grep -F "bun-stub <run> <--cwd> <$update_agentvoice_root> <skills:install>" \
+    "$update_bun_log" >/dev/null \
+    || fail "scheduled update did not invoke the AgentVoice skill installer"
 notification=$(tail -n 1 "$update_notifier_log")
 printf '%s\n' "$notification" | grep -F 'terminal-notifier 1.0.0 → 2.0.0' >/dev/null \
     || fail "change-aware notification omitted the upgraded formula"
@@ -345,6 +366,62 @@ HOME="$update_home" \
     "$root/bin/funk" update --notify >/dev/null
 grep -F '<-message> <Installer ran; no updates.>' "$update_notifier_log" >/dev/null \
     || fail "no-op scheduled update did not send the required concise notification"
+
+: >"$update_bun_log"
+: >"$update_notifier_log"
+set +e
+update_output=$(
+    HOME="$update_home" \
+        PATH="$root/tests/fixtures:/usr/bin:/bin:/usr/sbin:/sbin" \
+        FUNK_TEST_BREW_EXIT=0 \
+        FUNK_TEST_BREW_PREFIX="$update_test_dir/prefix" \
+        FUNK_TEST_BREW_STATE="$update_state" \
+        FUNK_TEST_BREW_LOG="$update_brew_log" \
+        FUNK_TEST_NPX_LOG="$update_npx_log" \
+        FUNK_TEST_BUN_LOG="$update_bun_log" \
+        FUNK_TEST_BUN_EXIT=17 \
+        FUNK_TEST_NOTIFIER_LOG="$update_notifier_log" \
+        FUNK_NPX_BIN="$root/tests/fixtures/npx" \
+        FUNK_TERMINAL_NOTIFIER_BIN="$root/tests/fixtures/terminal-notifier" \
+        "$root/bin/funk" update --notify 2>&1
+)
+update_status=$?
+set -e
+[ "$update_status" -eq 17 ] \
+    || fail "funk update did not propagate an AgentVoice installer failure"
+printf '%s\n' "$update_output" | grep -F 'FAILED with exit status 17' >/dev/null \
+    || fail "funk update did not log the AgentVoice installer failure"
+grep -F 'brew-stub <upgrade> <--cask> <--greedy> <--yes> <stablyai/orca/orca>' \
+    "$update_brew_log" >/dev/null \
+    || fail "AgentVoice installer failure test did not converge Orca before failing"
+grep -F "bun-stub <run> <--cwd> <$update_agentvoice_root> <skills:install>" \
+    "$update_bun_log" >/dev/null \
+    || fail "AgentVoice installer failure test did not invoke the installer"
+failure_notification=$(tail -n 1 "$update_notifier_log")
+printf '%s\n' "$failure_notification" | grep -F '<-title> <Funk Update Failed>' >/dev/null \
+    || fail "AgentVoice installer failure did not send the failure notification"
+printf '%s\n' "$failure_notification" \
+    | grep -F '<-message> <Installer failed; no updates completed. See update.log.>' \
+        >/dev/null \
+    || fail "AgentVoice installer failure notification omitted the log pointer"
+
+agentvoice_missing_home="$update_test_dir/agentvoice-missing-home"
+mkdir -p "$agentvoice_missing_home"
+set +e
+agentvoice_missing_output=$(
+    HOME="$agentvoice_missing_home" \
+        PATH="/usr/bin:/bin:/usr/sbin:/sbin" \
+        "$root/libexec/install-agentvoice-skills" 2>&1
+)
+agentvoice_missing_status=$?
+set -e
+[ "$agentvoice_missing_status" -eq 1 ] \
+    || fail "AgentVoice skill installer did not fail without a local checkout"
+printf '%s\n' "$agentvoice_missing_output" \
+    | grep -F \
+        "AgentVoice checkout not found: $agentvoice_missing_home/code/agentvoice/package.json is missing" \
+        >/dev/null \
+    || fail "AgentVoice skill installer did not report the missing checkout clearly"
 
 quarantine_home="$update_test_dir/quarantine-home"
 quarantine_app="$quarantine_home/Applications/Funk Test.app"
@@ -1016,7 +1093,7 @@ fi
 if grep -Eqi 'bundle cleanup|uninstall|fetch-head|telegram|sudo' \
     bin/funk libexec/funk-update libexec/install-update-agent \
     libexec/install-orca libexec/converge-brewfile libexec/converge-brew-casks \
-    libexec/repair-cask-artifacts \
+    libexec/repair-cask-artifacts libexec/install-agentvoice-skills \
     launchd/com.arthack.funk.update.plist.in; then
     fail "scheduled updater contains a prohibited operation"
 fi

@@ -44,6 +44,7 @@ brewfile="$funk_root/Brewfile"
 orca_installer="$funk_root/libexec/install-orca"
 brewfile_installer="$funk_root/libexec/converge-brewfile"
 unattendable_lister="$funk_root/libexec/list-unattendable-casks"
+agentvoice_installer="$funk_root/libexec/install-agentvoice-skills"
 
 if [ ! -f "$brewfile" ]; then
     log "FAILED: Brewfile not found at $brewfile" >&2
@@ -59,6 +60,10 @@ fi
 }
 [ -x "$unattendable_lister" ] || {
     log "FAILED: cask triage helper not found at $unattendable_lister" >&2
+    exit 66
+}
+[ -x "$agentvoice_installer" ] || {
+    log "FAILED: AgentVoice skill installer not found at $agentvoice_installer" >&2
     exit 66
 }
 
@@ -220,6 +225,9 @@ log "starting: $brew_bin bundle install --upgrade --file=$brewfile"
 "$brewfile_installer" || status=$?
 if [ "$status" -eq 0 ]; then
     "$orca_installer" || status=$?
+fi
+if [ "$status" -eq 0 ]; then
+    "$agentvoice_installer" || status=$?
 fi
 
 snapshot_versions "$after"

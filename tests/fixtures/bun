@@ -1,0 +1,19 @@
+#!/bin/bash
+
+set -u
+
+if [ -n "${FUNK_TEST_BUN_LOG:-}" ]; then
+    {
+        printf 'bun-stub'
+        printf ' <%s>' "$@"
+        printf '\n'
+    } >>"$FUNK_TEST_BUN_LOG"
+fi
+
+case "$*" in
+    "run --cwd "*" skills:install")
+        printf 'AgentVoice skill already installed in 2 native directories.\n'
+        ;;
+esac
+
+exit "${FUNK_TEST_BUN_EXIT:-0}"
