@@ -14,6 +14,9 @@ case "$*" in
     "run --cwd "*" skills:install")
         printf 'AgentVoice skill already installed in 2 native directories.\n'
         ;;
+    "run --cwd "*" app:install")
+        printf 'AgentVoice.app is already current in ~/Applications; launched in production mode.\n'
+        ;;
 esac
 
 exit "${FUNK_TEST_BUN_EXIT:-0}"

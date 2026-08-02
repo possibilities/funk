@@ -22,6 +22,7 @@ libexec/reclaim-app-ownership
 libexec/list-unattendable-casks
 libexec/install-orca
 libexec/install-agentvoice-skills
+libexec/install-agentvoice-app
 libexec/stow-config
 libexec/initialize-configs
 libexec/configure-orca
@@ -70,6 +71,7 @@ tests/fixtures/scrcpy
 tests/fixtures/spctl
 tests/fixtures/tailscale
 tests/fixtures/terminal-notifier
+tests/fixtures/zig
 tests/validate.sh
 "
 
@@ -232,6 +234,7 @@ brew "starship"
 brew "stow"
 brew "pnpm"
 brew "oven-sh/bun/bun", trusted: true
+brew "zig"
 brew "llm"
 brew "scrcpy"
 brew "asmvik/formulae/yabai", trusted: true
@@ -338,6 +341,13 @@ grep -F 'npx-stub <--yes> <skills> <add> <https://github.com/stablyai/orca>' \
 grep -F "bun-stub <run> <--cwd> <$update_agentvoice_root> <skills:install>" \
     "$update_bun_log" >/dev/null \
     || fail "scheduled update did not invoke the AgentVoice skill installer"
+# The six-hour background path must never rebuild or relaunch the desktop app.
+if grep -F 'app:install' "$update_bun_log" >/dev/null; then
+    fail "scheduled update installed the AgentVoice desktop application"
+fi
+if grep -F 'install-agentvoice-app' libexec/funk-update >/dev/null; then
+    fail "scheduled updater references the interactive AgentVoice app installer"
+fi
 notification=$(tail -n 1 "$update_notifier_log")
 printf '%s\n' "$notification" | grep -F 'terminal-notifier 1.0.0 → 2.0.0' >/dev/null \
     || fail "change-aware notification omitted the upgraded formula"
@@ -422,6 +432,106 @@ printf '%s\n' "$agentvoice_missing_output" \
         "AgentVoice checkout not found: $agentvoice_missing_home/code/agentvoice/package.json is missing" \
         >/dev/null \
     || fail "AgentVoice skill installer did not report the missing checkout clearly"
+
+# The desktop application bridge: Funk provisions Zig and the pinned Native SDK
+# CLI, then calls AgentVoice's own app:install contract. These cases use stubs
+# only; nothing is installed globally, no bundle is written, no app is launched.
+app_installer="$root/libexec/install-agentvoice-app"
+app_bun_log="$update_test_dir/app-bun.log"
+app_home="$update_test_dir/agentvoice-app-home"
+app_agentvoice_root="$app_home/code/agentvoice"
+mkdir -p "$app_agentvoice_root"
+cat >"$app_agentvoice_root/package.json" <<'EOF'
+{
+  "name": "agentvoice",
+  "scripts": {
+    "app:install": "bun run src/agentvoice.ts ui app --install"
+  }
+}
+EOF
+
+run_app_installer() {
+    set +e
+    app_output=$(
+        HOME="$app_home" \
+            PATH="$root/tests/fixtures:/usr/bin:/bin:/usr/sbin:/sbin" \
+            FUNK_BUN_BIN="$root/tests/fixtures/bun" \
+            FUNK_TEST_BUN_LOG="$app_bun_log" \
+            /usr/bin/env "$@" "$app_installer" 2>&1
+    )
+    app_status=$?
+    set -e
+}
+
+app_missing_home="$update_test_dir/agentvoice-app-missing-home"
+mkdir -p "$app_missing_home"
+set +e
+app_missing_output=$(
+    HOME="$app_missing_home" \
+        PATH="$root/tests/fixtures:/usr/bin:/bin:/usr/sbin:/sbin" \
+        FUNK_BUN_BIN="$root/tests/fixtures/bun" \
+        "$app_installer" 2>&1
+)
+app_missing_status=$?
+set -e
+[ "$app_missing_status" -eq 1 ] \
+    || fail "AgentVoice app installer did not fail without a local checkout"
+printf '%s\n' "$app_missing_output" \
+    | grep -F \
+        "AgentVoice checkout not found: $app_missing_home/code/agentvoice/package.json is missing" \
+        >/dev/null \
+    || fail "AgentVoice app installer did not report the missing checkout clearly"
+
+: >"$app_bun_log"
+set +e
+app_no_zig_output=$(
+    HOME="$app_home" \
+        PATH="/usr/bin:/bin:/usr/sbin:/sbin" \
+        FUNK_BUN_BIN="$root/tests/fixtures/bun" \
+        FUNK_TEST_BUN_LOG="$app_bun_log" \
+        "$app_installer" 2>&1
+)
+app_no_zig_status=$?
+set -e
+[ "$app_no_zig_status" -eq 1 ] \
+    || fail "AgentVoice app installer did not fail without Zig"
+printf '%s\n' "$app_no_zig_output" | grep -F 'zig is not installed' >/dev/null \
+    || fail "AgentVoice app installer did not report a missing Zig toolchain"
+[ ! -s "$app_bun_log" ] \
+    || fail "AgentVoice app installer called AgentVoice without Zig"
+
+: >"$app_bun_log"
+run_app_installer FUNK_TEST_ZIG_VERSION=0.15.1
+[ "$app_status" -eq 1 ] \
+    || fail "AgentVoice app installer accepted a Zig older than 0.16"
+printf '%s\n' "$app_output" \
+    | grep -F 'requires Zig 0.16 or newer, found 0.15.1' >/dev/null \
+    || fail "AgentVoice app installer did not name the incompatible Zig version"
+[ ! -s "$app_bun_log" ] \
+    || fail "AgentVoice app installer called AgentVoice with an incompatible Zig"
+
+: >"$app_bun_log"
+run_app_installer FUNK_TEST_ZIG_VERSION=0.16.0-dev.512+abcdef
+[ "$app_status" -eq 0 ] \
+    || fail "AgentVoice app installer rejected a compatible Zig development build"
+grep -F "bun-stub <run> <--cwd> <$app_agentvoice_root> <app:install>" \
+    "$app_bun_log" >/dev/null \
+    || fail "AgentVoice app installer did not invoke the AgentVoice app:install contract"
+
+# Rerunning against an already-current app must stay a clean no-op.
+: >"$app_bun_log"
+run_app_installer FUNK_TEST_ZIG_VERSION=0.16.1
+[ "$app_status" -eq 0 ] || fail "first AgentVoice app install run failed"
+run_app_installer FUNK_TEST_ZIG_VERSION=0.16.1
+[ "$app_status" -eq 0 ] \
+    || fail "AgentVoice app installer is not idempotent on an already-current app"
+[ "$(grep -c -F "<app:install>" "$app_bun_log")" -eq 2 ] \
+    || fail "AgentVoice app installer did not delegate both runs to AgentVoice"
+
+: >"$app_bun_log"
+run_app_installer FUNK_TEST_ZIG_VERSION=0.16.1 FUNK_TEST_BUN_EXIT=19
+[ "$app_status" -eq 19 ] \
+    || fail "AgentVoice app installer did not propagate the AgentVoice failure status"
 
 quarantine_home="$update_test_dir/quarantine-home"
 quarantine_app="$quarantine_home/Applications/Funk Test.app"
@@ -901,7 +1011,9 @@ for required_ai_install in \
     'gh release view --repo anomalyco/opencode --json tagName  # avoids the anonymous API limit' \
     'curl -fsSL https://opencode.ai/install | VERSION=<resolved> bash -s -- --no-modify-path' \
     'curl -fsSL https://pi.dev/install.sh | sh  # in its own session, no controlling terminal' \
-    'npm install --global @native-sdk/cli@latest' \
+    'brew install or upgrade zig  # AgentVoice native packaging needs 0.16 or newer' \
+    'npm install --global @native-sdk/cli@0.7  # AgentVoice refuses other lines' \
+    "bun run --cwd \"\$HOME/code/agentvoice\" app:install  # AgentVoice owns packaging and launch" \
     'codex mcp add --url https://docs.livekit.io/mcp livekit-docs' \
     'claude mcp add --scope user --transport http livekit-docs https://docs.livekit.io/mcp' \
     'opencode mcp add livekit-docs --url https://docs.livekit.io/mcp' \
@@ -941,6 +1053,32 @@ grep -F "\$art_hack_root/hack/agents/openai.yaml" libexec/install-ai-tools >/dev
     || fail "AI installer does not validate the Hack skill manifest"
 grep -F 'install_or_upgrade_formula gh' libexec/install-ai-tools >/dev/null \
     || fail "AI installer does not deliberately converge the GitHub CLI"
+
+# AgentVoice's native packaging refuses a Native SDK CLI outside 0.7 and a Zig
+# older than 0.16, so both prerequisites must be converged before Funk calls the
+# AgentVoice-owned desktop application installer.
+grep -F 'native_sdk_version=0.7' libexec/install-ai-tools >/dev/null \
+    || fail "AI installer does not pin the Native SDK CLI to the compatible 0.7 line"
+if grep -F '@native-sdk/cli@latest' libexec/install-ai-tools >/dev/null; then
+    fail "AI installer still tracks the latest Native SDK CLI release"
+fi
+grep -F 'install_or_upgrade_formula zig' libexec/install-ai-tools >/dev/null \
+    || fail "AI installer does not converge the Zig toolchain"
+# shellcheck disable=SC2016 # Match the literal helper invocation in the script.
+grep -F '"$script_dir/install-agentvoice-app"' libexec/install-ai-tools >/dev/null \
+    || fail "AI installer does not install the AgentVoice desktop application"
+ai_zig_line=$(grep -n -F 'install_or_upgrade_formula zig' libexec/install-ai-tools | cut -d: -f1)
+ai_native_sdk_line=$(grep -n -F 'native_sdk_version=0.7' libexec/install-ai-tools | cut -d: -f1)
+ai_agentvoice_app_line=$(
+    # shellcheck disable=SC2016 # Match the literal helper invocation in the script.
+    grep -n -F '"$script_dir/install-agentvoice-app"' libexec/install-ai-tools | cut -d: -f1
+)
+[ "$ai_zig_line" -lt "$ai_agentvoice_app_line" ] \
+    && [ "$ai_native_sdk_line" -lt "$ai_agentvoice_app_line" ] \
+    || fail "AI installer installs the AgentVoice app before its native prerequisites"
+# shellcheck disable=SC2016 # Match the literal status variable in the script.
+grep -F 'exit "$agentvoice_app_status"' libexec/install-ai-tools >/dev/null \
+    || fail "AI installer does not propagate an AgentVoice app installation failure"
 
 # OpenCode's installer fails the whole run once the 60-an-hour anonymous GitHub
 # API limit is exhausted, so the release must be resolved through gh instead.

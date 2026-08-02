@@ -11,8 +11,10 @@ installers:
 
 - Tailscale, AltTab, Ghostty, Google Chrome, Chrome Canary, Brave, Firefox
 - ChatGPT, Claude Desktop, Orca, Obsidian, Raycast
-- GitHub CLI, LiveKit CLI, Native SDK CLI, Claude Code, Codex CLI, OpenCode,
-  and Pi
+- GitHub CLI, LiveKit CLI, Native SDK CLI (pinned to 0.7), Zig, Claude Code,
+  Codex CLI, OpenCode, and Pi
+- The AgentVoice desktop application, installed by AgentVoice's own
+  `app:install` contract from `~/code/agentvoice`
 - Orca CLI, orchestration, computer-use, skill-discovery, frontend design,
   web-design review, React engineering, Vercel AI SDK, AI Elements, shadcn,
   LiveKit simulation, Native SDK discovery, and the Hack agent skill
@@ -29,6 +31,29 @@ personal macOS downloads do not provide unattended installer commands. Orca
 uses the cask documented by the [Orca project](https://github.com/stablyai/orca).
 Run `libexec/install-ai-tools --check` to inspect the exact plan without making
 changes.
+
+### AgentVoice desktop application
+
+`libexec/install-ai-tools` finishes by installing the AgentVoice desktop
+application. Funk owns only the prerequisites and the call: it converges Zig
+from the Brewfile, pins the Native SDK CLI to the `0.7` line AgentVoice
+requires, verifies the installed Zig is 0.16 or newer, and then runs
+`libexec/install-agentvoice-app`, which invokes `bun run --cwd
+"$HOME/code/agentvoice" app:install`. AgentVoice owns packaging, transactional
+bundle replacement into `~/Applications`, launching in production mode, and
+readiness verification; Funk never reproduces that logic.
+
+The step needs a local AgentVoice checkout at `~/code/agentvoice`. If it fails,
+`./install` stops with the AgentVoice exit status and the setup is not reported
+as successful. To recover, fix what the message names — a missing checkout
+(`git clone` it), a missing or stale toolchain (`brew install zig` or
+`brew upgrade zig`), or an AgentVoice-side build failure — then rerun either
+`./install` or `libexec/install-agentvoice-app` alone. Reruns against an
+already-current application are no-ops decided by AgentVoice.
+
+The scheduled updater deliberately does not do this. `funk update` stays
+skills-only through `libexec/install-agentvoice-skills`, so a background
+LaunchAgent never rebuilds, replaces, or relaunches a running desktop app.
 
 Homebrew formula and cask calls are install-or-upgrade operations. The
 dedicated `libexec/install-orca` helper installs or greedily upgrades the Orca
@@ -396,8 +421,10 @@ Other AI tools remain outside the scheduled path: their vendor installers,
 application updaters, account-sensitive MCP setup, and local Hack skill source
 are not all suitable for a background LaunchAgent. Re-running `./install`
 reapplies their supported installation methods; Homebrew-backed Claude,
-ChatGPT, GitHub CLI, LiveKit CLI, and Orca are explicitly installed or upgraded,
-and the Native SDK CLI requests its latest npm release.
+ChatGPT, GitHub CLI, LiveKit CLI, Zig, and Orca are explicitly installed or
+upgraded, and the Native SDK CLI is pinned to the `0.7` line. Re-running
+`./install` is also what reinstalls the AgentVoice desktop application; the
+scheduled path stays skills-only.
 
 Funk never performs bundle cleanup, uninstalls, HEAD refreshes, or privileged
 post-update hooks.

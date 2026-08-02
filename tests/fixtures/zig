@@ -1,0 +1,19 @@
+#!/bin/bash
+
+set -u
+
+if [ -n "${FUNK_TEST_ZIG_LOG:-}" ]; then
+    {
+        printf 'zig-stub'
+        printf ' <%s>' "$@"
+        printf '\n'
+    } >>"$FUNK_TEST_ZIG_LOG"
+fi
+
+case "$*" in
+    version)
+        printf '%s\n' "${FUNK_TEST_ZIG_VERSION:-0.16.0}"
+        ;;
+esac
+
+exit "${FUNK_TEST_ZIG_EXIT:-0}"

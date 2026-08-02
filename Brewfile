@@ -18,6 +18,7 @@ brew "starship"
 brew "stow"
 brew "pnpm"
 brew "oven-sh/bun/bun", trusted: true
+brew "zig"
 brew "llm"
 brew "scrcpy"
 brew "asmvik/formulae/yabai", trusted: true

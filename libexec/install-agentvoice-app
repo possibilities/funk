@@ -1,0 +1,72 @@
+#!/bin/bash
+
+set -euo pipefail
+
+# AgentVoice's native packaging requires this Zig line. Funk declares the
+# toolchain in its Brewfile and installs it in install-ai-tools; this script only
+# verifies it, so a missing or stale toolchain fails with an actionable message
+# instead of deep inside AgentVoice's build.
+required_zig_minor=16
+
+die() {
+    printf 'Funk AgentVoice app installer: %s\n' "$*" >&2
+    exit 1
+}
+
+find_bun() {
+    if [ -n "${FUNK_BUN_BIN:-}" ] && [ -x "$FUNK_BUN_BIN" ]; then
+        printf '%s\n' "$FUNK_BUN_BIN"
+        return
+    fi
+    if command -v bun >/dev/null 2>&1; then
+        command -v bun
+        return
+    fi
+    for candidate in /opt/homebrew/bin/bun /usr/local/bin/bun; do
+        if [ -x "$candidate" ]; then
+            printf '%s\n' "$candidate"
+            return
+        fi
+    done
+    return 1
+}
+
+[ "$#" -eq 0 ] || {
+    printf 'Usage: install-agentvoice-app\n' >&2
+    exit 64
+}
+
+[ "$(uname -s)" = Darwin ] || die "macOS is required"
+[ "$(id -u)" -ne 0 ] || die "run as the target user, not root"
+
+# AgentVoice remains its own repository and owns packaging, transactional bundle
+# replacement, launch, and readiness verification. Funk only provisions the
+# prerequisites and invokes that contract against a local checkout.
+agentvoice_root="$HOME/code/agentvoice"
+[ -f "$agentvoice_root/package.json" ] \
+    || die "AgentVoice checkout not found: $agentvoice_root/package.json is missing"
+
+command -v zig >/dev/null 2>&1 \
+    || die "zig is not installed; run brew install zig, then rerun this installer"
+
+zig_version=$(zig version) \
+    || die "zig is installed but did not report a version"
+zig_major=${zig_version%%.*}
+zig_rest=${zig_version#*.}
+zig_minor=${zig_rest%%.*}
+zig_minor=${zig_minor%%[!0-9]*}
+case "$zig_major" in
+    ''|*[!0-9]*) die "could not parse the installed Zig version: $zig_version" ;;
+esac
+case "$zig_minor" in
+    ''|*[!0-9]*) die "could not parse the installed Zig version: $zig_version" ;;
+esac
+if [ "$zig_major" -eq 0 ] && [ "$zig_minor" -lt "$required_zig_minor" ]; then
+    die "AgentVoice native packaging requires Zig 0.$required_zig_minor or newer, found $zig_version; run brew upgrade zig"
+fi
+
+bun_bin=$(find_bun) || die "bun is not installed"
+
+printf 'Installing the AgentVoice desktop application from %s with Zig %s.\n' \
+    "$agentvoice_root" "$zig_version"
+"$bun_bin" run --cwd "$agentvoice_root" app:install
