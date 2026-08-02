@@ -51,11 +51,14 @@ bin/.local/bin/raycast/scrcpy.sh
 bin/.local/bin/raycast/scrcpy-no-audio.sh
 bin/.local/bin/raycast/scrcpy-flex.sh
 bin/.local/bin/raycast/scrcpy-no-audio-flex.sh
+bin/.local/bin/raycast/localhost-8789-kiosk.sh
 tests/adb-wireless.sh
+tests/kiosk-launcher.sh
 tests/scrcpy-launchers.sh
 tests/tailscale-online.sh
 tests/fixtures/adb
 tests/fixtures/brew
+tests/fixtures/chrome
 tests/fixtures/dscacheutil
 tests/fixtures/dns-sd
 tests/fixtures/gh
@@ -571,6 +574,8 @@ HOME="$stow_home" "$root/bin/funk" stow
     || fail "Tailscale recovery helper was not stowed as an executable"
 [ -L "$stow_home/.local/bin/raycast/scrcpy.sh" ] \
     || fail "Raycast scrcpy command was not stowed"
+[ -L "$stow_home/.local/bin/raycast/localhost-8789-kiosk.sh" ] \
+    || fail "Raycast kiosk command was not stowed"
 [ -L "$stow_home/Library/Application Support/io.datasette.llm/extra-openai-models.yaml" ] \
     || fail "LLM package was not stowed"
 [ -L "$stow_home/.config/orca" ] && [ -f "$stow_home/.config/orca/settings.json" ] \
@@ -972,6 +977,19 @@ grep -F '@raycast.title Android flex (audio)' bin/.local/bin/raycast/scrcpy-flex
     || fail "flex audio scrcpy Raycast command is missing"
 grep -F '@raycast.title Android flex (no audio)' bin/.local/bin/raycast/scrcpy-no-audio-flex.sh >/dev/null \
     || fail "flex no-audio scrcpy Raycast command is missing"
+"$root/tests/kiosk-launcher.sh"
+kiosk_launcher=bin/.local/bin/raycast/localhost-8789-kiosk.sh
+grep -F '@raycast.title Localhost 8789 (kiosk)' "$kiosk_launcher" >/dev/null \
+    || fail "localhost kiosk Raycast command is missing"
+# Launching through `open` reuses a running Chrome and discards --kiosk, so the
+# launcher must keep invoking the binary with its own profile directory.
+grep -F -- '--user-data-dir=' "$kiosk_launcher" >/dev/null \
+    || fail "kiosk launcher lost the dedicated Chrome profile"
+if grep -Eq '(^|[^-])open ' "$kiosk_launcher"; then
+    fail "kiosk launcher routes Chrome through open and would drop --kiosk"
+fi
+grep -Fx 'cask "google-chrome", greedy: true' Brewfile >/dev/null \
+    || fail "Google Chrome is missing from the Brewfile"
 # The mirror window keeps the device aspect ratio and refuses resize, so the
 # stack layout must never hand it a tile. Matching on the application alone
 # covers the plain and --new-display Raycast variants.

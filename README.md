@@ -243,6 +243,26 @@ installing Orca, and treats `75` as deferred: it finishes every remaining step,
 still succeeds, and closes by naming the one command left to run. Any other
 non-zero status still fails the installation.
 
+## Local kiosk launcher
+
+`~/.local/bin/raycast/localhost-8789-kiosk.sh` is a Raycast Script Command,
+titled `Localhost 8789 (kiosk)`, that opens `http://localhost:8789/` in a
+full-screen Chrome kiosk window from the same directory as the `scrcpy`
+commands.
+
+It runs the Chrome binary directly with its own `--user-data-dir` under
+`~/.local/state/funk/chrome-kiosk`. That is deliberate: launching through
+`open` hands the URL to an already-running Chrome, which discards `--kiosk` and
+leaves an ordinary tab. The dedicated profile keeps the kiosk window separate
+from the everyday browser, so it carries no logins, extensions, or session
+history from the main profile.
+
+The launcher probes the port first and reports `nothing is listening` instead of
+opening an error page in kiosk mode, where the address bar is out of reach. A
+missing Chrome is reported the same way. Set `FUNK_KIOSK_URL` to point one-off
+launches at another local address; `FUNK_CHROME` and `FUNK_KIOSK_PROFILE`
+override the browser and profile locations.
+
 Run `funk stow` after changing or adding a package. Existing target files are
 never silently replaced: inspect a dry run with `funk stow --check`, then use
 `funk stow --adopt <package>` only when you deliberately want to move the

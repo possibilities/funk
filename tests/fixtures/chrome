@@ -1,0 +1,12 @@
+#!/bin/bash
+
+set -euo pipefail
+
+[ -n "${FUNK_TEST_CHROME_LOG:-}" ] || {
+    printf 'chrome fixture requires FUNK_TEST_CHROME_LOG\n' >&2
+    exit 64
+}
+
+for argument in "$@"; do
+    printf 'arg=%s\n' "$argument"
+done >>"$FUNK_TEST_CHROME_LOG"
