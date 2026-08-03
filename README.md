@@ -11,13 +11,13 @@ installers:
 
 - Tailscale, AltTab, Ghostty, Google Chrome, Chrome Canary, Brave, Firefox
 - ChatGPT, Claude Desktop, Orca, Obsidian, Raycast
-- GitHub CLI, LiveKit CLI, Native SDK CLI (pinned to 0.7), Zig, Claude Code,
+- GitHub CLI, Native SDK CLI (pinned to 0.7), Zig, Claude Code,
   Codex CLI, OpenCode, and Pi
 - The AgentVoice desktop application, installed by AgentVoice's own
   `app:install` contract from `~/code/agentvoice`
 - Orca CLI, orchestration, computer-use, skill-discovery, frontend design,
   web-design review, React engineering, Vercel AI SDK, AI Elements, shadcn,
-  LiveKit simulation, Native SDK discovery, and the Hack agent skill
+  Native SDK discovery, and the Hack agent skill
 - Yabai, skhd, and the narrowly justified Karabiner-Elements layer
 - Git Delta, Neovim, tmux, Starship, btop, GNU Stow, and supporting
   shell/development tools, including `terminal-notifier`
@@ -88,18 +88,11 @@ OpenCode, and Pi, it installs:
 - `vercel-react-best-practices`, `ai-sdk`, and `ai-elements` from Vercel.
 - The official `shadcn` skill, paired with shadcn's registry MCP server for
   Codex, Claude Code, and OpenCode.
-- The beta `livekit-simulations` skill from LiveKit. Funk explicitly removes
-  the no-longer-managed `livekit-agents` skill when converging an existing
-  account.
 - The `native-sdk` discovery skill from Vercel Labs Native. The globally
   installed Native CLI supplies its deeper, version-matched skills.
 
-The installer also provides the LiveKit CLI, whose `lk docs` commands work from
-every shell-capable agent, and configures LiveKit's remote documentation MCP
-server for Codex, Claude Code, and OpenCode. Pi uses the official `lk docs`
-fallback rather than a third-party MCP extension. The shadcn skill provides Pi
-with its CLI workflow; Codex, Claude Code, and OpenCode additionally get the
-official shadcn registry MCP server.
+The shadcn skill provides Pi with its CLI workflow; Codex, Claude Code, and
+OpenCode additionally get the official shadcn registry MCP server.
 
 Finally, the installer synchronizes the locally authored `hack` skill from
 `~/code/arthack` into the shared `~/.agents/skills` directory discovered by
@@ -429,7 +422,7 @@ Other AI tools remain outside the scheduled path: their vendor installers,
 application updaters, account-sensitive MCP setup, and local Hack skill source
 are not all suitable for a background LaunchAgent. Re-running `./install`
 reapplies their supported installation methods; Homebrew-backed Claude,
-ChatGPT, GitHub CLI, LiveKit CLI, Zig, and Orca are explicitly installed or
+ChatGPT, GitHub CLI, Zig, and Orca are explicitly installed or
 upgraded, and the Native SDK CLI is pinned to the `0.7` line. Re-running
 `./install` is also what reinstalls the AgentVoice desktop application, which
 requires AgentVoice.app to be quit if it is running; the scheduled path stays

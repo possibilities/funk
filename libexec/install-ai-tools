@@ -99,21 +99,6 @@ run_without_controlling_terminal() {
     ' -- "$@"
 }
 
-configure_livekit_docs_mcp() {
-    local livekit_docs_url="https://docs.livekit.io/mcp"
-
-    printf 'Configuring the LiveKit documentation MCP server for Codex.\n'
-    codex mcp remove livekit-docs >/dev/null 2>&1 || true
-    codex mcp add --url "$livekit_docs_url" livekit-docs
-
-    printf 'Configuring the LiveKit documentation MCP server for Claude Code.\n'
-    claude mcp remove --scope user livekit-docs >/dev/null 2>&1 || true
-    claude mcp add --scope user --transport http livekit-docs "$livekit_docs_url"
-
-    printf 'Configuring the LiveKit documentation MCP server for OpenCode.\n'
-    opencode mcp add livekit-docs --url "$livekit_docs_url"
-}
-
 configure_shadcn_mcp() {
     printf 'Configuring the shadcn registry MCP server for Codex.\n'
     codex mcp remove shadcn >/dev/null 2>&1 || true
@@ -212,7 +197,6 @@ Desktop applications:
 
 Command-line tools:
   brew install or upgrade gh  # intentional duplicate of the Brewfile
-  brew install or upgrade livekit-cli
   curl -fsSL https://claude.ai/install.sh | bash
   curl -fsSL https://chatgpt.com/codex/install.sh | CODEX_NON_INTERACTIVE=1 sh
   gh release view --repo anomalyco/opencode --json tagName  # avoids the anonymous API limit
@@ -225,20 +209,15 @@ Desktop applications from local checkouts:
   bun run --cwd "$HOME/code/agentvoice" app:install  # AgentVoice owns packaging and launch
 
 Agent documentation:
-  codex mcp add --url https://docs.livekit.io/mcp livekit-docs
-  claude mcp add --scope user --transport http livekit-docs https://docs.livekit.io/mcp
-  opencode mcp add livekit-docs --url https://docs.livekit.io/mcp
   codex mcp add shadcn -- npx shadcn@latest mcp
   claude mcp add --scope user shadcn -- npx shadcn@latest mcp
   opencode mcp add shadcn -- npx shadcn@latest mcp
-  lk docs overview
   native skills list
 
 Agent skills:
 EOF
     "$script_dir/install-orca" --check
     cat <<'EOF'
-  npx --yes skills remove livekit-agents --global --yes  # when installed
   npx --yes skills add https://github.com/vercel-labs/skills --agent codex claude-code opencode pi --skill find-skills --global --yes
   npx --yes skills add https://github.com/anthropics/skills --agent codex claude-code opencode pi --skill frontend-design --global --yes
   npx --yes skills add https://github.com/vercel-labs/agent-skills --agent codex claude-code opencode pi --skill web-design-guidelines --global --yes
@@ -246,7 +225,6 @@ EOF
   npx --yes skills add https://github.com/vercel/ai --agent codex claude-code opencode pi --skill ai-sdk --global --yes
   npx --yes skills add https://github.com/vercel/ai-elements --agent codex claude-code opencode pi --skill ai-elements --global --yes
   npx --yes skills add https://github.com/shadcn/ui --agent codex claude-code opencode pi --skill shadcn --global --yes
-  npx --yes skills add https://github.com/livekit/agent-skills --agent codex claude-code opencode pi --skill livekit-simulations --global --yes
   npx --yes skills add https://github.com/vercel-labs/native --agent codex claude-code opencode pi --skill native-sdk --global --yes
   npx --yes skills add "$HOME/code/arthack" --agent codex claude-code opencode pi --skill hack --global --yes
 EOF
@@ -293,9 +271,6 @@ printf 'Installing or upgrading GitHub CLI with Homebrew (intentional duplicate 
 install_or_upgrade_formula gh
 migrate_gh_credentials
 
-printf 'Installing or upgrading the LiveKit CLI for agent, simulation, and documentation workflows.\n'
-install_or_upgrade_formula livekit-cli
-
 printf 'Installing or upgrading AI desktop applications with their supported Homebrew casks.\n'
 "$script_dir/converge-brew-casks" claude chatgpt
 
@@ -341,19 +316,11 @@ printf 'Installing the Native SDK CLI %s and its version-matched agent helpers.\
     "$native_sdk_version"
 npm install --global "@native-sdk/cli@$native_sdk_version"
 
-configure_livekit_docs_mcp
-
 command -v npx >/dev/null 2>&1 || die "npx is required to install agent skills"
 
 configure_shadcn_mcp
 
 "$script_dir/install-orca"
-
-if npx --yes skills list --global --json \
-    | jq -e '.[] | select(.name == "livekit-agents")' >/dev/null; then
-    printf 'Removing the no-longer-managed LiveKit agent-development skill.\n'
-    npx --yes skills remove livekit-agents --global --yes
-fi
 
 printf 'Installing the global skill discovery helper.\n'
 npx --yes skills add https://github.com/vercel-labs/skills \
@@ -393,12 +360,6 @@ npx --yes skills add https://github.com/shadcn/ui \
     --skill shadcn \
     --global --yes
 
-printf 'Installing the globally managed LiveKit simulation skill.\n'
-npx --yes skills add https://github.com/livekit/agent-skills \
-    --agent codex claude-code opencode pi \
-    --skill livekit-simulations \
-    --global --yes
-
 printf 'Installing the Native SDK discovery skill.\n'
 npx --yes skills add https://github.com/vercel-labs/native \
     --agent codex claude-code opencode pi \
@@ -411,8 +372,7 @@ npx --yes skills add "$art_hack_root" \
     --skill hack \
     --global --yes
 
-printf 'Verifying the installed LiveKit and Native SDK agent documentation helpers.\n'
-lk docs overview >/dev/null
+printf 'Verifying the installed Native SDK agent documentation helpers.\n'
 native skills list >/dev/null
 
 # The pinned Native SDK CLI and Zig above are AgentVoice's packaging
