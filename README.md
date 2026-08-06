@@ -306,7 +306,7 @@ This installs Homebrew when absent, explicitly upgrades every eligible
 Brewfile dependency, stows every user configuration package, initializes
 tmux-fzf, the pinned Node runtime, and shell-gpt, installs or upgrades the AI
 tools listed above, links `funk` into the active Homebrew `bin` directory,
-installs the scheduled updater, Tailscale recovery, and trusted-network
+installs the scheduled updater, Tailscale recovery, and home-network
 `home-awake` agents, starts the Yabai/skhd/Karabiner stack, and converges Yabai
 Spaces 1–9. The `home-awake` step prompts for `sudo` once on a fresh machine to
 install its root helper, then skips the privileged work on every later run.
@@ -457,19 +457,22 @@ funk harden travel
 ```
 
 There is no home-router detection, automatic relaxation, hostname logic,
-notification integration, or service-specific opening.
+notification integration, or service-specific opening. The firewall never learns
+where it is. `home-awake` below does identify the home network, but only to
+decide about sleep and the screen lock; the two never touch, and
+`tests/validate.sh` asserts that the PF path contains no location detection and
+no reference to `home-awake`.
 
-## Trusted-network sleep and sign-in
+## Home-network sleep and sign-in
 
-`home-awake` keeps this Mac awake, and signed in, while it is somewhere trusted.
-On Ethernet, or on the trusted Wi-Fi network while plugged in, it holds off idle
-sleep and turns the screen lock off, so coming back to the machine needs no
-password. Leaving that network restores exactly the screen lock delay that was
-in place before.
+`home-awake` keeps this Mac awake, and signed in, while it is wired into the
+home network. It holds off idle sleep and turns the screen lock off, so coming
+back to the machine needs no password. Leaving that network restores exactly the
+screen lock delay that was in place before.
 
 ```sh
 funk home-awake --status
-funk home-awake --learn-network
+funk home-awake --learn-network [NAME]
 funk home-awake --set-password
 ```
 
@@ -478,16 +481,39 @@ LaunchAgent re-checks at login, on every SystemConfiguration change, and every
 thirty seconds, appending only its own errors to
 `~/Library/Logs/Funk/home-awake.log`.
 
-macOS redacts SSIDs from command-line tools, so the trusted Wi-Fi network is
-matched by the opaque `ProfileID` that SystemConfiguration still reports. Funk
-ships one as a default; run `funk home-awake --learn-network` while joined to
-the network you want trusted to replace it. The recorded value lives in
-`~/.config/funk/home-awake.conf` and is the only network that counts:
+Being plugged in is not by itself evidence of being home: any dock in any
+building satisfies a link-status check, so a coworking desk or a hotel room
+would turn the screen lock off. The gate is therefore a wired link *whose own
+router answers with a recorded hardware address*. Wi-Fi does not qualify, even
+on the same router.
+
+Nothing is trusted until it is recorded on the machine itself, so a fresh
+account relaxes nothing:
+
+```sh
+funk home-awake --learn-network study
+```
+
+That writes `~/.config/funk/home-awake.conf`, which is the only network that
+counts:
 
 ```
-wifi_label=coopercoopercooper
-wifi_profile_id=210e869a…
+router_label=study
+router_mac=c8:7f:54:42:ac:b8
 ```
+
+The router is read per interface with `ipconfig getoption`, not from the default
+route, so a Tailscale exit node cannot change the answer to "which network is
+this cable on". A hardware address that has aged out of the neighbour cache is
+probed once before being believed, because *unknown* and *somewhere else* are
+different answers and only the second one should re-lock the screen. Addresses
+are compared after normalization, since `arp` prints octets without leading
+zeros.
+
+This is a convenience gate, not authentication. A router's hardware address is
+public on its own segment and can be spoofed by anyone who knows it. It reliably
+separates this house from a hotel dock; it does not stand up to somebody
+targeting this machine.
 
 Two things are privileged, and both go through the root-owned
 `/usr/local/libexec/funk-home-awake` helper rather than a passwordless rule on
@@ -503,7 +529,7 @@ never passed as an argument, written to a file, or logged. Until it is stored,
 home-awake manages sleep only and leaves the screen lock alone.
 
 The tradeoff is deliberate and worth stating plainly: while this Mac is on the
-trusted network, anyone with physical access to it is already signed in. FileVault
+home network, anyone with physical access to it is already signed in. FileVault
 still protects the disk at rest, and none of this touches the travel firewall
 posture above.
 

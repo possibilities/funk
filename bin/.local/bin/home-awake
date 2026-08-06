@@ -1,9 +1,15 @@
 #!/bin/bash
-# Keep this Mac awake, and signed in, while it sits on a trusted home network.
+# Keep this Mac awake, and signed in, while it is wired into the home network.
 #
-# On Ethernet, or on the trusted Wi-Fi network while plugged in, the screen lock
-# is turned off so returning to the machine needs no password, and sleep is
-# prevented. Leaving that network restores the previous screen lock delay.
+# Being plugged in is not by itself evidence of being home: any dock in any
+# building satisfies it. So the gate is a wired link whose own router answers
+# with a recorded hardware address. Off that network the previous screen lock
+# delay comes back.
+#
+# The recorded address is a convenience gate, not authentication. A router's
+# hardware address is public on its own segment and can be spoofed by anyone who
+# knows it. It separates this house from a hotel dock; it does not stand up to
+# somebody who is targeting this machine.
 
 set -euo pipefail
 
@@ -16,33 +22,31 @@ helper="${FUNK_HOME_AWAKE_HELPER:-/usr/local/libexec/funk-home-awake}"
 keychain_service=funk-home-awake
 caffeinate_label=com.arthack.funk.home-awake-caffeinate
 
-# The trusted network ships as a default so a fresh install behaves like the
-# machine it was migrated from; --learn-network replaces it from wherever this
-# Mac actually lives.
-default_wifi_label=coopercoopercooper
-default_wifi_profile_id=210e869a3589eca555c48a923f93d34cbb9ff957e163c9a4d7c9ba8fb18c14b2
-
 state_dir="$HOME/.local/state/funk"
 screenlock_state_file="$state_dir/home-awake-screenlock"
 caffeinate_plist="$state_dir/$caffeinate_label.plist"
 config_file="$HOME/.config/funk/home-awake.conf"
 
-wifi_label="$default_wifi_label"
-wifi_profile_id="$default_wifi_profile_id"
+# No network ships as a default. Until --learn-network records one, nothing is
+# trusted and nothing is relaxed, so a fresh account fails closed rather than
+# inheriting some other machine's idea of home.
+router_mac=
+router_label=
 awake_reason=
 
 usage() {
     cat <<'EOF'
 Usage: home-awake
        home-awake --status
-       home-awake --learn-network
+       home-awake --learn-network [NAME]
        home-awake --set-password
 
 With no arguments this converges sleep and screen-lock state for the network
 this Mac is currently on. It is silent unless something changed.
 
 --status         Report caffeinate, sleep, screen lock, and network state
---learn-network  Record the currently joined Wi-Fi network as trusted
+--learn-network  Record the router this Mac is currently wired to as home,
+                 optionally under a name of your choosing
 --set-password   Store the login password the screen-lock change authenticates
                  with, in the login keychain
 EOF
@@ -90,11 +94,30 @@ read_config() {
         value=${line#*=}
         [ "$key" != "$line" ] || continue
         case "$key" in
-            wifi_profile_id) wifi_profile_id="$value" ;;
-            wifi_label) wifi_label="$value" ;;
+            router_mac) router_mac=$(normalize_mac "$value") ;;
+            router_label) router_label="$value" ;;
             *) ;;
         esac
     done <"$config_file"
+}
+
+# arp prints octets without leading zeros, so 08:00:27:… comes back as 8:0:27:….
+# Both sides of the comparison go through here, or a perfectly good match fails
+# on formatting alone.
+normalize_mac() {
+    printf '%s\n' "$1" \
+        | tr '[:upper:]' '[:lower:]' \
+        | awk -F: '
+            NF != 6 { exit 1 }
+            {
+                for (i = 1; i <= 6; i++) {
+                    if ($i !~ /^[0-9a-f][0-9a-f]?$/) exit 1
+                    octet = (length($i) == 1) ? "0" $i : $i
+                    printf "%s%s", (i > 1 ? ":" : ""), octet
+                }
+                printf "\n"
+            }
+        '
 }
 
 wifi_interface() {
@@ -102,7 +125,7 @@ wifi_interface() {
         | awk '/^Hardware Port: Wi-Fi$/ { getline; print $2; exit }'
 }
 
-is_ethernet_connected() {
+wired_interfaces() {
     local interface
     local wifi
 
@@ -110,30 +133,56 @@ is_ethernet_connected() {
     for interface in $(ifconfig -l 2>/dev/null | tr ' ' '\n' | grep '^en'); do
         [ "$interface" != "$wifi" ] || continue
         if ifconfig "$interface" 2>/dev/null | grep -q 'status: active'; then
-            return 0
+            printf '%s\n' "$interface"
         fi
     done
-    return 1
 }
 
-# macOS redacts SSIDs from command-line tools, so the trusted network is matched
-# by the opaque ProfileID that SystemConfiguration still reports.
-current_wifi_profile_id() {
+# The router is read per interface rather than from the default route, so that
+# a Tailscale exit node taking over the default route cannot change the answer
+# to "which network is this cable on".
+interface_router() {
+    ipconfig getoption "$1" router 2>/dev/null | grep -E '^[0-9.]+$' || return 1
+}
+
+arp_hardware_address() {
+    arp -n "$1" 2>/dev/null | awk '{ print $4 }'
+}
+
+# An address that has aged out of the cache reads as incomplete, which is not
+# the same answer as "a different router". One probe repopulates it; anything
+# still unreadable after that is treated as unknown, and unknown is untrusted.
+router_hardware_address() {
+    local router="$1"
+    local address
+
+    address=$(normalize_mac "$(arp_hardware_address "$router")" 2>/dev/null) || address=
+    if [ -z "$address" ]; then
+        ping -c 1 -t 1 "$router" >/dev/null 2>&1 || true
+        address=$(normalize_mac "$(arp_hardware_address "$router")" 2>/dev/null) || address=
+    fi
+    [ -n "$address" ] || return 1
+    printf '%s\n' "$address"
+}
+
+home_interface() {
     local interface
+    local router
+    local address
 
-    interface=$(wifi_interface)
-    [ -n "$interface" ] || return 1
-    scutil <<-EOF 2>/dev/null | awk -F' : ' '/ProfileID/ { print $2; exit }'
-		show State:/Network/Interface/$interface/AirPort
-	EOF
-}
-
-is_on_trusted_wifi() {
-    local current
-
-    [ -n "$wifi_profile_id" ] || return 1
-    current=$(current_wifi_profile_id) || return 1
-    [ -n "$current" ] && [ "$current" = "$wifi_profile_id" ]
+    [ -n "$router_mac" ] || return 1
+    while IFS= read -r interface; do
+        [ -n "$interface" ] || continue
+        router=$(interface_router "$interface") || continue
+        address=$(router_hardware_address "$router") || continue
+        if [ "$address" = "$router_mac" ]; then
+            printf '%s\n' "$interface"
+            return 0
+        fi
+    done <<EOF
+$(wired_interfaces)
+EOF
+    return 1
 }
 
 is_on_ac_power() {
@@ -141,15 +190,10 @@ is_on_ac_power() {
 }
 
 should_stay_awake() {
-    if is_ethernet_connected; then
-        awake_reason=Ethernet
-        return 0
-    fi
-    if is_on_trusted_wifi && is_on_ac_power; then
-        awake_reason="Wi-Fi ($wifi_label) on AC power"
-        return 0
-    fi
-    return 1
+    local interface
+
+    interface=$(home_interface) || return 1
+    awake_reason="wired to ${router_label:-home} on $interface"
 }
 
 caffeinate_loaded() {
@@ -171,7 +215,7 @@ stop_caffeinate() {
     caffeinate_loaded || return 0
     launchctl bootout "gui/$(id -u)/$caffeinate_label" 2>/dev/null || return 1
     note "stopped caffeinate"
-    notify "Left the trusted network; normal sleep and screen lock restored"
+    notify "Left the home network; normal sleep and screen lock restored"
 }
 
 sleep_disabled_state() {
@@ -259,7 +303,7 @@ restore_screenlock() {
 }
 
 report_status() {
-    local network=untrusted
+    local network=away
 
     if should_stay_awake; then
         network="$awake_reason"
@@ -276,27 +320,35 @@ report_status() {
         printf 'sleepdisabled: no\n'
     fi
     printf 'screenlock: %s\n' "$(screenlock_state || printf 'unknown\n')"
-    printf 'trusted wi-fi: %s (%s)\n' "$wifi_label" "$wifi_profile_id"
+    if [ -n "$router_mac" ]; then
+        printf 'home router: %s (%s)\n' "${router_label:-unnamed}" "$router_mac"
+    else
+        printf 'home router: not recorded; run home-awake --learn-network\n'
+    fi
 }
 
 learn_network() {
-    local current
-    local label
+    local label="$1"
+    local interface
+    local router
+    local address
     local directory
 
-    current=$(current_wifi_profile_id) \
-        || die "no Wi-Fi interface was found on this Mac"
-    [ -n "$current" ] \
-        || die "this Mac is not joined to a Wi-Fi network; join the trusted network first"
-    label=$(networksetup -getairportnetwork "$(wifi_interface)" 2>/dev/null \
-        | sed -n 's/^Current Wi-Fi Network: //p')
-    [ -n "$label" ] || label="$wifi_label"
+    interface=$(wired_interfaces | head -1)
+    [ -n "$interface" ] \
+        || die "no active wired interface; plug into the home network first"
+    router=$(interface_router "$interface") \
+        || die "$interface has no router; wait for it to finish configuring"
+    address=$(router_hardware_address "$router") \
+        || die "the router at $router did not answer; retry once the link is up"
+    [ -n "$label" ] || label="$router"
 
     directory=$(dirname "$config_file")
     mkdir -p "$directory"
-    printf '# Written by home-awake --learn-network\nwifi_label=%s\nwifi_profile_id=%s\n' \
-        "$label" "$current" >"$config_file"
-    printf 'Trusted Wi-Fi network recorded as %s in %s\n' "$label" "$config_file"
+    printf '# Written by home-awake --learn-network\nrouter_label=%s\nrouter_mac=%s\n' \
+        "$label" "$address" >"$config_file"
+    printf 'Recorded %s (%s at %s, via %s) as home in %s\n' \
+        "$label" "$address" "$router" "$interface" "$config_file"
 }
 
 set_password() {
@@ -312,10 +364,14 @@ set_password() {
 }
 
 mode=converge
+learn_label=
 case "${1:-}" in
     '') ;;
     --status) mode=status ;;
-    --learn-network) mode=learn ;;
+    --learn-network)
+        mode=learn
+        learn_label=${2:-}
+        ;;
     --set-password) mode=password ;;
     -h|--help)
         usage
@@ -326,10 +382,10 @@ case "${1:-}" in
         exit 64
         ;;
 esac
-[ "$#" -le 1 ] || {
-    usage >&2
-    exit 64
-}
+case "$mode" in
+    learn) [ "$#" -le 2 ] || { usage >&2; exit 64; } ;;
+    *) [ "$#" -le 1 ] || { usage >&2; exit 64; } ;;
+esac
 
 [ -n "${HOME:-}" ] && [ -d "$HOME" ] || die "HOME is not an existing directory"
 read_config
@@ -340,7 +396,7 @@ case "$mode" in
         exit 0
         ;;
     learn)
-        learn_network
+        learn_network "$learn_label"
         exit 0
         ;;
     password)

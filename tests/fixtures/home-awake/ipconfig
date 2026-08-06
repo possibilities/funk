@@ -1,0 +1,20 @@
+#!/bin/bash
+
+set -euo pipefail
+
+[ "${1:-}" = getoption ] || exit 1
+[ "${3:-}" = router ] || exit 1
+
+case "${2:-}" in
+    en5)
+        # The wired interface only has a router while its link is up.
+        [ "${FUNK_TEST_HA_ETHERNET:-0}" -eq 1 ] || exit 1
+        printf '%s\n' "${FUNK_TEST_HA_ROUTER_IP:-192.168.50.1}"
+        ;;
+    en0)
+        printf '%s\n' "${FUNK_TEST_HA_WIFI_ROUTER_IP:-192.168.50.1}"
+        ;;
+    *)
+        exit 1
+        ;;
+esac

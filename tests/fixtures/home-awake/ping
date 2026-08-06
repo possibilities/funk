@@ -1,0 +1,12 @@
+#!/bin/bash
+
+set -euo pipefail
+
+# Probing is what repopulates the neighbour cache the next lookup reads.
+if [ -n "${FUNK_TEST_HA_ARP_COLD_FILE:-}" ]; then
+    : >"$FUNK_TEST_HA_ARP_COLD_FILE"
+fi
+
+if [ -n "${FUNK_TEST_HA_LOG:-}" ]; then
+    printf 'ping-stub <%s>\n' "$*" >>"$FUNK_TEST_HA_LOG"
+fi

@@ -1334,9 +1334,30 @@ grep -F '"$repair_artifacts" "$@"' libexec/converge-brew-casks >/dev/null \
 grep -F 'libexec/reclaim-app-ownership' install >/dev/null \
     || fail "installer does not reclaim applications left by a previous account"
 
-if grep -R -E '/Users/[A-Za-z0-9._-]+|home.router|telegram|agentnotify|TCC\.db|security import|yabai-cert' \
+if grep -R -E '/Users/[A-Za-z0-9._-]+|telegram|agentnotify|TCC\.db|security import|yabai-cert' \
     Brewfile bin launchd libexec system yabai skhd karabiner >/dev/null; then
     fail "old-account or prohibited privileged machinery leaked into Funk"
+fi
+
+# home-awake identifies the home network deliberately, so the blanket ban on
+# router detection no longer fits the whole tree. The ban it replaces is the one
+# that actually mattered: the travel firewall must never decide it is somewhere
+# safe and relax itself. Nothing on the PF path may learn where it is.
+if grep -R -E 'home.router|router_mac|arp |ipconfig getoption|ProfileID' \
+    system/funk-harden system/install-hardening-root libexec/install-hardening \
+    libexec/funk-harden-client >/dev/null; then
+    fail "the travel firewall gained network-location detection"
+fi
+if grep -R -E 'funk-home-awake|home-awake' \
+    system/funk-harden system/install-hardening-root >/dev/null; then
+    fail "the travel firewall was coupled to home-awake"
+fi
+
+# Nothing counts as home until it is recorded on the machine itself. A shipped
+# default would hand a fresh account somebody else's network.
+if grep -R -E '^[^#]*(router_mac|default_router)=[0-9a-fA-F]{2}:' \
+    bin/.local/bin/home-awake >/dev/null; then
+    fail "home-awake ships a default home router"
 fi
 
 if grep -R -E 'NOPASSWD:[[:space:]]*(ALL|/[^[:space:]]+[[:space:]]+\*)' \
