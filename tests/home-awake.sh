@@ -21,8 +21,10 @@ screenlock_file="$test_home/screenlock"
 caffeinate_marker="$test_home/caffeinate-loaded"
 arp_cold_file="$test_home/arp-warm"
 helper_path=/usr/local/libexec/funk-home-awake
-home_router=c8:7f:54:42:ac:b8
-other_router=00:11:22:33:44:55
+# Both addresses come from the range IEEE reserves for documentation, so no
+# fixture ever carries a real piece of anyone's network.
+home_router=00:00:5e:00:53:0a
+other_router=00:00:5e:00:53:0b
 
 fail() {
     printf 'home-awake test: %s\n' "$*" >&2
@@ -120,7 +122,7 @@ FUNK_TEST_HA_ETHERNET=0 FUNK_TEST_HA_AC=1 run_ha
 # Hardware addresses are compared after normalization, so case and dropped
 # leading zeros on either side still describe the same router.
 reset_state
-record_home_router 'C8:7F:54:42:AC:B8'
+record_home_router '00:00:5E:00:53:0A'
 FUNK_TEST_HA_ETHERNET=1 FUNK_TEST_HA_AC=1 run_ha
 [ -e "$caffeinate_marker" ] || fail "an upper-case recorded address did not match"
 

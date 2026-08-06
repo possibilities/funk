@@ -5,7 +5,7 @@ set -euo pipefail
 [ "${1:-}" = -n ] || exit 1
 router=${2:-}
 
-address=${FUNK_TEST_HA_ROUTER_MAC-c8:7f:54:42:ac:b8}
+address=${FUNK_TEST_HA_ROUTER_MAC-00:00:5e:00:53:0a}
 
 # An address that has aged out reads as incomplete until something probes it.
 if [ -n "${FUNK_TEST_HA_ARP_COLD_FILE:-}" ] && [ ! -e "${FUNK_TEST_HA_ARP_COLD_FILE}" ]; then

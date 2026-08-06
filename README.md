@@ -499,7 +499,7 @@ counts:
 
 ```
 router_label=study
-router_mac=c8:7f:54:42:ac:b8
+router_mac=00:00:5e:00:53:0a
 ```
 
 The router is read per interface with `ipconfig getoption`, not from the default
