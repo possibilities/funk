@@ -173,3 +173,56 @@ FUNK_TEST_HA_ETHERNET=0 FUNK_TEST_HA_AC=1 \
 if run_ha --nonsense >/dev/null 2>&1; then
     fail "an unknown option was accepted"
 fi
+
+# The root helper is the whole privileged surface, and sudoers has to accept a
+# numeric argument for the delay form, so these guards are the real bound on
+# what the unattended agent can ask root to do. They run before the root check
+# precisely so they can be asserted here.
+root_helper="$root/system/funk-home-awake"
+
+# The helper always exits non-zero on these unprivileged runs, so its output is
+# captured rather than piped: under pipefail a pipeline would report the
+# helper's status instead of the grep's, and every check below would be
+# answering the wrong question.
+helper_says() {
+    bash "$root_helper" "$@" 2>&1 || true
+}
+
+# Reaching the root check is how an argument reports that it survived
+# validation, since that is the only other place these runs can stop.
+reached_root_check() {
+    printf '%s\n' "$1" | grep -q 'must run as root'
+}
+
+for rejected in '999999' 'off; rm -rf /' '-1' 'abc' '0' '1e3' ' 300' 'off extra'; do
+    if reached_root_check "$(helper_says screenlock "$rejected")"; then
+        fail "the root helper accepted screen lock specification: $rejected"
+    fi
+done
+
+for rejected in 2 '' 'x' '-a'; do
+    if reached_root_check "$(helper_says sleep "$rejected")"; then
+        fail "the root helper accepted sleep argument: $rejected"
+    fi
+done
+
+for accepted in off immediate 1 300 86400; do
+    if ! reached_root_check "$(helper_says screenlock "$accepted")"; then
+        fail "the root helper rejected valid screen lock specification: $accepted"
+    fi
+done
+
+for accepted in 0 1; do
+    if ! reached_root_check "$(helper_says sleep "$accepted")"; then
+        fail "the root helper rejected valid sleep argument: $accepted"
+    fi
+done
+
+if reached_root_check "$(helper_says screenlock off extra)"; then
+    fail "the root helper accepted an extra argument"
+fi
+if reached_root_check "$(helper_says pmset)"; then
+    fail "the root helper accepted an unknown action"
+fi
+printf '%s\n' "$(helper_says validate)" | grep -q 'is installable' \
+    || fail "the root helper did not report itself installable"

@@ -83,27 +83,34 @@ case "$action" in
         ;;
 esac
 
+[ "$#" -eq 1 ] || {
+    usage >&2
+    exit 64
+}
+
+# Arguments are checked before privilege is, so that a rejected argument is
+# rejected identically whether or not the caller reached here through sudo, and
+# so the guards stay testable without root.
+case "$action" in
+    sleep)
+        case "$1" in
+            0|1) ;;
+            *) die "invalid sleep argument: $1" ;;
+        esac
+        ;;
+    screenlock)
+        validate_screenlock_spec "$1"
+        ;;
+esac
+
 [ "$(id -u)" -eq 0 ] || die "must run as root"
 validate_environment
 
 case "$action" in
     sleep)
-        [ "$#" -eq 1 ] || {
-            usage >&2
-            exit 64
-        }
-        case "$1" in
-            0|1) ;;
-            *) die "invalid sleep argument: $1" ;;
-        esac
         exec "$pmset" -a disablesleep "$1"
         ;;
     screenlock)
-        [ "$#" -eq 1 ] || {
-            usage >&2
-            exit 64
-        }
-        validate_screenlock_spec "$1"
         # sysadminctl spells a delay as two tokens, "300 seconds", but takes
         # "off" and "immediate" as one. The password arrives on this helper's
         # standard input and is never placed in an argument or a file.
