@@ -306,8 +306,10 @@ This installs Homebrew when absent, explicitly upgrades every eligible
 Brewfile dependency, stows every user configuration package, initializes
 tmux-fzf, the pinned Node runtime, and shell-gpt, installs or upgrades the AI
 tools listed above, links `funk` into the active Homebrew `bin` directory,
-installs the scheduled updater and Tailscale recovery agents, starts the
-Yabai/skhd/Karabiner stack, and converges Yabai Spaces 1–9.
+installs the scheduled updater, Tailscale recovery, and trusted-network
+`home-awake` agents, starts the Yabai/skhd/Karabiner stack, and converges Yabai
+Spaces 1–9. The `home-awake` step prompts for `sudo` once on a fresh machine to
+install its root helper, then skips the privileged work on every later run.
 Optional system layers and the window-stack opt-out are explicit:
 
 ```sh
@@ -456,6 +458,61 @@ funk harden travel
 
 There is no home-router detection, automatic relaxation, hostname logic,
 notification integration, or service-specific opening.
+
+## Trusted-network sleep and sign-in
+
+`home-awake` keeps this Mac awake, and signed in, while it is somewhere trusted.
+On Ethernet, or on the trusted Wi-Fi network while plugged in, it holds off idle
+sleep and turns the screen lock off, so coming back to the machine needs no
+password. Leaving that network restores exactly the screen lock delay that was
+in place before.
+
+```sh
+funk home-awake --status
+funk home-awake --learn-network
+funk home-awake --set-password
+```
+
+The default installation sets this up. The `com.arthack.funk.home-awake`
+LaunchAgent re-checks at login, on every SystemConfiguration change, and every
+thirty seconds, appending only its own errors to
+`~/Library/Logs/Funk/home-awake.log`.
+
+macOS redacts SSIDs from command-line tools, so the trusted Wi-Fi network is
+matched by the opaque `ProfileID` that SystemConfiguration still reports. Funk
+ships one as a default; run `funk home-awake --learn-network` while joined to
+the network you want trusted to replace it. The recorded value lives in
+`~/.config/funk/home-awake.conf` and is the only network that counts:
+
+```
+wifi_label=coopercoopercooper
+wifi_profile_id=210e869a…
+```
+
+Two things are privileged, and both go through the root-owned
+`/usr/local/libexec/funk-home-awake` helper rather than a passwordless rule on
+`pmset` or `sysadminctl` themselves. The granted invocations are exactly
+`sleep 0`, `sleep 1`, `screenlock off`, `screenlock immediate`, and
+`screenlock <seconds>`; the helper rejects any delay that is not a plain number
+of seconds within a day. `tests/validate.sh` asserts that list.
+
+Turning the screen lock off requires the login password that authorizes it.
+`funk home-awake --set-password` stores it in the login keychain under
+`funk-home-awake`, where `/usr/bin/security` reads it back; the password is
+never passed as an argument, written to a file, or logged. Until it is stored,
+home-awake manages sleep only and leaves the screen lock alone.
+
+The tradeoff is deliberate and worth stating plainly: while this Mac is on the
+trusted network, anyone with physical access to it is already signed in. FileVault
+still protects the disk at rest, and none of this touches the travel firewall
+posture above.
+
+Idle-sleep suppression runs as its own `com.arthack.funk.home-awake-caffeinate`
+job, installed to `~/.local/state/funk/` rather than `~/Library/LaunchAgents`.
+Everything in the LaunchAgents directory loads at login; this job must run only
+while home-awake has bootstrapped it, and launchd reaps the periodic check's
+process group as soon as that check finishes, so a plain background
+`caffeinate` would not survive.
 
 ## Full numbered-Space workflow
 

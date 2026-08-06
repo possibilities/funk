@@ -1,0 +1,24 @@
+#!/bin/bash
+
+set -euo pipefail
+
+if [ "${1:-}" = -g ] && [ "${2:-}" = batt ]; then
+    if [ "${FUNK_TEST_HA_AC:-1}" -eq 1 ]; then
+        printf "Now drawing from 'AC Power'\n"
+    else
+        printf "Now drawing from 'Battery Power'\n"
+    fi
+    printf ' -InternalBattery-0\t80%%; discharging\n'
+    exit 0
+fi
+
+if [ "${1:-}" = -g ] && [ "$#" -eq 1 ]; then
+    state=0
+    if [ -n "${FUNK_TEST_HA_SLEEP_FILE:-}" ] && [ -r "${FUNK_TEST_HA_SLEEP_FILE}" ]; then
+        state=$(cat "$FUNK_TEST_HA_SLEEP_FILE")
+    fi
+    printf 'System-wide power settings:\n SleepDisabled\t%s\n' "$state"
+    exit 0
+fi
+
+exit 1

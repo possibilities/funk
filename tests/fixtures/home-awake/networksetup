@@ -1,0 +1,27 @@
+#!/bin/bash
+
+set -euo pipefail
+
+case "${1:-}" in
+    -listallhardwareports)
+        cat <<'EOF'
+Hardware Port: Ethernet Adapter (en5)
+Device: en5
+Ethernet Address: 00:00:5e:00:53:05
+
+Hardware Port: Wi-Fi
+Device: en0
+Ethernet Address: 00:00:5e:00:53:00
+EOF
+        ;;
+    -getairportnetwork)
+        if [ -z "${FUNK_TEST_HA_WIFI_PROFILE:-}" ]; then
+            printf 'You are not associated with an AirPort network.\n'
+            exit 1
+        fi
+        printf 'Current Wi-Fi Network: %s\n' "${FUNK_TEST_HA_WIFI_LABEL:-testnet}"
+        ;;
+    *)
+        exit 1
+        ;;
+esac

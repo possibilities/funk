@@ -29,6 +29,8 @@ libexec/configure-orca
 libexec/install-ai-tools
 libexec/install-update-agent
 libexec/install-tailscale-agent
+libexec/install-home-awake
+libexec/install-home-awake-agent
 libexec/configure-macos
 libexec/configure-system
 libexec/funk-harden-client
@@ -37,6 +39,8 @@ libexec/funk-yabai
 libexec/install-window-manager
 system/funk-harden
 system/install-hardening-root
+system/funk-home-awake
+system/install-home-awake-root
 system/funk-yabai-maintain
 system/install-yabai-root
 system/apply-system-settings
@@ -47,6 +51,7 @@ bin/.local/bin/focus-address-bar
 bin/.local/bin/ginit
 bin/.local/bin/ghinit
 bin/.local/bin/tailscale-ensure-online
+bin/.local/bin/home-awake
 bin/.local/bin/adb-wireless-connect
 bin/.local/bin/adb-wireless-pair
 bin/.local/bin/raycast/scrcpy.sh
@@ -55,6 +60,7 @@ bin/.local/bin/raycast/scrcpy-flex.sh
 bin/.local/bin/raycast/scrcpy-no-audio-flex.sh
 bin/.local/bin/raycast/localhost-8789-kiosk.sh
 tests/adb-wireless.sh
+tests/home-awake.sh
 tests/kiosk-launcher.sh
 tests/scrcpy-launchers.sh
 tests/tailscale-online.sh
@@ -93,6 +99,8 @@ fi
 /usr/bin/plutil -lint launchd/com.arthack.funk.update.plist.in >/dev/null
 /usr/bin/plutil -lint launchd/com.arthack.funk.tailscale-online.plist.in >/dev/null
 /usr/bin/plutil -lint system/com.arthack.funk.harden-boot.plist >/dev/null
+/usr/bin/plutil -lint launchd/com.arthack.funk.home-awake.plist.in >/dev/null
+/usr/bin/plutil -lint launchd/com.arthack.funk.home-awake-caffeinate.plist >/dev/null
 update_plist=launchd/com.arthack.funk.update.plist.in
 expected_update_hours='0
 6
@@ -136,6 +144,61 @@ if /usr/libexec/PlistBuddy -c 'Print :ProgramArguments:1' "$tailscale_plist" \
         >/dev/null 2>&1; then
     fail "Tailscale recovery agent has an unapproved argument or trigger"
 fi
+
+home_awake_plist=launchd/com.arthack.funk.home-awake.plist.in
+[ "$(/usr/libexec/PlistBuddy -c 'Print :RunAtLoad' "$home_awake_plist")" = true ] \
+    || fail "home-awake agent does not run at login"
+[ "$(/usr/libexec/PlistBuddy -c 'Print :StartInterval' "$home_awake_plist")" = 30 ] \
+    || fail "home-awake agent does not re-check every thirty seconds"
+[ "$(/usr/libexec/PlistBuddy -c 'Print :WatchPaths:0' "$home_awake_plist")" \
+    = /Library/Preferences/SystemConfiguration ] \
+    || fail "home-awake agent does not react to network changes"
+[ "$(/usr/libexec/PlistBuddy -c 'Print :ProgramArguments:0' "$home_awake_plist")" \
+    = __HOME_AWAKE__ ] \
+    || fail "home-awake agent does not invoke the stowed helper"
+[ "$(/usr/libexec/PlistBuddy -c 'Print :EnvironmentVariables:HOME' "$home_awake_plist")" \
+    = __FUNK_HOME__ ] \
+    || fail "home-awake agent does not pin the target user HOME"
+if /usr/libexec/PlistBuddy -c 'Print :ProgramArguments:1' "$home_awake_plist" \
+    >/dev/null 2>&1; then
+    fail "home-awake agent has an unapproved argument"
+fi
+
+caffeinate_plist=launchd/com.arthack.funk.home-awake-caffeinate.plist
+[ "$(/usr/libexec/PlistBuddy -c 'Print :ProgramArguments:0' "$caffeinate_plist")" \
+    = /usr/bin/caffeinate ] \
+    || fail "home-awake idle-sleep job does not run caffeinate"
+[ "$(/usr/libexec/PlistBuddy -c 'Print :ProgramArguments:1' "$caffeinate_plist")" = -i ] \
+    || fail "home-awake idle-sleep job does not hold off idle sleep only"
+[ "$(/usr/libexec/PlistBuddy -c 'Print :KeepAlive' "$caffeinate_plist")" = true ] \
+    || fail "home-awake idle-sleep job does not stay running while bootstrapped"
+if /usr/libexec/PlistBuddy -c 'Print :RunAtLoad' "$caffeinate_plist" >/dev/null 2>&1; then
+    fail "home-awake idle-sleep job runs at load instead of on demand"
+fi
+# Everything in ~/Library/LaunchAgents loads at login, so this job has to be
+# installed somewhere home-awake alone can bootstrap it.
+# shellcheck disable=SC2016 # The installer's literal source line is the subject.
+grep -F 'caffeinate_path="$state_dir/$caffeinate_label.plist"' \
+    libexec/install-home-awake-agent >/dev/null \
+    || fail "home-awake idle-sleep job would load at login"
+
+# The privileged surface is exactly these five invocations; a wildcard anywhere
+# else would hand the unattended agent a general-purpose root path.
+expected_home_awake_rules='sleep 0
+sleep 1
+screenlock off
+screenlock immediate
+screenlock [0-9]*'
+actual_home_awake_rules=$(
+    grep -oE "NOPASSWD: %s [a-z]+ [^\\\\']+" system/install-home-awake-root \
+        | sed 's/^NOPASSWD: %s //'
+)
+[ "$actual_home_awake_rules" = "$expected_home_awake_rules" ] \
+    || fail "home-awake sudoers rules differ from the approved set"
+
+# shellcheck disable=SC2016 # The installer's literal source line is the subject.
+grep -F '"$funk_command" install-home-awake' install >/dev/null \
+    || fail "installer does not install the trusted-network agent"
 
 if command -v ruby >/dev/null 2>&1; then
     ruby -rjson -e '
@@ -1191,6 +1254,7 @@ grep -Fx 'brew "scrcpy"' Brewfile >/dev/null \
 grep -Fx 'cask "android-platform-tools", greedy: true' Brewfile >/dev/null \
     || fail "Android Platform Tools are missing from the Brewfile"
 "$root/tests/tailscale-online.sh"
+"$root/tests/home-awake.sh"
 "$root/tests/adb-wireless.sh"
 "$root/tests/scrcpy-launchers.sh"
 grep -F '@raycast.title Android (audio)' bin/.local/bin/raycast/scrcpy.sh >/dev/null \

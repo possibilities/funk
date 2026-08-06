@@ -1,0 +1,91 @@
+#!/bin/bash
+
+set -euo pipefail
+export PATH=/usr/bin:/bin:/usr/sbin:/sbin
+umask 022
+
+helper_target=/usr/local/libexec/funk-home-awake
+
+die() {
+    printf 'funk home-awake installer: %s\n' "$*" >&2
+    exit 1
+}
+
+guard_root_directory() {
+    local directory="$1"
+    local owner
+    local mode
+
+    [ -d "$directory" ] && [ ! -L "$directory" ] \
+        || die "invalid root directory: $directory"
+    owner=$(stat -f '%Su' "$directory")
+    mode=$(stat -f '%Lp' "$directory")
+    [ "$owner" = root ] || die "$directory must be root-owned"
+    [ $((8#$mode & 8#022)) -eq 0 ] \
+        || die "$directory must not be group/world-writable"
+}
+
+target_user=
+source_root=
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --user)
+            [ "$#" -ge 2 ] || die "--user requires a value"
+            target_user="$2"
+            shift 2
+            ;;
+        --source-root)
+            [ "$#" -ge 2 ] || die "--source-root requires a value"
+            source_root="$2"
+            shift 2
+            ;;
+        *)
+            die "unknown argument: $1"
+            ;;
+    esac
+done
+
+[ "$(id -u)" -eq 0 ] || die "must run as root"
+[ -n "$target_user" ] || die "--user is required"
+[ -n "$source_root" ] || die "--source-root is required"
+printf '%s\n' "$target_user" | grep -Eq '^[A-Za-z_][A-Za-z0-9._-]*$' \
+    || die "invalid user name: $target_user"
+target_uid=$(id -u "$target_user" 2>/dev/null) || die "user does not exist: $target_user"
+[ "$target_uid" -ge 500 ] || die "refusing system account: $target_user"
+
+source_root=$(cd -P -- "$source_root" && pwd)
+helper_source="$source_root/system/funk-home-awake"
+[ -f "$helper_source" ] && [ ! -L "$helper_source" ] \
+    || die "invalid helper source: $helper_source"
+/bin/bash "$helper_source" validate >/dev/null
+
+if [ ! -e /usr/local/libexec ]; then
+    /usr/bin/install -d -o root -g wheel -m 0755 /usr/local/libexec
+fi
+guard_root_directory /usr/local/libexec
+guard_root_directory /etc/sudoers.d
+
+tmpdir=$(mktemp -d /private/tmp/funk-home-awake-install.XXXXXX)
+trap 'rm -rf "$tmpdir"' EXIT
+
+/usr/bin/install -o root -g wheel -m 0755 "$helper_source" "$helper_target"
+
+# Each granted invocation is spelled out. The delay form needs a numeric
+# argument, so it is the one wildcard, and the helper refuses anything that is
+# not a plain number of seconds inside a day.
+sudoers_candidate="$tmpdir/sudoers"
+{
+    printf '%s ALL=(root) NOPASSWD: %s sleep 0\n' "$target_user" "$helper_target"
+    printf '%s ALL=(root) NOPASSWD: %s sleep 1\n' "$target_user" "$helper_target"
+    printf '%s ALL=(root) NOPASSWD: %s screenlock off\n' "$target_user" "$helper_target"
+    printf '%s ALL=(root) NOPASSWD: %s screenlock immediate\n' "$target_user" "$helper_target"
+    printf '%s ALL=(root) NOPASSWD: %s screenlock [0-9]*\n' "$target_user" "$helper_target"
+} > "$sudoers_candidate"
+/bin/chmod 0440 "$sudoers_candidate"
+/usr/sbin/visudo -cf "$sudoers_candidate" >/dev/null \
+    || die "generated sudoers rules failed validation"
+/usr/bin/install -o root -g wheel -m 0440 "$sudoers_candidate" \
+    "/etc/sudoers.d/funk-home-awake-$target_uid"
+
+printf 'Installed %s for %s.\n' "$helper_target" "$target_user"
+printf 'Granted sleep and screen-lock invocations only; no other command was authorized.\n'

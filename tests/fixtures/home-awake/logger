@@ -1,0 +1,6 @@
+#!/bin/bash
+# Keep test runs out of the system log.
+
+set -euo pipefail
+
+exit 0

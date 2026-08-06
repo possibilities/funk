@@ -30,6 +30,8 @@ Commands:
   install-updater    Install and load Funk's four-times-daily user LaunchAgent
   install-tailscale-recovery
                       Install the login/five-minute Tailscale recovery agent
+  home-awake [option] Converge or report trusted-network sleep and screen lock
+  install-home-awake  Install the trusted-network sleep and screen-lock agent
   configure-orca     Apply Funk's Stow-managed Orca settings overlay
   configure-macos    Apply Funk's user-level macOS preferences
   configure-system   Apply Funk's privileged machine-wide settings
@@ -62,6 +64,14 @@ case "$command_name" in
     install-tailscale-recovery)
         shift
         exec "$FUNK_ROOT/libexec/install-tailscale-agent" "$@"
+        ;;
+    home-awake)
+        shift
+        exec "$FUNK_ROOT/bin/.local/bin/home-awake" "$@"
+        ;;
+    install-home-awake)
+        shift
+        exec "$FUNK_ROOT/libexec/install-home-awake" "$@"
         ;;
     configure-orca)
         shift

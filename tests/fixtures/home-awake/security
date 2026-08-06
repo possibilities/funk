@@ -1,0 +1,12 @@
+#!/bin/bash
+
+set -euo pipefail
+
+[ "${1:-}" = find-generic-password ] || exit 1
+
+if [ "${FUNK_TEST_HA_PASSWORD_MISSING:-0}" -eq 1 ]; then
+    printf 'security: SecKeychainSearchCopyNext: The specified item could not be found.\n' >&2
+    exit 44
+fi
+
+printf 'test-login-password\n'

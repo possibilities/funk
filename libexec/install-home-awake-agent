@@ -1,0 +1,106 @@
+#!/bin/bash
+
+set -euo pipefail
+
+label=com.arthack.funk.home-awake
+caffeinate_label=com.arthack.funk.home-awake-caffeinate
+
+die() {
+    printf 'funk install-home-awake: %s\n' "$*" >&2
+    exit 1
+}
+
+check_only=0
+case "${1:-}" in
+    "") ;;
+    --check)
+        [ "$#" -eq 1 ] || {
+            printf 'Usage: install-home-awake-agent [--check]\n' >&2
+            exit 64
+        }
+        check_only=1
+        ;;
+    *)
+        printf 'Usage: install-home-awake-agent [--check]\n' >&2
+        exit 64
+        ;;
+esac
+
+[ "$(uname -s)" = Darwin ] || die "macOS is required"
+[ "$(id -u)" -ne 0 ] || die "run this command as the target user, not root"
+
+funk_root=${FUNK_ROOT:?FUNK_ROOT is not set}
+template="$funk_root/launchd/$label.plist.in"
+caffeinate_source="$funk_root/launchd/$caffeinate_label.plist"
+helper="$funk_root/bin/.local/bin/home-awake"
+agent_dir="$HOME/Library/LaunchAgents"
+agent_path="$agent_dir/$label.plist"
+state_dir="$HOME/.local/state/funk"
+caffeinate_path="$state_dir/$caffeinate_label.plist"
+log_dir="$HOME/Library/Logs/Funk"
+log_path="$log_dir/home-awake.log"
+domain="gui/$(id -u)"
+
+[ -f "$template" ] || die "template not found: $template"
+[ -f "$caffeinate_source" ] || die "template not found: $caffeinate_source"
+[ -x "$helper" ] || die "home-awake is missing or not executable: $helper"
+
+# The stowed copy is what launchd must run, so that editing the repository and
+# restowing takes effect without reinstalling the agent.
+stowed_helper="$HOME/.local/bin/home-awake"
+[ -x "$stowed_helper" ] || die "home-awake is not stowed into $HOME/.local/bin"
+
+tmpdir=$(mktemp -d "${TMPDIR:-/tmp}/funk-home-awake-agent.XXXXXX")
+trap 'rm -rf "$tmpdir"' EXIT
+rendered="$tmpdir/$label.plist"
+
+cp "$template" "$rendered"
+/usr/bin/plutil -remove ProgramArguments.0 "$rendered"
+/usr/bin/plutil -insert ProgramArguments.0 -string "$stowed_helper" "$rendered"
+/usr/bin/plutil -replace EnvironmentVariables.HOME -string "$HOME" "$rendered"
+/usr/bin/plutil -replace StandardOutPath -string "$log_path" "$rendered"
+/usr/bin/plutil -replace StandardErrorPath -string "$log_path" "$rendered"
+/usr/bin/plutil -lint "$rendered" >/dev/null
+/usr/bin/plutil -lint "$caffeinate_source" >/dev/null
+
+[ "$(/usr/libexec/PlistBuddy -c 'Print :ProgramArguments:0' "$rendered")" = "$stowed_helper" ] \
+    || die "rendered home-awake path is incorrect"
+[ "$(/usr/libexec/PlistBuddy -c 'Print :EnvironmentVariables:HOME' "$rendered")" = "$HOME" ] \
+    || die "rendered home-awake HOME is incorrect"
+if /usr/libexec/PlistBuddy -c 'Print :ProgramArguments:1' "$rendered" >/dev/null 2>&1; then
+    die "rendered home-awake agent has an unexpected extra argument"
+fi
+[ "$(/usr/libexec/PlistBuddy -c 'Print :RunAtLoad' "$rendered")" = true ] \
+    || die "rendered home-awake agent does not run at login"
+[ "$(/usr/libexec/PlistBuddy -c 'Print :StartInterval' "$rendered")" = 30 ] \
+    || die "rendered home-awake agent does not re-check every thirty seconds"
+[ "$(/usr/libexec/PlistBuddy -c 'Print :WatchPaths:0' "$rendered")" \
+    = /Library/Preferences/SystemConfiguration ] \
+    || die "rendered home-awake agent does not react to network changes"
+
+if [ "$check_only" -eq 1 ]; then
+    printf 'home-awake LaunchAgent renders and validates successfully.\n'
+    exit 0
+fi
+
+mkdir -p "$agent_dir" "$log_dir" "$state_dir"
+if [ -L "$agent_path" ]; then
+    die "refusing to replace symlink: $agent_path"
+fi
+if [ -e "$agent_path" ]; then
+    existing_label=$(/usr/libexec/PlistBuddy -c 'Print :Label' "$agent_path" 2>/dev/null || true)
+    [ "$existing_label" = "$label" ] \
+        || die "refusing to replace unrelated file: $agent_path"
+fi
+if [ -L "$caffeinate_path" ]; then
+    die "refusing to replace symlink: $caffeinate_path"
+fi
+
+/usr/bin/install -m 0644 "$caffeinate_source" "$caffeinate_path"
+/usr/bin/install -m 0644 "$rendered" "$agent_path"
+/bin/launchctl bootout "$domain/$label" 2>/dev/null || true
+/bin/launchctl bootstrap "$domain" "$agent_path"
+
+printf 'Installed %s (at login, on network changes, and every thirty seconds)\n' "$agent_path"
+printf 'Installed the idle-sleep job at %s\n' "$caffeinate_path"
+printf 'Logs append to %s\n' "$log_path"

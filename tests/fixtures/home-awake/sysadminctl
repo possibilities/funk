@@ -1,0 +1,26 @@
+#!/bin/bash
+
+set -euo pipefail
+
+[ "${1:-}" = -screenLock ] || exit 1
+[ "${2:-}" = status ] || exit 1
+
+state=immediate
+if [ -n "${FUNK_TEST_HA_SCREENLOCK_FILE:-}" ] \
+    && [ -r "${FUNK_TEST_HA_SCREENLOCK_FILE}" ]; then
+    state=$(cat "$FUNK_TEST_HA_SCREENLOCK_FILE")
+fi
+
+# The real tool writes its answer to standard error behind a timestamp.
+case "$state" in
+    off)
+        printf '2026-01-01 00:00:00.000 sysadminctl[1:1] screenLock is off\n' >&2
+        ;;
+    immediate)
+        printf '2026-01-01 00:00:00.000 sysadminctl[1:1] screenLock delay is 0 seconds\n' >&2
+        ;;
+    *)
+        printf '2026-01-01 00:00:00.000 sysadminctl[1:1] screenLock delay is %s seconds\n' \
+            "$state" >&2
+        ;;
+esac

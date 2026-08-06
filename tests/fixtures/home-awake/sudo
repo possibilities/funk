@@ -1,0 +1,44 @@
+#!/bin/bash
+# Stands in for the granted, password-free invocations of the root helper.
+
+set -euo pipefail
+
+args=()
+for argument in "$@"; do
+    case "$argument" in
+        -n) continue ;;
+        *) args+=("$argument") ;;
+    esac
+done
+
+[ "${#args[@]}" -ge 2 ] || exit 1
+helper=${args[0]}
+action=${args[1]}
+
+if [ -n "${FUNK_TEST_HA_LOG:-}" ]; then
+    {
+        printf 'sudo-stub'
+        printf ' <%s>' "$helper" "${args[@]:1}"
+        printf '\n'
+    } >>"$FUNK_TEST_HA_LOG"
+fi
+
+[ "${FUNK_TEST_HA_SUDO_FAIL:-0}" -eq 0 ] || exit 1
+
+case "$action" in
+    sleep)
+        [ -n "${FUNK_TEST_HA_SLEEP_FILE:-}" ] || exit 1
+        printf '%s\n' "${args[2]}" >"$FUNK_TEST_HA_SLEEP_FILE"
+        ;;
+    screenlock)
+        # The real helper reads the authorizing password here and never echoes
+        # it; the stub asserts only that one non-empty line arrived.
+        password=$(cat)
+        [ -n "$password" ] || exit 1
+        [ -n "${FUNK_TEST_HA_SCREENLOCK_FILE:-}" ] || exit 1
+        printf '%s\n' "${args[2]}" >"$FUNK_TEST_HA_SCREENLOCK_FILE"
+        ;;
+    *)
+        exit 1
+        ;;
+esac

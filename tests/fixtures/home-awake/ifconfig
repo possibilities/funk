@@ -1,0 +1,26 @@
+#!/bin/bash
+
+set -euo pipefail
+
+if [ "${1:-}" = -l ]; then
+    printf 'lo0 en0 en5\n'
+    exit 0
+fi
+
+case "${1:-}" in
+    en5)
+        if [ "${FUNK_TEST_HA_ETHERNET:-0}" -eq 1 ]; then
+            printf 'en5: flags=8863\n\tstatus: active\n'
+        else
+            printf 'en5: flags=8863\n\tstatus: inactive\n'
+        fi
+        ;;
+    en0)
+        # The Wi-Fi interface is filtered out by device name, so its link status
+        # must never decide the Ethernet answer.
+        printf 'en0: flags=8863\n\tstatus: active\n'
+        ;;
+    *)
+        printf '%s: flags=8863\n\tstatus: inactive\n' "${1:-lo0}"
+        ;;
+esac

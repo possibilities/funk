@@ -1,0 +1,32 @@
+#!/bin/bash
+
+set -euo pipefail
+
+if [ -n "${FUNK_TEST_HA_LOG:-}" ]; then
+    {
+        printf 'launchctl-stub'
+        printf ' <%s>' "$@"
+        printf '\n'
+    } >>"$FUNK_TEST_HA_LOG"
+fi
+
+marker=${FUNK_TEST_HA_CAFFEINATE_FILE:-}
+[ -n "$marker" ] || exit 1
+
+case "${1:-}" in
+    print)
+        [ -e "$marker" ] || exit 1
+        printf 'com.arthack.funk.home-awake-caffeinate = {\n\tstate = running\n}\n'
+        ;;
+    bootstrap)
+        [ -f "${3:-}" ] || exit 1
+        : >"$marker"
+        ;;
+    bootout)
+        [ -e "$marker" ] || exit 1
+        rm -f "$marker"
+        ;;
+    *)
+        exit 1
+        ;;
+esac

@@ -1,0 +1,23 @@
+#!/bin/bash
+
+set -euo pipefail
+
+request=$(cat)
+
+case "$request" in
+    *AirPort*) ;;
+    *)
+        printf 'No such key\n'
+        exit 0
+        ;;
+esac
+
+# An unjoined Wi-Fi interface reports a dictionary with no ProfileID at all,
+# which is what an empty FUNK_TEST_HA_WIFI_PROFILE stands for here.
+if [ -z "${FUNK_TEST_HA_WIFI_PROFILE:-}" ]; then
+    printf '<dictionary> {\n  Power Status : FALSE\n}\n'
+    exit 0
+fi
+
+printf '<dictionary> {\n  Power Status : TRUE\n  ProfileID : %s\n  SSID_STR : redacted\n}\n' \
+    "$FUNK_TEST_HA_WIFI_PROFILE"

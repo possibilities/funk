@@ -1,0 +1,119 @@
+#!/bin/bash
+# Apply only the two privileged state changes home-awake needs.
+#
+# home-awake runs unattended from a LaunchAgent, so it cannot answer a sudo
+# password prompt. Rather than granting NOPASSWD on pmset and sysadminctl
+# themselves, Funk grants it on this helper and validates every argument here.
+
+set -euo pipefail
+export PATH=/usr/bin:/bin:/usr/sbin:/sbin
+umask 022
+
+pmset=/usr/bin/pmset
+sysadminctl=/usr/sbin/sysadminctl
+
+die() {
+    printf 'funk-home-awake: %s\n' "$*" >&2
+    exit 1
+}
+
+usage() {
+    cat <<'EOF'
+Usage: funk-home-awake sleep <0|1>
+       funk-home-awake screenlock <off|immediate|SECONDS>
+       funk-home-awake validate
+
+sleep       Set or clear the system-wide disablesleep flag
+screenlock  Set the login-window screen lock, reading the authorizing
+            password from standard input
+validate    Check that the required system binaries are present
+EOF
+}
+
+validate_environment() {
+    [ -x "$pmset" ] || die "missing required binary: $pmset"
+    [ -x "$sysadminctl" ] || die "missing required binary: $sysadminctl"
+}
+
+# The sudoers rule for the delay form has to accept a numeric argument, so the
+# only real bound on it is this check. Anything that is not "off", "immediate",
+# or a plain number of seconds within a day is refused before sysadminctl runs.
+validate_screenlock_spec() {
+    local spec="$1"
+
+    case "$spec" in
+        off|immediate)
+            return 0
+            ;;
+        *)
+            printf '%s\n' "$spec" | grep -Eq '^[0-9]{1,5}$' \
+                || die "invalid screen lock specification: $spec"
+            [ "$spec" -ge 1 ] && [ "$spec" -le 86400 ] \
+                || die "screen lock delay is out of range: $spec"
+            ;;
+    esac
+}
+
+[ "$#" -ge 1 ] || {
+    usage >&2
+    exit 64
+}
+
+action="$1"
+shift
+
+case "$action" in
+    validate)
+        [ "$#" -eq 0 ] || {
+            usage >&2
+            exit 64
+        }
+        validate_environment
+        printf 'funk-home-awake is installable.\n'
+        exit 0
+        ;;
+    sleep|screenlock) ;;
+    -h|--help)
+        usage
+        exit 0
+        ;;
+    *)
+        usage >&2
+        exit 64
+        ;;
+esac
+
+[ "$(id -u)" -eq 0 ] || die "must run as root"
+validate_environment
+
+case "$action" in
+    sleep)
+        [ "$#" -eq 1 ] || {
+            usage >&2
+            exit 64
+        }
+        case "$1" in
+            0|1) ;;
+            *) die "invalid sleep argument: $1" ;;
+        esac
+        exec "$pmset" -a disablesleep "$1"
+        ;;
+    screenlock)
+        [ "$#" -eq 1 ] || {
+            usage >&2
+            exit 64
+        }
+        validate_screenlock_spec "$1"
+        # sysadminctl spells a delay as two tokens, "300 seconds", but takes
+        # "off" and "immediate" as one. The password arrives on this helper's
+        # standard input and is never placed in an argument or a file.
+        case "$1" in
+            off|immediate)
+                exec "$sysadminctl" -screenLock "$1" -password -
+                ;;
+            *)
+                exec "$sysadminctl" -screenLock "$1" seconds -password -
+                ;;
+        esac
+        ;;
+esac

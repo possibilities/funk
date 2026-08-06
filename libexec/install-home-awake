@@ -1,0 +1,72 @@
+#!/bin/bash
+
+set -euo pipefail
+
+helper_target=/usr/local/libexec/funk-home-awake
+keychain_service=funk-home-awake
+
+die() {
+    printf 'funk install-home-awake: %s\n' "$*" >&2
+    exit 1
+}
+
+# Every check here is unprivileged and none of them can prompt: sudo runs with
+# -n only to ask whether the granted invocations still exist. When the installed
+# helper already matches this checkout and both rules are present there is
+# nothing for the root installer to converge, so asking for a password would
+# change nothing.
+home_awake_converged() {
+    local installed_digest
+    local source_digest
+
+    [ -f "$helper_target" ] && [ ! -L "$helper_target" ] || return 1
+    [ "$(stat -f '%Su' "$helper_target")" = root ] || return 1
+
+    source_digest=$(/usr/bin/shasum -a 256 "$funk_root/system/funk-home-awake" \
+        | /usr/bin/awk '{print $1}')
+    installed_digest=$(/usr/bin/shasum -a 256 "$helper_target" | /usr/bin/awk '{print $1}')
+    [ -n "$source_digest" ] && [ "$source_digest" = "$installed_digest" ] || return 1
+
+    /usr/bin/sudo -n -l "$helper_target" sleep 1 >/dev/null 2>&1 || return 1
+    /usr/bin/sudo -n -l "$helper_target" screenlock off >/dev/null 2>&1 || return 1
+}
+
+if [ "$#" -ne 0 ]; then
+    printf 'Usage: funk install-home-awake\n' >&2
+    exit 64
+fi
+[ "$(uname -s)" = Darwin ] || die "macOS is required"
+[ "$(id -u)" -ne 0 ] || die "run as the target user, not root"
+
+funk_root=${FUNK_ROOT:?FUNK_ROOT is not set}
+root_installer="$funk_root/system/install-home-awake-root"
+agent_installer="$funk_root/libexec/install-home-awake-agent"
+stow_config="$funk_root/libexec/stow-config"
+
+[ -x "$root_installer" ] || die "root installer is missing: $root_installer"
+[ -x "$agent_installer" ] || die "agent installer is missing: $agent_installer"
+[ -x "$stow_config" ] || die "Stow installer is missing: $stow_config"
+
+FUNK_ROOT="$funk_root" "$stow_config" bin
+
+if home_awake_converged; then
+    printf 'The root helper and its two granted invocations already match this\n'
+    printf 'checkout; skipping the privileged step.\n'
+else
+    printf 'Installing the root-owned home-awake helper. sudo prompts once so the\n'
+    printf 'unattended agent can change sleep and screen-lock state later.\n'
+    /usr/bin/sudo "$root_installer" --user "$(id -un)" --source-root "$funk_root"
+fi
+
+FUNK_ROOT="$funk_root" "$agent_installer"
+
+if ! /usr/bin/security find-generic-password -a "$(id -un)" \
+    -s "$keychain_service" >/dev/null 2>&1; then
+    cat <<'EOF'
+
+Screen-lock changes still need the login password that authorizes them. Until
+it is stored, home-awake manages sleep only. Store it with:
+
+  home-awake --set-password
+EOF
+fi

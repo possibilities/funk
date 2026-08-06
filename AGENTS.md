@@ -42,6 +42,13 @@ configuration, root-owned helpers, LaunchDaemons, or rendered LaunchAgents.
 Install privileged files through Funk's guarded helpers; never link a root
 execution path into this user-writable checkout.
 
+An unattended agent that needs root gets a purpose-built helper, not a
+passwordless rule on a general-purpose system binary. `system/funk-home-awake`
+is the model: sudoers names that helper with an enumerated argument list, and
+the helper validates every argument before touching `pmset` or `sysadminctl`.
+`tests/validate.sh` pins the granted list, so widening it is a deliberate,
+reviewable change rather than a side effect.
+
 ## Unprivileged convergence
 
 A default `./install` must not ask for a password once the machine has
@@ -56,6 +63,10 @@ converged. Two rules keep that true, and both are asserted by
   the installed state first, as `libexec/install-window-manager` does before
   invoking `system/install-yabai-root`, and skip the step when it already
   matches.
+
+`funk install-home-awake` follows the same rule. It compares the installed root
+helper's digest and its granted sudo invocations first, and elevates only when
+they differ from this checkout.
 
 Repair state that makes Homebrew elevate instead of letting it recur:
 `libexec/reclaim-app-ownership` for applications left by a previous account,

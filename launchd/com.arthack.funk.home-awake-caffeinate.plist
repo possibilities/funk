@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Idle-sleep suppression for home-awake, as its own job rather than a child
+  process. launchd reaps the periodic checker's process group when that check
+  finishes, so a caffeinate started from inside it would not survive.
+
+  This plist is installed outside ~/Library/LaunchAgents on purpose: everything
+  in that directory loads at login, and this job must run only while home-awake
+  has bootstrapped it.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.arthack.funk.home-awake-caffeinate</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/bin/caffeinate</string>
+    <string>-i</string>
+  </array>
+  <key>KeepAlive</key>
+  <true/>
+  <key>ProcessType</key>
+  <string>Background</string>
+</dict>
+</plist>

@@ -1,0 +1,366 @@
+#!/bin/bash
+# Keep this Mac awake, and signed in, while it sits on a trusted home network.
+#
+# On Ethernet, or on the trusted Wi-Fi network while plugged in, the screen lock
+# is turned off so returning to the machine needs no password, and sleep is
+# prevented. Leaving that network restores the previous screen lock delay.
+
+set -euo pipefail
+
+# Tests point this at a fixture directory. launchd supplies almost no PATH, so
+# the real one has to be spelled out here rather than inherited.
+PATH="${FUNK_HOME_AWAKE_PATH:-/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin}"
+export PATH
+
+helper="${FUNK_HOME_AWAKE_HELPER:-/usr/local/libexec/funk-home-awake}"
+keychain_service=funk-home-awake
+caffeinate_label=com.arthack.funk.home-awake-caffeinate
+
+# The trusted network ships as a default so a fresh install behaves like the
+# machine it was migrated from; --learn-network replaces it from wherever this
+# Mac actually lives.
+default_wifi_label=coopercoopercooper
+default_wifi_profile_id=210e869a3589eca555c48a923f93d34cbb9ff957e163c9a4d7c9ba8fb18c14b2
+
+state_dir="$HOME/.local/state/funk"
+screenlock_state_file="$state_dir/home-awake-screenlock"
+caffeinate_plist="$state_dir/$caffeinate_label.plist"
+config_file="$HOME/.config/funk/home-awake.conf"
+
+wifi_label="$default_wifi_label"
+wifi_profile_id="$default_wifi_profile_id"
+awake_reason=
+
+usage() {
+    cat <<'EOF'
+Usage: home-awake
+       home-awake --status
+       home-awake --learn-network
+       home-awake --set-password
+
+With no arguments this converges sleep and screen-lock state for the network
+this Mac is currently on. It is silent unless something changed.
+
+--status         Report caffeinate, sleep, screen lock, and network state
+--learn-network  Record the currently joined Wi-Fi network as trusted
+--set-password   Store the login password the screen-lock change authenticates
+                 with, in the login keychain
+EOF
+}
+
+die() {
+    printf 'home-awake: %s\n' "$*" >&2
+    exit 1
+}
+
+note() {
+    logger -t home-awake "$*" 2>/dev/null || true
+}
+
+notify() {
+    local message="$1"
+    local notifier
+
+    if [ -n "${FUNK_TERMINAL_NOTIFIER_BIN:-}" ] \
+        && [ -x "$FUNK_TERMINAL_NOTIFIER_BIN" ]; then
+        notifier="$FUNK_TERMINAL_NOTIFIER_BIN"
+    elif command -v terminal-notifier >/dev/null 2>&1; then
+        notifier=$(command -v terminal-notifier)
+    else
+        return 0
+    fi
+
+    "$notifier" \
+        -title home-awake \
+        -message "$message" \
+        -group com.arthack.funk.home-awake >/dev/null 2>&1 || true
+}
+
+read_config() {
+    local key
+    local value
+    local line
+
+    [ -f "$config_file" ] || return 0
+    while IFS= read -r line; do
+        case "$line" in
+            ''|'#'*) continue ;;
+        esac
+        key=${line%%=*}
+        value=${line#*=}
+        [ "$key" != "$line" ] || continue
+        case "$key" in
+            wifi_profile_id) wifi_profile_id="$value" ;;
+            wifi_label) wifi_label="$value" ;;
+            *) ;;
+        esac
+    done <"$config_file"
+}
+
+wifi_interface() {
+    networksetup -listallhardwareports 2>/dev/null \
+        | awk '/^Hardware Port: Wi-Fi$/ { getline; print $2; exit }'
+}
+
+is_ethernet_connected() {
+    local interface
+    local wifi
+
+    wifi=$(wifi_interface)
+    for interface in $(ifconfig -l 2>/dev/null | tr ' ' '\n' | grep '^en'); do
+        [ "$interface" != "$wifi" ] || continue
+        if ifconfig "$interface" 2>/dev/null | grep -q 'status: active'; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+# macOS redacts SSIDs from command-line tools, so the trusted network is matched
+# by the opaque ProfileID that SystemConfiguration still reports.
+current_wifi_profile_id() {
+    local interface
+
+    interface=$(wifi_interface)
+    [ -n "$interface" ] || return 1
+    scutil <<-EOF 2>/dev/null | awk -F' : ' '/ProfileID/ { print $2; exit }'
+		show State:/Network/Interface/$interface/AirPort
+	EOF
+}
+
+is_on_trusted_wifi() {
+    local current
+
+    [ -n "$wifi_profile_id" ] || return 1
+    current=$(current_wifi_profile_id) || return 1
+    [ -n "$current" ] && [ "$current" = "$wifi_profile_id" ]
+}
+
+is_on_ac_power() {
+    pmset -g batt 2>/dev/null | head -1 | grep -q "'AC Power'"
+}
+
+should_stay_awake() {
+    if is_ethernet_connected; then
+        awake_reason=Ethernet
+        return 0
+    fi
+    if is_on_trusted_wifi && is_on_ac_power; then
+        awake_reason="Wi-Fi ($wifi_label) on AC power"
+        return 0
+    fi
+    return 1
+}
+
+caffeinate_loaded() {
+    launchctl print "gui/$(id -u)/$caffeinate_label" >/dev/null 2>&1
+}
+
+start_caffeinate() {
+    caffeinate_loaded && return 0
+    if [ ! -f "$caffeinate_plist" ]; then
+        note "caffeinate job is not installed; run funk install-home-awake"
+        return 1
+    fi
+    launchctl bootstrap "gui/$(id -u)" "$caffeinate_plist" 2>/dev/null || return 1
+    note "started caffeinate ($awake_reason)"
+    notify "Staying awake: $awake_reason"
+}
+
+stop_caffeinate() {
+    caffeinate_loaded || return 0
+    launchctl bootout "gui/$(id -u)/$caffeinate_label" 2>/dev/null || return 1
+    note "stopped caffeinate"
+    notify "Left the trusted network; normal sleep and screen lock restored"
+}
+
+sleep_disabled_state() {
+    pmset -g 2>/dev/null | awk '/SleepDisabled/ { print $2; exit }'
+}
+
+set_sleep_disabled() {
+    local desired="$1"
+
+    [ "$(sleep_disabled_state)" != "$desired" ] || return 0
+    if sudo -n "$helper" sleep "$desired" >/dev/null 2>&1; then
+        note "set disablesleep=$desired"
+    else
+        note "could not set disablesleep=$desired; run funk install-home-awake"
+        return 1
+    fi
+}
+
+# Prints "off", "immediate", or a plain number of seconds, matching what the
+# root helper and the saved-state file accept.
+screenlock_state() {
+    local output
+    local seconds
+
+    output=$(sysadminctl -screenLock status 2>&1) || true
+    if printf '%s\n' "$output" | grep -qi 'screenLock is off'; then
+        printf 'off\n'
+        return 0
+    fi
+    seconds=$(printf '%s\n' "$output" | grep -oE 'delay is [0-9]+' | grep -oE '[0-9]+' || true)
+    [ -n "$seconds" ] || return 1
+    if [ "$seconds" -eq 0 ]; then
+        printf 'immediate\n'
+    else
+        printf '%s\n' "$seconds"
+    fi
+}
+
+set_screenlock() {
+    local spec="$1"
+    local password
+
+    password=$(security find-generic-password -a "$(id -un)" \
+        -s "$keychain_service" -w 2>/dev/null) || {
+        note "keychain item '$keychain_service' is missing; run home-awake --set-password"
+        return 1
+    }
+    printf '%s\n' "$password" | sudo -n "$helper" screenlock "$spec" >/dev/null 2>&1
+}
+
+disable_screenlock() {
+    local current
+
+    current=$(screenlock_state) || return 1
+    [ "$current" != off ] || return 0
+    mkdir -p "$state_dir"
+    printf '%s\n' "$current" >"$screenlock_state_file"
+    if set_screenlock off; then
+        note "disabled screen lock ($awake_reason; was $current)"
+        notify "Screen lock off: $awake_reason"
+    else
+        rm -f "$screenlock_state_file"
+        return 1
+    fi
+}
+
+restore_screenlock() {
+    local current
+    local target=immediate
+
+    current=$(screenlock_state) || return 1
+    [ "$current" = off ] || return 0
+    if [ -f "$screenlock_state_file" ]; then
+        target=$(cat "$screenlock_state_file")
+    fi
+    case "$target" in
+        off) target=immediate ;;
+    esac
+    if set_screenlock "$target"; then
+        rm -f "$screenlock_state_file"
+        note "restored screen lock ($target)"
+    else
+        return 1
+    fi
+}
+
+report_status() {
+    local network=untrusted
+
+    if should_stay_awake; then
+        network="$awake_reason"
+    fi
+    printf 'network: %s\n' "$network"
+    if caffeinate_loaded; then
+        printf 'caffeinate: yes\n'
+    else
+        printf 'caffeinate: no\n'
+    fi
+    if [ "$(sleep_disabled_state)" = 1 ]; then
+        printf 'sleepdisabled: yes\n'
+    else
+        printf 'sleepdisabled: no\n'
+    fi
+    printf 'screenlock: %s\n' "$(screenlock_state || printf 'unknown\n')"
+    printf 'trusted wi-fi: %s (%s)\n' "$wifi_label" "$wifi_profile_id"
+}
+
+learn_network() {
+    local current
+    local label
+    local directory
+
+    current=$(current_wifi_profile_id) \
+        || die "no Wi-Fi interface was found on this Mac"
+    [ -n "$current" ] \
+        || die "this Mac is not joined to a Wi-Fi network; join the trusted network first"
+    label=$(networksetup -getairportnetwork "$(wifi_interface)" 2>/dev/null \
+        | sed -n 's/^Current Wi-Fi Network: //p')
+    [ -n "$label" ] || label="$wifi_label"
+
+    directory=$(dirname "$config_file")
+    mkdir -p "$directory"
+    printf '# Written by home-awake --learn-network\nwifi_label=%s\nwifi_profile_id=%s\n' \
+        "$label" "$current" >"$config_file"
+    printf 'Trusted Wi-Fi network recorded as %s in %s\n' "$label" "$config_file"
+}
+
+set_password() {
+    printf 'Storing the login password home-awake authenticates screen-lock\n'
+    printf 'changes with. It is read by /usr/bin/security only.\n'
+    # A bare trailing -w is what makes security prompt for the password instead
+    # of taking it as an argument, where it would be visible in the process list
+    # and, worse, stored empty if the option were left out entirely.
+    security add-generic-password -U -a "$(id -un)" -s "$keychain_service" \
+        -T /usr/bin/security -l "Funk home-awake login password" -w \
+        || die "the keychain item was not stored"
+    printf 'Stored keychain item %s.\n' "$keychain_service"
+}
+
+mode=converge
+case "${1:-}" in
+    '') ;;
+    --status) mode=status ;;
+    --learn-network) mode=learn ;;
+    --set-password) mode=password ;;
+    -h|--help)
+        usage
+        exit 0
+        ;;
+    *)
+        usage >&2
+        exit 64
+        ;;
+esac
+[ "$#" -le 1 ] || {
+    usage >&2
+    exit 64
+}
+
+[ -n "${HOME:-}" ] && [ -d "$HOME" ] || die "HOME is not an existing directory"
+read_config
+
+case "$mode" in
+    status)
+        report_status
+        exit 0
+        ;;
+    learn)
+        learn_network
+        exit 0
+        ;;
+    password)
+        set_password
+        exit 0
+        ;;
+esac
+
+status=0
+if should_stay_awake; then
+    start_caffeinate || status=1
+    if is_on_ac_power; then
+        set_sleep_disabled 1 || status=1
+    else
+        set_sleep_disabled 0 || status=1
+    fi
+    disable_screenlock || status=1
+else
+    stop_caffeinate || status=1
+    set_sleep_disabled 0 || status=1
+    restore_screenlock || status=1
+fi
+exit "$status"
