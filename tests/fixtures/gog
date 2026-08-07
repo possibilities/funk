@@ -8,6 +8,16 @@ if [ -n "${FUNK_TEST_GOG_LOG:-}" ]; then
     printf '%s\n' "$*" >>"$FUNK_TEST_GOG_LOG"
 fi
 
+# The real gog takes global flags before the subcommand, so the probe arrives as
+# `--account <email> gmail search ...`. Strip them to find the verb.
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --account | --client) shift 2 ;;
+        --*) shift ;;
+        *) break ;;
+    esac
+done
+
 accounts=${FUNK_TEST_GOG_ACCOUNTS:-0}
 if [ -n "${FUNK_TEST_GOG_ACCOUNTS_FILE:-}" ] \
     && [ -r "$FUNK_TEST_GOG_ACCOUNTS_FILE" ]; then

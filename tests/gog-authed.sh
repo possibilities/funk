@@ -13,6 +13,7 @@ notifications="$test_home/notifications"
 accounts_file="$test_home/accounts"
 probe_file="$test_home/probe"
 alert_file="$test_home/.local/state/funk/gog-ensure-authed.alert"
+gog_calls="$test_home/gog-calls"
 
 fail() {
     printf 'gog-authed test: %s\n' "$*" >&2
@@ -29,6 +30,7 @@ run_check() {
         FUNK_TEST_GOG_PROBE_FILE="$probe_file" \
         FUNK_TERMINAL_NOTIFIER_BIN="$notifier_fixture" \
         FUNK_TEST_NOTIFIER_LOG="$notifications" \
+        FUNK_TEST_GOG_LOG="$gog_calls" \
         "$helper" "$@"
 }
 
@@ -130,5 +132,14 @@ set_state 0 ok
 run_check --check && fail "--check must carry the verdict in its exit status"
 [ "$(notification_count)" -eq 0 ] || fail "--check must not notify"
 [ ! -e "$alert_file" ] || fail "--check must not record an alert"
+
+# ── the probe names its account ──────────────────────────────────────────────
+# With several credentials stored and no default chosen, gog refuses a call it
+# cannot attribute, so an unnamed probe would prove nothing about any of them.
+set_state 1 ok
+: >"$gog_calls"
+run_check || fail "a working credential must exit zero"
+grep -q -- '--account mike@example.com gmail search' "$gog_calls" \
+    || fail "the probe must name the account it is validating: $(cat "$gog_calls")"
 
 printf 'gog-authed tests passed\n'

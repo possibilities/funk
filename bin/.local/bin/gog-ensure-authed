@@ -147,7 +147,7 @@ jq_binary() {
 # the alert that matters.
 credential_failure() {
     printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | grep -qE \
-        'invalid_grant|token has been expired|revoked|unauthorized_client|invalid_client|not authenticated|no token'
+        'invalid_grant|token has been expired|revoked|unauthorized_client|invalid_client|not authenticated|no token|missing --account'
 }
 
 # Emits the verdict on stdout as "ok|<detail>" or "down|<detail>".
@@ -160,6 +160,7 @@ verdict() {
     local detail
     local probe_status
     local probe_error
+    local probe_account
 
     gog=$(gog_binary) || {
         printf 'down|gog is not installed\n'
@@ -183,12 +184,23 @@ verdict() {
         | "$jq" -r '[.accounts[].email // "unknown"] | join(", ")' 2>/dev/null) \
         || emails=unknown
     detail="$accounts account(s): $emails"
+    probe_account=$(printf '%s' "$listing" \
+        | "$jq" -r '.accounts[0].email // ""' 2>/dev/null) || probe_account=
 
     # Listing a stored credential does not prove Google still honors it, so the
     # verdict rests on a real call. Without this an expired refresh token reads
     # as healthy right up until the work that needed it fails.
-    probe_error=$("$gog" gmail search 'newer_than:1d' --max 1 --json 2>&1 >/dev/null) \
-        && probe_status=0 || probe_status=$?
+    #
+    # The account is named rather than left to the default: with several stored
+    # and no default chosen, gog refuses the call for want of an --account and
+    # the probe would prove nothing about any of them.
+    if [ -n "$probe_account" ]; then
+        probe_error=$("$gog" --account "$probe_account" gmail search 'newer_than:1d' \
+            --max 1 --json 2>&1 >/dev/null) && probe_status=0 || probe_status=$?
+    else
+        probe_error=$("$gog" gmail search 'newer_than:1d' --max 1 --json 2>&1 >/dev/null) \
+            && probe_status=0 || probe_status=$?
+    fi
     if [ "$probe_status" -ne 0 ]; then
         if credential_failure "$probe_error"; then
             printf 'down|credential expired or revoked (%s)\n' "$detail"
