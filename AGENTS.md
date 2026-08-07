@@ -106,6 +106,13 @@ every agent CLI's hook configuration on launch, so those files stay out of Stow
 and `funk configure-orca` reconciles only the keys Funk owns. Adopt a file only
 when Funk is its sole writer.
 
+Prove a configuration file is read before adopting it. A directory under
+`~/.config` named for a program is not evidence that the program loads it:
+AgentVoice composes prompts only from `prompts/` in the running checkout, and
+the `orchestration.json` and `system.md` under `~/.config/agentvoice/` are
+retired files nothing loads. Adopting them would have published dead
+configuration as live.
+
 After changing AI tooling or skill installation, run:
 
 ```sh
