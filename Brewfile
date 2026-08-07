@@ -9,6 +9,8 @@ brew "tmux"
 brew "nvm"
 brew "gh"
 brew "jq"
+# pdftotext, required by Agentscrape and Agentbrain to read PDFs.
+brew "poppler"
 brew "terminal-notifier"
 brew "yq"
 brew "ripgrep"
