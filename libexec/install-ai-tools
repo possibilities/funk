@@ -112,6 +112,30 @@ configure_shadcn_mcp() {
     opencode mcp add shadcn -- npx shadcn@latest mcp
 }
 
+# Claude Code reads only CLAUDE.md, and Codex skips empty guidance files, so
+# the Stow-managed ~/AGENTS.md is invisible to both CLIs outside sessions whose
+# working directory sits under the home directory. Link each CLI's global
+# guidance location at the shared file. An independent non-symlink file with
+# content at either location is preserved and reported — the same conflict rule
+# the guidance file itself prescribes for repositories.
+link_agent_guidance() {
+    local source="$HOME/AGENTS.md"
+    local target
+
+    [ -f "$source" ] \
+        || die "shared agent guidance is not stowed at $source; run funk stow"
+
+    for target in "$HOME/.claude/CLAUDE.md" "$HOME/.codex/AGENTS.md"; do
+        if [ ! -L "$target" ] && [ -s "$target" ]; then
+            die "refusing to replace independent guidance: $target"
+        fi
+        mkdir -p "$(dirname "$target")"
+        ln -sfn "$source" "$target"
+        cmp -s "$source" "$target" \
+            || die "linked guidance does not resolve to $source: $target"
+    done
+}
+
 migrate_gh_credentials() {
     local old_home
     local old_hosts
@@ -213,6 +237,10 @@ Agent documentation:
   claude mcp add --scope user shadcn -- npx shadcn@latest mcp
   opencode mcp add shadcn -- npx shadcn@latest mcp
   native skills list
+
+Agent guidance:
+  ln -sfn ~/AGENTS.md ~/.claude/CLAUDE.md  # Claude Code reads CLAUDE.md, not AGENTS.md
+  ln -sfn ~/AGENTS.md ~/.codex/AGENTS.md  # Codex skips empty guidance files
 
 Agent skills:
 EOF
@@ -319,6 +347,9 @@ npm install --global "@native-sdk/cli@$native_sdk_version"
 command -v npx >/dev/null 2>&1 || die "npx is required to install agent skills"
 
 configure_shadcn_mcp
+
+printf 'Linking the shared agent guidance for Claude Code and Codex.\n'
+link_agent_guidance
 
 "$script_dir/install-orca"
 

@@ -80,6 +80,13 @@ command-line agents, and globally managed skills on the single
 `libexec/install-ai-tools` path; do not create another installer or
 synchronization path in `~/code/arthack`.
 
+Global agent guidance lives in `agents/AGENTS.md`, Stow-linked at
+`~/AGENTS.md`. `libexec/install-ai-tools` links `~/.claude/CLAUDE.md` and
+`~/.codex/AGENTS.md` at that file — Claude Code reads only `CLAUDE.md`, and
+Codex skips empty guidance files, so without those links the shared file is
+invisible to both CLIs. The installer refuses to replace an independent
+non-symlink file at either location.
+
 Funk's repository guidance lives in this `AGENTS.md`, not in a priming skill.
 Do not install or synchronize a separate `funk` skill. `~/code/arthack/hack`
 remains the source of truth for the separate personal `hack` skill, which the

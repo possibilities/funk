@@ -882,6 +882,9 @@ grep -F "The user's own projects live under \`/Users/arthack/code\`." \
     || fail "home-level agent guidance lost the user project location"
 grep -F 'archive it after its work is complete' "$stow_home/AGENTS.md" >/dev/null \
     || fail "home-level agent guidance lost completed-task archival"
+# shellcheck disable=SC2016 # Match the literal Markdown convention.
+grep -F 'then create `CLAUDE.md` as a' "$stow_home/AGENTS.md" >/dev/null \
+    || fail "home-level agent guidance lost the repository guidance convention"
 HOME="$stow_home" "$root/bin/funk" stow --check >/dev/null 2>&1
 orca_state="$stow_home/Library/Application Support/orca/orca-data.json"
 mkdir -p "$(dirname "$orca_state")"
@@ -1127,6 +1130,8 @@ for required_ai_install in \
     'claude mcp add --scope user shadcn -- npx shadcn@latest mcp' \
     'opencode mcp add shadcn -- npx shadcn@latest mcp' \
     'native skills list' \
+    'ln -sfn ~/AGENTS.md ~/.claude/CLAUDE.md  # Claude Code reads CLAUDE.md, not AGENTS.md' \
+    'ln -sfn ~/AGENTS.md ~/.codex/AGENTS.md  # Codex skips empty guidance files' \
     'npx --yes skills add https://github.com/stablyai/orca --agent codex claude-code opencode pi --skill orca-cli orchestration computer-use --global --yes' \
     'npx --yes skills add https://github.com/vercel-labs/skills --agent codex claude-code opencode pi --skill find-skills --global --yes' \
     'npx --yes skills add https://github.com/anthropics/skills --agent codex claude-code opencode pi --skill frontend-design --global --yes' \
@@ -1154,6 +1159,13 @@ grep -F "\$art_hack_root/hack/SKILL.md" libexec/install-ai-tools >/dev/null \
     || fail "AI installer does not validate the Hack skill source"
 grep -F "\$art_hack_root/hack/agents/openai.yaml" libexec/install-ai-tools >/dev/null \
     || fail "AI installer does not validate the Hack skill manifest"
+grep -F 'link_agent_guidance' libexec/install-ai-tools >/dev/null \
+    || fail "AI installer does not link the shared agent guidance"
+# shellcheck disable=SC2016 # Match the literal target paths in the script.
+grep -F '"$HOME/.claude/CLAUDE.md" "$HOME/.codex/AGENTS.md"' libexec/install-ai-tools >/dev/null \
+    || fail "AI installer does not target both CLI guidance locations"
+grep -F 'refusing to replace independent guidance' libexec/install-ai-tools >/dev/null \
+    || fail "AI installer would replace independent guidance files"
 grep -F 'install_or_upgrade_formula gh' libexec/install-ai-tools >/dev/null \
     || fail "AI installer does not deliberately converge the GitHub CLI"
 
