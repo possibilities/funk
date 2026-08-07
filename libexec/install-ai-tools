@@ -256,7 +256,7 @@ EOF
   npx --yes skills add https://github.com/vercel/ai-elements --agent codex claude-code opencode pi --skill ai-elements --global --yes
   npx --yes skills add https://github.com/shadcn/ui --agent codex claude-code opencode pi --skill shadcn --global --yes
   npx --yes skills add https://github.com/vercel-labs/native --agent codex claude-code opencode pi --skill native-sdk --global --yes
-  npx --yes skills add "$HOME/code/arthack" --agent codex claude-code opencode pi --skill hack --global --yes
+  npx --yes skills add "$HOME/code/arthack" --agent codex claude-code opencode pi --skill hack resource-create resource-update --global --yes
 EOF
     exit 0
 fi
@@ -269,6 +269,16 @@ art_hack_root="$HOME/code/arthack"
     || die "Art Hack skill source is missing: $art_hack_root/hack/SKILL.md"
 [ -f "$art_hack_root/hack/agents/openai.yaml" ] \
     || die "Art Hack skill manifest is missing: $art_hack_root/hack/agents/openai.yaml"
+for art_hack_skill in resource-create resource-update; do
+    [ -f "$art_hack_root/$art_hack_skill/SKILL.md" ] \
+        || die "Art Hack skill source is missing: $art_hack_root/$art_hack_skill/SKILL.md"
+    [ -f "$art_hack_root/$art_hack_skill/agents/openai.yaml" ] \
+        || die "Art Hack skill manifest is missing: $art_hack_root/$art_hack_skill/agents/openai.yaml"
+    # The skills installer ships only each skill directory, so the shared
+    # resource manifest schema must resolve inside both of them.
+    [ -f "$art_hack_root/$art_hack_skill/MANIFEST.md" ] \
+        || die "Art Hack resource schema is missing: $art_hack_root/$art_hack_skill/MANIFEST.md"
+done
 
 brew_bin=$(find_brew) || die "Homebrew is not installed"
 brew_prefix=$("$brew_bin" --prefix)
@@ -430,10 +440,10 @@ npx --yes skills add https://github.com/vercel-labs/native \
     --skill native-sdk \
     --global --yes
 
-printf 'Synchronizing the personal Hack agent skill.\n'
+printf 'Synchronizing the personal Art Hack agent skills.\n'
 npx --yes skills add "$art_hack_root" \
     --agent codex claude-code opencode pi \
-    --skill hack \
+    --skill hack resource-create resource-update \
     --global --yes
 
 printf 'Verifying the installed Native SDK agent documentation helpers.\n'

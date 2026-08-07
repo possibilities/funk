@@ -88,10 +88,11 @@ invisible to both CLIs. The installer refuses to replace an independent
 non-symlink file at either location.
 
 Funk's repository guidance lives in this `AGENTS.md`, not in a priming skill.
-Do not install or synchronize a separate `funk` skill. `~/code/arthack/hack`
-remains the source of truth for the separate personal `hack` skill, which the
-Funk installer must refresh completely, including `agents/openai.yaml`, in all
-configured global agent skill locations.
+Do not install or synchronize a separate `funk` skill. `~/code/arthack`
+remains the source of truth for the personal `hack`, `resource-create`, and
+`resource-update` skills, each of which the Funk installer must refresh
+completely, including `agents/openai.yaml`, in all configured global agent skill
+locations.
 
 After changing AI tooling or skill installation, run:
 

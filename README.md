@@ -17,7 +17,7 @@ installers:
   `app:install` contract from `~/code/agentvoice`
 - Orca CLI, orchestration, computer-use, skill-discovery, frontend design,
   web-design review, React engineering, Vercel AI SDK, AI Elements, shadcn,
-  Native SDK discovery, and the Hack agent skill
+  Native SDK discovery, and the Art Hack agent skills
 - Yabai, skhd, and the narrowly justified Karabiner-Elements layer
 - Git Delta, Neovim, tmux, Starship, btop, GNU Stow, and supporting
   shell/development tools, including `terminal-notifier`
@@ -94,12 +94,13 @@ OpenCode, and Pi, it installs:
 The shadcn skill provides Pi with its CLI workflow; Codex, Claude Code, and
 OpenCode additionally get the official shadcn registry MCP server.
 
-Finally, the installer synchronizes the locally authored `hack` skill from
-`~/code/arthack` into the shared `~/.agents/skills` directory discovered by
-Codex Desktop and the other agent skill locations. Funk's own agent guidance
-lives in this repository's `AGENTS.md` instead of a priming skill. Funk is the
-sole owner of AI-stack installation; Art Hack remains the source of Hack and
-does not provide a second installer.
+Finally, the installer synchronizes the locally authored Art Hack skills —
+`hack`, `resource-create`, and `resource-update` — from `~/code/arthack` into the
+shared `~/.agents/skills` directory discovered by Codex Desktop and the other
+agent skill locations. Funk's own agent guidance lives in this repository's
+`AGENTS.md` instead of a priming skill. Funk is the sole owner of AI-stack
+installation; Art Hack remains the source of those skills and does not provide a
+second installer.
 
 The installer also links the shared agent guidance file into each CLI's global
 guidance location: `~/.claude/CLAUDE.md` and `~/.codex/AGENTS.md` become
@@ -526,8 +527,8 @@ path exactly, because `pgrep -x` does not match this bundle on macOS and the
 name alone would also match the `Orca Helper` processes.
 
 Other AI tools remain outside the scheduled path: their vendor installers,
-application updaters, account-sensitive MCP setup, and local Hack skill source
-are not all suitable for a background LaunchAgent. Re-running `./install`
+application updaters, account-sensitive MCP setup, and local Art Hack skill
+sources are not all suitable for a background LaunchAgent. Re-running `./install`
 reapplies their supported installation methods; Homebrew-backed Claude,
 ChatGPT, GitHub CLI, Zig, and Orca are explicitly installed or
 upgraded, and the Native SDK CLI is pinned to the `0.7` line. Re-running
