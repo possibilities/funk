@@ -22,49 +22,19 @@ die() {
     exit 1
 }
 
+# Delegated to funk-notify so the reasons a notification silently fails to
+# appear are solved once rather than in every caller.
 notify() {
     local message="$1"
     local sound="$2"
-    local execute="$3"
-    local notifier
-    local notifier_app
-    local lsregister
+    local remedy="$3"
     local -a args
 
-    if [ -n "${FUNK_TERMINAL_NOTIFIER_BIN:-}" ] \
-        && [ -x "$FUNK_TERMINAL_NOTIFIER_BIN" ]; then
-        notifier="$FUNK_TERMINAL_NOTIFIER_BIN"
-    elif command -v terminal-notifier >/dev/null 2>&1; then
-        notifier=$(command -v terminal-notifier)
-    else
-        return 0
-    fi
-
-    # macOS will not surface notifications from an application it has not
-    # registered, and a Homebrew upgrade relocates the bundle. funk-update
-    # re-registers for the same reason; both paths must, because whichever runs
-    # first is the one that keeps notifications working.
-    if [ -z "${FUNK_TERMINAL_NOTIFIER_BIN:-}" ]; then
-        notifier_app="$(dirname "$(dirname "$notifier")")/opt/terminal-notifier/terminal-notifier.app"
-        lsregister=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
-        if [ -d "$notifier_app" ] && [ -x "$lsregister" ]; then
-            "$lsregister" -f "$notifier_app" >/dev/null 2>&1 || true
-        fi
-    fi
-
-    args=(-title Google -message "$message" -ignoreDnD
-        -group com.arthack.funk.gog-authed)
-    [ -n "$sound" ] && args+=(-sound "$sound")
-    # terminal-notifier runs -execute headlessly, so a remedy that talks to a
-    # terminal would print into nowhere. Opening one keeps its output and any
-    # prompt in front of the reader who just clicked.
-    if [ -n "$execute" ]; then
-        args+=(-execute "osascript -e 'tell application \"Terminal\" to do script \"$execute\"' -e 'tell application \"Terminal\" to activate'")
-    fi
-
-    # A missing notifier must never change this check's exit status: the health
-    # verdict is the product, the notification only carries it.
-    "$notifier" "${args[@]}" >/dev/null 2>&1 || true
+    args=(--title Google --message "$message" --group com.arthack.funk.gog-authed)
+    [ -n "$sound" ] && args+=(--sound "$sound")
+    # A remedy prints guidance or prompts, so it needs a terminal a reader sees.
+    [ -n "$remedy" ] && args+=(--terminal "$remedy")
+    "$notify_bin" "${args[@]}" || true
 }
 
 record_alert() {
@@ -263,6 +233,8 @@ alert_reminder_seconds=${FUNK_GOG_ALERT_REMINDER_SECONDS:-14400}
 case "$alert_reminder_seconds" in
     '' | *[!0-9]*) die "FUNK_GOG_ALERT_REMINDER_SECONDS must be a whole number of seconds" ;;
 esac
+notify_bin=${FUNK_NOTIFY_BIN:-"$(dirname "$0")/funk-notify"}
+[ -x "$notify_bin" ] || notify_bin=$(command -v funk-notify || printf 'true')
 gog_path=$(gog_binary || printf gog)
 brew_command="brew bundle --file $HOME/code/funk/Brewfile"
 # The account is configurable because funk knows nothing about which mailbox a

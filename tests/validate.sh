@@ -69,6 +69,7 @@ tests/kiosk-launcher.sh
 tests/scrcpy-launchers.sh
 tests/tailscale-online.sh
 tests/gog-authed.sh
+tests/funk-notify.sh
 tests/fixtures/adb
 tests/fixtures/brew
 tests/fixtures/bun
@@ -1326,6 +1327,7 @@ grep -Fx 'cask "android-platform-tools", greedy: true' Brewfile >/dev/null \
     || fail "Android Platform Tools are missing from the Brewfile"
 "$root/tests/tailscale-online.sh"
 "$root/tests/gog-authed.sh"
+"$root/tests/funk-notify.sh"
 "$root/tests/home-awake.sh"
 "$root/tests/adb-wireless.sh"
 "$root/tests/scrcpy-launchers.sh"

@@ -1,0 +1,89 @@
+#!/bin/bash
+# Post a macOS notification, surviving the things that silently swallow them.
+
+set -euo pipefail
+
+usage() {
+    cat <<'EOF'
+Usage: funk-notify --title TITLE --message TEXT [--sound NAME] [--group ID]
+                   [--execute COMMAND] [--terminal COMMAND]
+
+Wraps terminal-notifier so callers do not each have to know why a notification
+failed to appear. macOS refuses to surface one from an application it has not
+registered, and a Homebrew upgrade relocates the bundle, so the bundle is
+re-registered before posting.
+
+A missing notifier is not an error: the caller's own outcome is the product and
+a notification only carries it, so this exits zero either way.
+
+--execute runs a command when the notification is clicked. --terminal does the
+same but opens a terminal window to run it, for a command whose output or
+prompts a reader needs to see; terminal-notifier otherwise runs it headlessly
+and the output goes nowhere.
+EOF
+}
+
+die() {
+    printf 'funk-notify: %s\n' "$*" >&2
+    exit 2
+}
+
+title=
+message=
+sound=
+group=
+execute=
+terminal=
+
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --title) title=${2:?--title requires a value}; shift 2 ;;
+        --message) message=${2:?--message requires a value}; shift 2 ;;
+        --sound) sound=${2:?--sound requires a value}; shift 2 ;;
+        --group) group=${2:?--group requires a value}; shift 2 ;;
+        --execute) execute=${2:?--execute requires a value}; shift 2 ;;
+        --terminal) terminal=${2:?--terminal requires a value}; shift 2 ;;
+        -h | --help)
+            usage
+            exit 0
+            ;;
+        *) die "unknown option: $1" ;;
+    esac
+done
+
+[ -n "$title" ] || die "--title is required"
+[ -n "$message" ] || die "--message is required"
+[ -z "$execute" ] || [ -z "$terminal" ] || die "choose either --execute or --terminal"
+
+notifier=
+if [ -n "${FUNK_TERMINAL_NOTIFIER_BIN:-}" ] && [ -x "$FUNK_TERMINAL_NOTIFIER_BIN" ]; then
+    notifier="$FUNK_TERMINAL_NOTIFIER_BIN"
+elif command -v terminal-notifier >/dev/null 2>&1; then
+    notifier=$(command -v terminal-notifier)
+else
+    exit 0
+fi
+
+# macOS will not surface notifications from an application it has not
+# registered, and a Homebrew upgrade relocates the bundle. funk-update
+# re-registers for the same reason; both paths must, because whichever runs
+# first is the one that keeps notifications working.
+if [ -z "${FUNK_TERMINAL_NOTIFIER_BIN:-}" ]; then
+    notifier_app="$(dirname "$(dirname "$notifier")")/opt/terminal-notifier/terminal-notifier.app"
+    lsregister=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
+    if [ -d "$notifier_app" ] && [ -x "$lsregister" ]; then
+        "$lsregister" -f "$notifier_app" >/dev/null 2>&1 || true
+    fi
+fi
+
+args=(-title "$title" -message "$message" -ignoreDnD)
+[ -n "$sound" ] && args+=(-sound "$sound")
+[ -n "$group" ] && args+=(-group "$group")
+[ -n "$execute" ] && args+=(-execute "$execute")
+if [ -n "$terminal" ]; then
+    args+=(-execute "osascript -e 'tell application \"Terminal\" to do script \"$terminal\"' -e 'tell application \"Terminal\" to activate'")
+fi
+
+# The caller's outcome is the product; a notification only carries it.
+"$notifier" "${args[@]}" >/dev/null 2>&1 || true
+exit 0
