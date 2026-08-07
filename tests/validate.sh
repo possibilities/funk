@@ -892,6 +892,20 @@ HOME="$stow_home" "$root/bin/funk" stow
     || fail "Orca settings overlay was not stowed with normal directory folding"
 [ -L "$stow_home/AGENTS.md" ] \
     || fail "home-level agent guidance was not stowed"
+# install-ai-tools renders every skill against these three files, so a fresh
+# account that lacks them installs skills with the extensions silently missing.
+[ -L "$stow_home/.config/arthack" ] \
+    && [ -f "$stow_home/.config/arthack/SYSTEM.md" ] \
+    && [ -f "$stow_home/.config/arthack/GUIDELINES.md" ] \
+    && [ -f "$stow_home/.config/arthack/TOOLS.md" ] \
+    || fail "Art Hack extension prompts were not stowed with normal directory folding"
+[ -s "$stow_home/.config/arthack/TOOLS.md" ] \
+    || fail "Art Hack extension prompts must not be empty — install-ai-tools renders every skill against them"
+[ -L "$stow_home/.config/agentvoice/orchestration.json" ] \
+    && [ ! -L "$stow_home/.config/agentvoice" ] \
+    || fail "AgentVoice configuration did not use --no-folding"
+jq -e '.repos | length > 0' "$stow_home/.config/agentvoice/orchestration.json" >/dev/null \
+    || fail "stowed AgentVoice orchestration declares no repositories"
 # Global advice belongs in the Art Hack extension prompts, so the stowed home
 # guidance stays deliberately empty; the tripwire keeps advice from accreting
 # back into every session.

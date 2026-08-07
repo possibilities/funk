@@ -99,10 +99,11 @@ Finally, the installer synchronizes the locally authored Art Hack skills —
 shared `~/.agents/skills` directory discovered by Codex Desktop and the other
 agent skill locations, then invokes Art Hack's `scripts/render`, which replaces
 each installed `SKILL.md` with its rendered artifact: the template composed with
-the operator's extension prompts from `~/.config/arthack/`. The skills installer
-ships raw templates, so rendering always follows it; skipping it would strip the
-extensions until the next render. The rendered copies are read-only and marked
-do-not-edit — the templates and extension prompts are the places to change them.
+the operator's extension prompts from `~/.config/arthack/`, which the `arthack`
+Stow package supplies. The skills installer ships raw templates, so rendering
+always follows it; skipping it would strip the extensions until the next render.
+The rendered copies are read-only and marked do-not-edit — the templates and
+extension prompts are the places to change them.
 Funk's own agent guidance lives in this repository's `AGENTS.md` instead of a
 priming skill. Funk remains the sole owner of AI-stack installation; Art Hack
 owns its templates and their rendering and does not provide a second installer.
@@ -171,11 +172,30 @@ target account. Funk owns the union of the useful packages from both projects:
 | `llm` | `~/Library/Application Support/io.datasette.llm/` | yes |
 | `orca` | `~/.config/orca/settings.json` | no |
 | `agents` | `~/AGENTS.md` | no |
+| `arthack` | `~/.config/arthack/` | no |
+| `agentvoice` | `~/.config/agentvoice/` | yes |
+
+The `arthack` package carries the Art Hack extension prompts that
+`libexec/install-ai-tools` renders into every installed skill. Before it
+existed, a default `./install` rendered against three hand-written files that
+lived only on the machine that happened to have them, so a fresh account
+produced skills with the extensions silently missing. It folds: nothing but an
+extension prompt belongs in that directory, and a new one should land in this
+repository rather than beside it.
+
+The `agentvoice` package carries AgentVoice's orchestration ladder and its
+project-directory prompt. It uses `--no-folding` because AgentVoice owns that
+directory at runtime and may write state next to the two managed files.
 
 Funk's current Yabai, skhd, and reviewed Karabiner configurations take
 precedence where the two repositories overlapped. Privileged helpers,
 LaunchAgents, generated application state, credentials, and remote Termux
-configuration are intentionally not Stow-linked.
+configuration are intentionally not Stow-linked. So is every agent CLI
+configuration Orca writes and rewrites — `~/.cursor`, `~/.gemini`,
+`~/.factory`, `~/.kimi-code`, `~/.openclaude`, `~/.commandcode`,
+`~/.config/devin`, `~/.config/amp`, and the hooks block in
+`~/.claude/settings.json`. Adopting one would make every Orca launch a Stow
+conflict; `funk configure-orca` is the pattern for that class of file.
 
 ## Android device utilities
 

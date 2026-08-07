@@ -94,6 +94,18 @@ remains the source of truth for the personal `hack`, `resource-create`, and
 completely, including `agents/openai.yaml`, in all configured global agent skill
 locations.
 
+The extension prompts those skills render against are Funk's, not Art Hack's:
+the `arthack` package owns `~/.config/arthack/`. Edit
+`arthack/.config/arthack/` here and run `funk stow`, so a fresh account renders
+the same skills this one does. Their recognized names — `SYSTEM.md`,
+`GUIDELINES.md`, `TOOLS.md` — are Art Hack's contract; an unrecognized file
+renders to nothing.
+
+Configuration another program writes is overlaid, never adopted. Orca rewrites
+every agent CLI's hook configuration on launch, so those files stay out of Stow
+and `funk configure-orca` reconciles only the keys Funk owns. Adopt a file only
+when Funk is its sole writer.
+
 After changing AI tooling or skill installation, run:
 
 ```sh

@@ -1,0 +1,88 @@
+{
+  "version": 1,
+  "mode": "ladder",
+  "tier1": {
+    "enabled": true,
+    "band": {
+      "effort": "low"
+    },
+    "maxFiles": 2,
+    "maxLines": 20
+  },
+  "tier2": {
+    "enabled": true,
+    "bands": {
+      "light": {
+        "effort": "low"
+      },
+      "standard": {
+        "effort": "medium"
+      },
+      "heavy": {
+        "effort": "high"
+      }
+    },
+    "autoLand": true
+  },
+  "tier3": {
+    "enabled": true,
+    "leads": [
+      "claude",
+      "codex"
+    ],
+    "codexBand": {
+      "model": "gpt-5.6-sol",
+      "effort": "high"
+    }
+  },
+  "advisory": {
+    "fanoutCap": 3,
+    "timeoutMs": 1800000,
+    "roles": {}
+  },
+  "repos": [
+    {
+      "name": "agentvoice",
+      "path": "/Users/arthack/code/agentvoice",
+      "defaultBranch": "main",
+      "verifyCommand": "bun test && bun run typecheck",
+      "allowDirectMain": true,
+      "push": "ask"
+    },
+    {
+      "name": "agentvoice-ui-spike",
+      "path": "/Users/arthack/code/agentvoice-ui-spike",
+      "defaultBranch": "main",
+      "verifyCommand": "bun test && bun run typecheck",
+      "allowDirectMain": false,
+      "push": "ask"
+    },
+    {
+      "name": "funk",
+      "path": "/Users/arthack/code/funk",
+      "defaultBranch": "main",
+      "verifyCommand": "tests/validate.sh",
+      "allowDirectMain": false,
+      "push": "ask"
+    }
+  ],
+  "concurrency": {
+    "total": 4,
+    "implementation": 2,
+    "advisory": 3
+  },
+  "childDelegation": {
+    "enabled": true,
+    "maxDepth": 2,
+    "maxChildrenPerLead": 2,
+    "roles": [
+      "explorer",
+      "diagnostician",
+      "researcher",
+      "standards",
+      "reviewer"
+    ]
+  },
+  "pollerIntervalMs": 60000,
+  "preLandReview": false
+}
