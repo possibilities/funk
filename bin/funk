@@ -34,6 +34,8 @@ Commands:
   install-home-awake  Install the home-network sleep and screen-lock agent
   configure-orca     Apply Funk's Stow-managed Orca settings overlay
   configure-macos    Apply Funk's user-level macOS preferences
+  verify-notifications
+                      Confirm Funk's health alerts can reach the screen
   configure-system   Apply Funk's privileged machine-wide settings
   harden <action>    Show status or reapply the travel firewall posture
   install-hardening  Install the root-owned hardening service
@@ -80,6 +82,10 @@ case "$command_name" in
     configure-macos)
         shift
         exec "$FUNK_ROOT/libexec/configure-macos" "$@"
+        ;;
+    verify-notifications)
+        shift
+        exec "$FUNK_ROOT/libexec/verify-notifications" "$@"
         ;;
     configure-system)
         shift

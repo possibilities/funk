@@ -32,6 +32,7 @@ libexec/install-tailscale-agent
 libexec/install-home-awake
 libexec/install-home-awake-agent
 libexec/configure-macos
+libexec/verify-notifications
 libexec/configure-system
 libexec/funk-harden-client
 libexec/install-hardening
@@ -75,6 +76,7 @@ tests/fixtures/nc
 tests/fixtures/npx
 tests/fixtures/scrcpy
 tests/fixtures/spctl
+tests/fixtures/systemextensionsctl
 tests/fixtures/tailscale
 tests/fixtures/terminal-notifier
 tests/fixtures/zig
@@ -812,6 +814,7 @@ rm -rf "$update_test_dir"
 "$root/bin/funk" install-updater --check >/dev/null
 "$root/bin/funk" install-tailscale-recovery --check >/dev/null
 "$root/bin/funk" configure-macos --check
+"$root/bin/funk" verify-notifications --check
 
 stow_home=$(mktemp -d "${TMPDIR:-/tmp}/funk-stow-test.XXXXXX")
 trap 'rm -rf "$stow_home"' EXIT
@@ -985,6 +988,12 @@ grep -F "\"\$funk_command\" configure-orca" install >/dev/null \
     || fail "default install does not reconcile Orca settings"
 grep -F "\"\$funk_command\" install-tailscale-recovery" install >/dev/null \
     || fail "default install does not load Tailscale recovery"
+# Unattended health checks report through terminal-notifier, so an installation
+# that never confirms delivery can leave every future alert silent.
+grep -F "\"\$funk_command\" verify-notifications" install >/dev/null \
+    || fail "default install does not verify notification delivery"
+grep -F 'notifications_blocked=1' install >/dev/null \
+    || fail "install treats blocked notifications as fatal instead of reporting"
 # Reopening Karabiner on every install only raises a window the user did not ask
 # for; it exists to request permissions that are already granted once its
 # per-user services are up.
@@ -1187,10 +1196,18 @@ for required_setting in \
     'com.apple.symbolichotkeys AppleSymbolicHotKeys -dict-add 64' \
     'com.raycast.macos raycastGlobalHotkey -string "Command-2"' \
     'com.raycast.macos onboardingCompleted -bool true' \
-    'com.apple.ControlCenter AirplayRecieverEnabled -bool false'; do
+    'com.apple.ControlCenter AirplayRecieverEnabled -bool false' \
+    'io.tailscale.ipn.macsys SUEnableAutomaticChecks -bool false' \
+    'io.tailscale.ipn.macsys SUAutomaticallyUpdate -bool false'; do
     grep -F "$required_setting" libexec/configure-macos >/dev/null \
         || fail "required macOS setting is missing: $required_setting"
 done
+# Tailscale's own updater staged a system extension upgrade that wedged on the
+# next app restart and left no daemon. Homebrew has to be the only updater that
+# touches this cask, so the reason has to survive in the source rather than
+# reading as an arbitrary preference someone later "cleans up".
+grep -F 'Sparkle' libexec/configure-macos >/dev/null \
+    || fail "disabling Tailscale's own updater is unexplained"
 grep -F '/usr/bin/killall Raycast' libexec/configure-macos >/dev/null \
     || fail "Raycast is not stopped before its hotkey preference is written"
 # Stopping Raycast discards what the user was doing and forces it to re-register

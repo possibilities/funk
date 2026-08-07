@@ -239,6 +239,54 @@ or error output to `~/Library/Logs/Funk/tailscale-online.log`. It does not
 install a root daemon, a Homebrew `tailscaled` service, or an `/etc/resolver`
 file.
 
+A log file nobody reads is not a detector, so every health verdict also reaches
+the operator through `terminal-notifier` under the
+`com.arthack.funk.tailscale-online` group. Because that group is shared, each
+notification replaces the previous one and an unresolved outage stands as a
+single entry rather than 288 a day; the sound fires only when the condition
+itself changes, and recovery clears the recorded history so a recurrence is
+audible again. Usage errors stay silent — a mistyped flag is not an outage.
+
+A notifier that cannot notify is the same silent failure one level up, so
+`funk verify-notifications` posts a probe and asks NotificationCenter what it
+decided with it. macOS records that verdict only in the system log — the
+delivery permission lives in a container `defaults` cannot read — so the probe
+is the only honest test; anything cheaper reports a notifier emitting into a
+void as healthy. `./install` runs it and reports the result without failing,
+because the delivery toggle belongs to the operator and no installer can set
+it. The check also re-registers the bundle with Launch Services, since macOS
+will not surface notifications from an application it has not registered and a
+Homebrew upgrade relocates it. Choose the Alerts style rather than Banners in
+System Settings › Notifications › terminal-notifier so an outage stands on
+screen until dismissed; the check reports which style is in effect.
+
+The GUI client's daemon is a macOS network system extension, which fails in a
+way that reopening the application cannot repair: when a replacement extension
+cannot start because the outgoing one never finishes terminating, `sysextd`
+parks both halves and never retries. No extension is active, so there is no
+daemon to reach. The helper reads `systemextensionsctl list` and reports that
+state by name, with the stuck and blocked versions, rather than advising a
+restart that cannot work. Recovery is a reboot; if it survives one, the stale
+staging directory under `/Library/SystemExtensions` is the thing to remove.
+
+The helper also reports an upgrade that is merely *staged* while the tailnet is
+still healthy. This is the trap worth closing early: a downloaded extension
+upgrade is invisible until the next Tailscale restart, which may well be a
+reboot that happens away from the machine. Applying it deliberately, with
+physical access, keeps a failed swap from becoming an outage that cannot be
+fixed remotely.
+
+Homebrew is the only updater Funk lets touch this cask. Tailscale ships its own
+Sparkle updater, and leaving it enabled is what staged the extension swap that
+wedged; `configure-macos` turns off `SUEnableAutomaticChecks` and
+`SUAutomaticallyUpdate` in `io.tailscale.ipn.macsys` so upgrades no longer land
+on Tailscale's schedule. `tailscale-app` needs administrator authentication, so
+the scheduled updater cannot converge it and does not try — it reports the cask
+as `Needs ./install` in its notification, and `./install` performs the upgrade
+interactively. The tradeoff is deliberate: Tailscale can now sit a release
+behind until an install is run, which is the price of never having a network
+extension swap itself while the machine is unattended.
+
 The availability tradeoff is explicit: by default, a GUI disconnect or
 `tailscale down` appears as `Stopped` and is reversed within five minutes. To
 stay deliberately disconnected, persist the opt-out before disconnecting.

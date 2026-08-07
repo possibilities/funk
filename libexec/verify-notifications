@@ -1,0 +1,139 @@
+#!/bin/bash
+# Verify that Funk's notifications actually reach the operator's screen.
+
+set -euo pipefail
+
+die() {
+    printf 'funk verify-notifications: %s\n' "$*" >&2
+    exit 1
+}
+
+if [ "$#" -gt 1 ] || { [ "$#" -eq 1 ] && [ "$1" != "--check" ]; }; then
+    printf 'Usage: funk verify-notifications [--check]\n' >&2
+    exit 64
+fi
+
+if [ "${1:-}" = "--check" ]; then
+    exit 0
+fi
+
+[ "$(uname -s)" = Darwin ] || die "macOS is required"
+[ "$(id -u)" -ne 0 ] || die "run as the target user, not root"
+
+probe_group=com.arthack.funk.notification-probe
+
+notifier_binary() {
+    local candidate
+    for candidate in "${FUNK_TERMINAL_NOTIFIER_BIN:-}" terminal-notifier \
+        /opt/homebrew/bin/terminal-notifier /usr/local/bin/terminal-notifier; do
+        [ -n "$candidate" ] || continue
+        if command -v "$candidate" >/dev/null 2>&1; then
+            command -v "$candidate"
+            return 0
+        fi
+    done
+    return 1
+}
+
+notifier=$(notifier_binary || true)
+[ -n "$notifier" ] \
+    || die "terminal-notifier is missing; run ./install to converge the Brewfile"
+
+# macOS will not surface notifications from an application it has not
+# registered, and a Homebrew upgrade relocates the bundle. Registering here is
+# the half of the problem Funk can fix without the operator.
+notifier_app="$(dirname "$(dirname "$notifier")")/opt/terminal-notifier/terminal-notifier.app"
+lsregister=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
+if [ -d "$notifier_app" ] && [ -x "$lsregister" ]; then
+    "$lsregister" -f "$notifier_app" >/dev/null 2>&1 \
+        || printf 'warning: could not register terminal-notifier with Launch Services\n' >&2
+fi
+
+bundle_id=fr.julienxx.oss.terminal-notifier
+if [ -d "$notifier_app" ]; then
+    bundle_id=$(/usr/bin/defaults read "$notifier_app/Contents/Info.plist" \
+        CFBundleIdentifier 2>/dev/null || printf 'fr.julienxx.oss.terminal-notifier\n')
+fi
+
+# The delivery permission lives in a protected container that `defaults` cannot
+# read, so the only honest test is to post a notification and ask
+# NotificationCenter what it decided. Anything less reports a notifier that
+# emits into a void as healthy -- which is the exact failure being closed here.
+printf 'Probing notification delivery.\n'
+"$notifier" \
+    -title Funk \
+    -message 'Verifying notification delivery.' \
+    -group "$probe_group" >/dev/null 2>&1 \
+    || die "terminal-notifier failed to post a probe notification"
+
+# NotificationCenter writes its decision asynchronously, so give the log a
+# moment before reading it. Every stage may legitimately match nothing, and
+# under `pipefail` that would abort the check rather than report it, so the
+# whole pipeline is allowed to come back empty.
+sleep 2
+decisions=$(/usr/bin/log show --last 30s --predicate 'process == "NotificationCenter"' \
+    --style compact 2>/dev/null \
+    | grep -F "$bundle_id" || true)
+
+# `notificationsAllowed` is only logged for a notification that carries a sound,
+# and a probe has no business making noise. `canDisplayWhileCenterIsClosed` is
+# the equivalent verdict on a silent post: false is exactly the state that let
+# a notifier appear healthy while emitting into a void.
+verdict=$(printf '%s\n' "$decisions" \
+    | grep -o -E 'canDisplayWhileCenterIsClosed: (true|false)' \
+    | tail -n 1 \
+    | sed 's/.*: //' || true)
+if [ -z "$verdict" ]; then
+    verdict=$(printf '%s\n' "$decisions" \
+        | grep -o -E 'notificationsAllowed: (true|false)' \
+        | tail -n 1 \
+        | sed 's/.*: //' || true)
+fi
+visibility=$(printf '%s\n' "$decisions" \
+    | grep -o -E 'visibility: \[[^]]*\]' \
+    | tail -n 1 || true)
+
+"$notifier" -remove "$probe_group" >/dev/null 2>&1 || true
+
+case "$verdict" in
+    true)
+        printf 'Notifications are permitted for terminal-notifier.\n'
+        # An outage alert that vanishes after a few seconds is barely better
+        # than none, so report whether this delivers as a standing alert.
+        case "$visibility" in
+            *alert*)
+                printf 'Delivery includes the alert style, so an outage stands until dismissed.\n'
+                ;;
+            '') ;;
+            *)
+                printf 'Note: %s does not include the alert style; an outage will\n' "$visibility"
+                printf 'auto-dismiss as a banner. Set Alert style to Alerts in System Settings >\n'
+                printf 'Notifications > terminal-notifier to keep it on screen.\n'
+                ;;
+        esac
+        ;;
+    false)
+        # Not a failure this installer can repair: macOS reserves the delivery
+        # toggle for the operator. Report it loudly instead, because a blocked
+        # notifier turns every unattended health check into a silent one.
+        cat >&2 <<EOF
+funk verify-notifications: notifications are BLOCKED for terminal-notifier.
+
+Funk's unattended health checks -- Tailscale recovery and the scheduled updater
+-- report through it, so while this is blocked their alerts reach no one.
+
+macOS reserves this toggle for you; no installer can set it. Enable it at:
+  System Settings > Notifications > terminal-notifier
+    Allow Notifications:  on
+    Alert style:          Alerts
+
+Choose Alerts rather than Banners so an outage stands on screen until dismissed
+instead of disappearing after a few seconds.
+EOF
+        exit 1
+        ;;
+    *)
+        printf 'warning: could not determine notification permission from the system log;\n' >&2
+        printf 'confirm System Settings > Notifications > terminal-notifier is allowed.\n' >&2
+        ;;
+esac

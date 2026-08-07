@@ -149,6 +149,11 @@ fi
 "$funk_command" install-home-awake
 "$funk_command" configure-macos
 
+# Reported, never fatal: a blocked notifier is the operator's toggle to flip,
+# and refusing to finish installing over it would help no one.
+notifications_blocked=0
+"$funk_command" verify-notifications || notifications_blocked=1
+
 if [ "$with_system_settings" -eq 1 ]; then
     "$funk_command" configure-system
 fi
@@ -174,5 +179,15 @@ if [ "$orca_settings_deferred" -eq 1 ]; then
 
 Deferred: Orca was running, so its settings overlay was left alone rather than
 raced. Quit Orca and run: funk configure-orca
+EOF
+fi
+
+if [ "$notifications_blocked" -eq 1 ]; then
+    cat <<'EOF'
+
+Action required: notifications are blocked for terminal-notifier, so Funk's
+unattended health alerts reach no one. Enable them at System Settings >
+Notifications > terminal-notifier, choosing the Alerts style, then run:
+funk verify-notifications
 EOF
 fi

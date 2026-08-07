@@ -24,6 +24,95 @@ die() {
     exit 1
 }
 
+notify() {
+    local message="$1"
+    local sound="$2"
+    local notifier
+    local notifier_app
+    local lsregister
+
+    if [ -n "${FUNK_TERMINAL_NOTIFIER_BIN:-}" ] \
+        && [ -x "$FUNK_TERMINAL_NOTIFIER_BIN" ]; then
+        notifier="$FUNK_TERMINAL_NOTIFIER_BIN"
+    elif command -v terminal-notifier >/dev/null 2>&1; then
+        notifier=$(command -v terminal-notifier)
+    else
+        return 0
+    fi
+
+    # macOS will not surface notifications from an application it has not
+    # registered, and a Homebrew upgrade relocates the bundle. funk-update
+    # re-registers for the same reason; both paths must, because whichever runs
+    # first is the one that keeps notifications working.
+    if [ -z "${FUNK_TERMINAL_NOTIFIER_BIN:-}" ]; then
+        notifier_app="$(dirname "$(dirname "$notifier")")/opt/terminal-notifier/terminal-notifier.app"
+        lsregister=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
+        if [ -d "$notifier_app" ] && [ -x "$lsregister" ]; then
+            "$lsregister" -f "$notifier_app" >/dev/null 2>&1 || true
+        fi
+    fi
+
+    # A missing notifier must never change this check's exit status: the health
+    # verdict is the product, the notification only carries it.
+    if [ -n "$sound" ]; then
+        "$notifier" \
+            -title Tailscale \
+            -message "$message" \
+            -sound "$sound" \
+            -ignoreDnD \
+            -group com.arthack.funk.tailscale-online >/dev/null 2>&1 || true
+        return 0
+    fi
+    "$notifier" \
+        -title Tailscale \
+        -message "$message" \
+        -ignoreDnD \
+        -group com.arthack.funk.tailscale-online >/dev/null 2>&1 || true
+}
+
+record_alert() {
+    local directory
+    local temporary
+
+    directory=$(dirname "$alert_file")
+    umask 077
+    mkdir -p "$directory"
+    temporary="${alert_file}.tmp.$$"
+    printf '%s\n' "$1" >"$temporary"
+    chmod 600 "$temporary"
+    mv -f "$temporary" "$alert_file"
+}
+
+# This LaunchAgent runs every five minutes, so an unrecovered outage would
+# otherwise alert 288 times a day and train the operator to ignore it. The
+# shared --group means each notification replaces the previous one, leaving a
+# single standing entry, and the sound fires only when the condition itself
+# changes. Set terminal-notifier's alert style to Alerts in System Settings for
+# that entry to persist until dismissed rather than auto-dismissing as a banner.
+alert() {
+    local message="$1"
+    local previous=
+
+    [ ! -r "$alert_file" ] || previous=$(cat "$alert_file")
+    record_alert "$message"
+    if [ "$previous" = "$message" ]; then
+        notify "$message" ''
+        return 0
+    fi
+    notify "$message" default
+}
+
+clear_alert() {
+    rm -f "$alert_file"
+}
+
+# Health verdicts alert; usage errors use die() and stay quiet, because a
+# mistyped flag is not an outage.
+die_unhealthy() {
+    alert "$*"
+    die "$*"
+}
+
 tailscale_binary() {
     local candidate
     for candidate in "${TAILSCALE:-}" tailscale \
@@ -50,6 +139,104 @@ jq_binary() {
     return 1
 }
 
+systemextensionsctl_binary() {
+    local candidate
+    for candidate in "${SYSTEMEXTENSIONSCTL:-}" systemextensionsctl \
+        /usr/bin/systemextensionsctl; do
+        [ -n "$candidate" ] || continue
+        if command -v "$candidate" >/dev/null 2>&1; then
+            command -v "$candidate"
+            return 0
+        fi
+    done
+    return 1
+}
+
+# The GUI client's daemon is a macOS network system extension, so its lifecycle
+# belongs to sysextd rather than to the app. Emits one "state<TAB>version" line
+# per Tailscale entry; the state is the trailing [...] field and the version the
+# parenthesised short/bundle pair.
+extension_entries() {
+    local ctl
+
+    ctl=$(systemextensionsctl_binary || true)
+    [ -n "$ctl" ] || return 0
+    "$ctl" list 2>/dev/null | awk '
+        /io\.tailscale\.ipn\.macsys\.network-extension/ {
+            state = ""
+            version = ""
+            if (match($0, /\[[^]]*\]/)) {
+                state = substr($0, RSTART + 1, RLENGTH - 2)
+            }
+            if (match($0, /\([^)]*\)/)) {
+                version = substr($0, RSTART + 1, RLENGTH - 2)
+            }
+            if (state != "") {
+                printf "%s\t%s\n", state, version
+            }
+        }
+    '
+}
+
+versions_in_state() {
+    local entries="$1"
+    local wanted="$2"
+
+    printf '%s\n' "$entries" \
+        | awk -F'\t' -v want="$wanted" '$1 == want { print $2 }' \
+        | sed 's|/.*||' \
+        | paste -sd ', ' - \
+        | sed 's/^ *//; s/ *$//'
+}
+
+# A replacement extension cannot start until the outgoing one finishes
+# terminating. When that handshake stalls, sysextd parks both halves and never
+# retries: no extension is active, so there is no daemon to reach and reopening
+# the app cannot help. Distinguishing that from an ordinary crashed app is the
+# difference between a five-minute fix and a lost day.
+describe_extension_state() {
+    local entries
+    local outgoing
+    local incoming
+
+    entries=$(extension_entries)
+    [ -n "$entries" ] || return 0
+
+    if printf '%s\n' "$entries" | grep -q 'terminating for uninstall'; then
+        outgoing=$(versions_in_state "$entries" 'terminating for uninstall')
+        incoming=$(versions_in_state "$entries" 'activated waiting to upgrade')
+        printf 'a Tailscale system extension upgrade is wedged'
+        [ -z "$outgoing" ] || printf ' (%s stuck terminating' "$outgoing"
+        [ -z "$outgoing" ] || [ -z "$incoming" ] || printf ', %s waiting' "$incoming"
+        [ -z "$outgoing" ] || printf ')'
+        printf '; macOS has no active extension to serve the daemon. Reboot to'
+        printf ' clear it, and if it survives a reboot remove the stale staging'
+        printf ' directory under /Library/SystemExtensions.\n'
+        return 0
+    fi
+    return 0
+}
+
+# The trap this closes: a downloaded upgrade sits invisible until the next
+# Tailscale restart, which may well be a reboot that happens while travelling.
+# Surfacing it early makes applying it a deliberate act taken with physical
+# access to the machine.
+describe_staged_upgrade() {
+    local entries
+    local incoming
+
+    entries=$(extension_entries)
+    [ -n "$entries" ] || return 0
+    printf '%s\n' "$entries" | grep -q 'activated waiting to upgrade' || return 0
+
+    incoming=$(versions_in_state "$entries" 'activated waiting to upgrade')
+    printf 'a Tailscale system extension upgrade'
+    [ -z "$incoming" ] || printf ' to %s' "$incoming"
+    printf ' is staged and applies on the next Tailscale restart. Apply it while'
+    printf ' you have physical access: a failed swap leaves no daemon and needs'
+    printf ' a reboot to recover.\n'
+}
+
 write_disabled_marker() {
     local directory
     local temporary
@@ -63,15 +250,23 @@ write_disabled_marker() {
     mv -f "$temporary" "$disabled_file"
 }
 
+die_unreachable() {
+    local detail
+
+    detail=$(describe_extension_state)
+    [ -n "$detail" ] || detail="open or restart the Tailscale app"
+    die_unhealthy "$1; $detail"
+}
+
 load_status() {
     if ! tailnet_status=$("$tailscale_bin" status --json 2>/dev/null); then
-        die "the Tailscale CLI could not reach a valid daemon; open or restart the Tailscale app"
+        die_unreachable "the Tailscale CLI could not reach a valid daemon"
     fi
     "$jq_bin" -e '
         type == "object"
         and (.BackendState | type == "string" and length > 0)
     ' >/dev/null 2>&1 <<<"$tailnet_status" \
-        || die "the Tailscale daemon returned invalid status; open or restart the Tailscale app"
+        || die_unreachable "the Tailscale daemon returned invalid status"
 }
 
 backend_state() {
@@ -87,10 +282,10 @@ require_local_online() {
     case "$online" in
         true) ;;
         false)
-            die "the local Tailscale node is Running but offline; check this Mac's network and reopen Tailscale"
+            die_unhealthy "the local Tailscale node is Running but offline; check this Mac's network and reopen Tailscale"
             ;;
         *)
-            die "the Tailscale daemon returned invalid local-node status; open or restart the Tailscale app"
+            die_unhealthy "the Tailscale daemon returned invalid local-node status; open or restart the Tailscale app"
             ;;
     esac
 }
@@ -98,16 +293,17 @@ require_local_online() {
 describe_nonrunning_state() {
     case "$1" in
         NeedsLogin)
-            die "Tailscale needs login; open Tailscale and sign in"
+            die_unhealthy "Tailscale needs login; open Tailscale and sign in"
             ;;
         Stopped)
             if [ -e "$disabled_file" ]; then
+                # A deliberate disconnect is not an outage, so it stays silent.
                 die "automatic recovery is disabled; run tailscale-ensure-online --enable or connect manually when ready"
             fi
-            die "Tailscale remained Stopped after recovery; open Tailscale and choose Connect"
+            die_unhealthy "Tailscale remained Stopped after recovery; open Tailscale and choose Connect"
             ;;
         *)
-            die "Tailscale is in unsupported state $1; open Tailscale and resolve that state manually"
+            die_unhealthy "Tailscale is in unsupported state $1; open Tailscale and resolve that state manually"
             ;;
     esac
 }
@@ -120,7 +316,7 @@ qualify_peer() {
         *)
             suffix=$("$jq_bin" -r '.MagicDNSSuffix // empty' <<<"$tailnet_status")
             [ -n "$suffix" ] \
-                || die "Tailscale is online but did not report a MagicDNS suffix"
+                || die_unhealthy "Tailscale is online but did not report a MagicDNS suffix"
             printf '%s.%s\n' "$peer" "${suffix%.}"
             ;;
     esac
@@ -156,11 +352,11 @@ check_peer() {
     count=$("$jq_bin" -r 'length' <<<"$peer_matches")
     case "$count" in
         0)
-            die "Tailnet peer $qualified_peer is missing; confirm the hostname and that the phone still belongs to this tailnet"
+            die_unhealthy "Tailnet peer $qualified_peer is missing; confirm the hostname and that the phone still belongs to this tailnet"
             ;;
         1) ;;
         *)
-            die "Tailnet peer $qualified_peer is ambiguous in Tailscale status; resolve duplicate device names"
+            die_unhealthy "Tailnet peer $qualified_peer is ambiguous in Tailscale status; resolve duplicate device names"
             ;;
     esac
 
@@ -169,7 +365,7 @@ check_peer() {
         then .[0].id else "invalid" end
     ' <<<"$peer_matches")
     [ "$peer_id" != invalid ] \
-        || die "Tailscale returned invalid device identity for peer $qualified_peer"
+        || die_unhealthy "Tailscale returned invalid device identity for peer $qualified_peer"
 
     online=$("$jq_bin" -r '
         if (.[0].online | type) == "boolean" then .[0].online else "invalid" end
@@ -177,10 +373,10 @@ check_peer() {
     case "$online" in
         true) ;;
         false)
-            die "Tailnet peer $qualified_peer is offline; enable Tailscale and networking on the phone"
+            die_unhealthy "Tailnet peer $qualified_peer is offline; enable Tailscale and networking on the phone"
             ;;
         *)
-            die "Tailscale returned invalid online state for peer $qualified_peer"
+            die_unhealthy "Tailscale returned invalid online state for peer $qualified_peer"
             ;;
     esac
 
@@ -230,12 +426,16 @@ done
         || die "--disable and --enable cannot be combined with peer options"
 }
 
-# This path intentionally ignores XDG_STATE_HOME. Interactive shells, Raycast,
-# and launchd must observe the same deliberate-disconnect decision.
+# These paths intentionally ignore XDG_STATE_HOME. Interactive shells, Raycast,
+# and launchd must observe the same deliberate-disconnect decision, and must
+# share one alert history so they do not re-alert on each other's behalf.
 disabled_file="$HOME/.local/state/funk/tailscale-auto-recovery.disabled"
+alert_file="$HOME/.local/state/funk/tailscale-ensure-online.alert"
 case "$mode" in
     disable)
         write_disabled_marker
+        # A deliberate disconnect must not leave a standing outage notification.
+        clear_alert
         printf 'Automatic Tailscale recovery disabled; disconnect manually when ready.\n'
         exit 0
         ;;
@@ -247,9 +447,9 @@ esac
 
 tailscale_bin=$(tailscale_binary || true)
 [ -n "$tailscale_bin" ] \
-    || die "Tailscale is missing; install or open the Tailscale app"
+    || die_unhealthy "Tailscale is missing; install or open the Tailscale app"
 jq_bin=$(jq_binary || true)
-[ -n "$jq_bin" ] || die "jq is missing; run: brew install jq"
+[ -n "$jq_bin" ] || die_unhealthy "jq is missing; run: brew install jq"
 
 # The macOS GUI application and CLI share one executable. Scripts must set this
 # guard so a sparse launchd or Raycast environment selects CLI mode.
@@ -267,7 +467,7 @@ case "$backend" in
             || describe_nonrunning_state "$backend"
         printf 'Tailscale is stopped; reconnecting with saved settings.\n' >&2
         "$tailscale_bin" up >&2 \
-            || die "tailscale up failed; open Tailscale and choose Connect"
+            || die_unhealthy "tailscale up failed; open Tailscale and choose Connect"
         wait_failed=0
         "$tailscale_bin" wait --timeout=15s >/dev/null 2>&1 || wait_failed=1
         load_status
@@ -275,7 +475,7 @@ case "$backend" in
         [ "$backend" = Running ] || describe_nonrunning_state "$backend"
         require_local_online
         [ "$wait_failed" -eq 0 ] \
-            || die "Tailscale reported Running, but its readiness check failed; reopen Tailscale and retry"
+            || die_unhealthy "Tailscale reported Running, but its readiness check failed; reopen Tailscale and retry"
         ;;
     *)
         describe_nonrunning_state "$backend"
@@ -284,4 +484,15 @@ esac
 
 if [ -n "$peer" ]; then
     check_peer
+fi
+
+# Reached only when the tailnet is healthy. A staged extension upgrade is still
+# worth surfacing here, because it is the one condition that is invisible while
+# everything works and disabling while away from the machine.
+staged=$(describe_staged_upgrade)
+if [ -n "$staged" ]; then
+    alert "$staged"
+    printf 'tailscale-ensure-online: %s\n' "$staged" >&2
+else
+    clear_alert
 fi

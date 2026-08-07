@@ -1,0 +1,40 @@
+#!/bin/bash
+
+set -euo pipefail
+
+# Reproduces the tab-separated `systemextensionsctl list` layout: the enabled
+# and active columns are blank whenever an extension is neither, which is
+# exactly the shape a wedged upgrade leaves behind.
+emit() {
+    printf '%s\t%s\tW5364U7YZB\tio.tailscale.ipn.macsys.network-extension (%s)\tTailscale Network Extension\t[%s]\n' \
+        "$1" "$2" "$3" "$4"
+}
+
+if [ "${1:-}" != list ]; then
+    printf 'unexpected systemextensionsctl fixture command: %s\n' "$*" >&2
+    exit 64
+fi
+
+printf '1 extension(s)\n'
+printf -- '--- com.apple.system_extension.network_extension\n'
+printf 'enabled\tactive\tteamID\tbundleID (version)\tname\t[state]\n'
+
+case "${FUNK_TEST_SYSEXT_STATE:-healthy}" in
+    healthy)
+        emit '*' '*' '1.102.2/101.102.2' 'activated enabled'
+        ;;
+    wedged)
+        emit '' '' '1.98.10/101.98.10' 'terminating for uninstall'
+        emit '' '' '1.102.2/101.102.2' 'activated waiting to upgrade'
+        ;;
+    staged)
+        emit '*' '*' '1.98.10/101.98.10' 'activated enabled'
+        emit '' '' '1.102.2/101.102.2' 'activated waiting to upgrade'
+        ;;
+    absent)
+        ;;
+    *)
+        printf 'unexpected fixture state: %s\n' "${FUNK_TEST_SYSEXT_STATE:-}" >&2
+        exit 64
+        ;;
+esac

@@ -132,6 +132,17 @@ fi
 write_default com.apple.ControlCenter AirplayRecieverEnabled -bool false
 write_default com.apple.rapportd AllowRapport -bool false
 
+# Tailscale ships its own Sparkle updater, and leaving it on cost a nine-hour
+# outage: it staged a network system extension upgrade of its own accord, and
+# the swap wedged on the next app restart with no extension left to serve the
+# daemon. That restart can happen anywhere, including away from the machine,
+# and recovering needs a reboot. Homebrew is the only updater Funk lets touch
+# this cask, so upgrades land when ./install is run deliberately rather than
+# whenever Tailscale decides. `funk update` keeps reporting the cask as
+# "Needs ./install", so an upgrade that is due still surfaces.
+write_default io.tailscale.ipn.macsys SUEnableAutomaticChecks -bool false
+write_default io.tailscale.ipn.macsys SUAutomaticallyUpdate -bool false
+
 # Login and menu-bar clock.
 write_default com.apple.loginwindow TALLogoutSavesState -bool false
 write_default com.apple.menuextra.clock ShowAMPM -bool true
