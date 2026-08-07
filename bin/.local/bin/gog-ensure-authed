@@ -55,9 +55,12 @@ notify() {
     args=(-title Google -message "$message" -ignoreDnD
         -group com.arthack.funk.gog-authed)
     [ -n "$sound" ] && args+=(-sound "$sound")
-    # Clicking the alert runs the one command that can fix it. Without this the
-    # notification would only inform, leaving the reader to remember the verb.
-    [ -n "$execute" ] && args+=(-execute "$execute")
+    # terminal-notifier runs -execute headlessly, so a remedy that talks to a
+    # terminal would print into nowhere. Opening one keeps its output and any
+    # prompt in front of the reader who just clicked.
+    if [ -n "$execute" ]; then
+        args+=(-execute "osascript -e 'tell application \"Terminal\" to do script \"$execute\"' -e 'tell application \"Terminal\" to activate'")
+    fi
 
     # A missing notifier must never change this check's exit status: the health
     # verdict is the product, the notification only carries it.
@@ -86,6 +89,7 @@ record_alert() {
 # dismissed.
 alert() {
     local message="$1"
+    local remedy="$2"
     local previous=
     local previous_at=0
     local now
@@ -102,11 +106,11 @@ alert() {
     if [ "$previous" = "$message" ]; then
         [ "$((now - previous_at))" -ge "$alert_reminder_seconds" ] || return 0
         record_alert "$now" "$message"
-        notify "$message" '' "$login_command"
+        notify "$message" '' "$remedy"
         return 0
     fi
     record_alert "$now" "$message"
-    notify "$message" default "$login_command"
+    notify "$message" default "$remedy"
 }
 
 # Recovery is announced once, then the history is dropped so the next outage
@@ -150,10 +154,14 @@ credential_failure() {
         'invalid_grant|token has been expired|revoked|unauthorized_client|invalid_client|not authenticated|no token|missing --account'
 }
 
-# Emits the verdict on stdout as "ok|<detail>" or "down|<detail>".
+# Emits "<state>|<message>|<remedy>". The stages are distinct because the alert
+# is edge-triggered on the message: finishing one step changes the message, which
+# announces the next. Setup walks itself forward without anyone re-running this
+# by hand.
 verdict() {
     local gog
     local jq
+    local clients
     local listing
     local accounts
     local emails
@@ -163,13 +171,27 @@ verdict() {
     local probe_account
 
     gog=$(gog_binary) || {
-        printf 'down|gog is not installed\n'
+        printf 'down|gog is not installed|%s\n' "$brew_command"
         return 0
     }
     jq=$(jq_binary) || die "jq is required"
 
+    # An OAuth client identifies the application to Google and must exist before
+    # any browser flow can run. Without this stage the missing client reads as
+    # "not signed in", which sends a reader to a login that cannot yet work.
+    clients=$("$gog" auth credentials list --json 2>/dev/null \
+        | "$jq" -r '.clients | length' 2>/dev/null) || clients=0
+    case "$clients" in
+        '' | *[!0-9]*) clients=0 ;;
+    esac
+    if [ "$clients" -eq 0 ]; then
+        printf 'down|no OAuth client configured — set one up before signing in|%s\n' \
+            "$gog auth setup"
+        return 0
+    fi
+
     listing=$("$gog" auth list --json 2>/dev/null) || {
-        printf 'down|gog auth list failed\n'
+        printf 'down|gog auth list failed|%s\n' "$gog auth doctor"
         return 0
     }
     accounts=$(printf '%s' "$listing" | "$jq" -r '.accounts | length' 2>/dev/null) || accounts=0
@@ -177,7 +199,7 @@ verdict() {
         '' | *[!0-9]*) accounts=0 ;;
     esac
     if [ "$accounts" -eq 0 ]; then
-        printf 'down|no authenticated Google account\n'
+        printf 'down|OAuth client ready; no account authorized yet|%s\n' "$authorize_command"
         return 0
     fi
     emails=$(printf '%s' "$listing" \
@@ -203,13 +225,14 @@ verdict() {
     fi
     if [ "$probe_status" -ne 0 ]; then
         if credential_failure "$probe_error"; then
-            printf 'down|credential expired or revoked (%s)\n' "$detail"
+            printf 'down|credential expired or revoked (%s)|%s\n' \
+                "$detail" "$reauthorize_command"
             return 0
         fi
         printf 'gog-ensure-authed: probe failed without a credential fault: %s\n' \
             "$probe_error" >&2
     fi
-    printf 'ok|%s\n' "$detail"
+    printf 'ok|%s|\n' "$detail"
 }
 
 check_only=0
@@ -240,11 +263,23 @@ alert_reminder_seconds=${FUNK_GOG_ALERT_REMINDER_SECONDS:-14400}
 case "$alert_reminder_seconds" in
     '' | *[!0-9]*) die "FUNK_GOG_ALERT_REMINDER_SECONDS must be a whole number of seconds" ;;
 esac
-login_command="$(gog_binary || printf gog) auth login"
+gog_path=$(gog_binary || printf gog)
+brew_command="brew bundle --file $HOME/code/funk/Brewfile"
+# The account is configurable because funk knows nothing about which mailbox a
+# consumer needs; unset, the guided flow asks.
+gog_account=${FUNK_GOG_ACCOUNT:-}
+if [ -n "$gog_account" ]; then
+    authorize_command="$gog_path auth add $gog_account --services gmail"
+else
+    authorize_command="$gog_path auth setup"
+fi
+reauthorize_command="$gog_path auth login"
 
 result=$(verdict)
 state=${result%%|*}
-detail=${result#*|}
+rest=${result#*|}
+detail=${rest%%|*}
+remedy=${rest#*|}
 
 if [ "$check_only" -eq 1 ]; then
     printf '%s: %s\n' "$state" "$detail"
@@ -257,5 +292,9 @@ if [ "$state" = ok ]; then
     exit 0
 fi
 
-alert "$detail — click to re-authorize"
+if [ -n "$remedy" ]; then
+    alert "$detail. Run: $remedy" "$remedy"
+else
+    alert "$detail" ""
+fi
 exit 1

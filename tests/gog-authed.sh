@@ -12,6 +12,7 @@ trap 'rm -rf "$test_home"' EXIT
 notifications="$test_home/notifications"
 accounts_file="$test_home/accounts"
 probe_file="$test_home/probe"
+clients_file="$test_home/clients"
 alert_file="$test_home/.local/state/funk/gog-ensure-authed.alert"
 gog_calls="$test_home/gog-calls"
 
@@ -28,6 +29,7 @@ run_check() {
         GOG="$gog_fixture" JQ="$jq_bin" \
         FUNK_TEST_GOG_ACCOUNTS_FILE="$accounts_file" \
         FUNK_TEST_GOG_PROBE_FILE="$probe_file" \
+        FUNK_TEST_GOG_CLIENTS_FILE="$clients_file" \
         FUNK_TERMINAL_NOTIFIER_BIN="$notifier_fixture" \
         FUNK_TEST_NOTIFIER_LOG="$notifications" \
         FUNK_TEST_GOG_LOG="$gog_calls" \
@@ -47,9 +49,11 @@ last_notification() {
     tail -n 1 "$notifications"
 }
 
+# clients defaults to 1: most cases exercise stages past client setup.
 set_state() {
     printf '%s' "$1" >"$accounts_file"
     printf '%s' "$2" >"$probe_file"
+    printf '%s' "${3:-1}" >"$clients_file"
 }
 
 # ── a working credential is silent ───────────────────────────────────────────
@@ -65,16 +69,16 @@ set_state 0 ok
 run_check && fail "a missing credential must exit nonzero"
 [ "$(notification_count)" -eq 1 ] || fail "losing the credential must notify exactly once"
 case "$(last_notification)" in
-    *"no authenticated Google account"*) ;;
-    *) fail "the alert must name the fault: $(last_notification)" ;;
+    *"no account authorized yet"*) ;;
+    *) fail "the alert must name the stage: $(last_notification)" ;;
 esac
 case "$(last_notification)" in
     *"<-sound> <default>"*) ;;
     *) fail "a new fault must play a sound: $(last_notification)" ;;
 esac
 case "$(last_notification)" in
-    *"<-execute> <"*"auth login>"*) ;;
-    *) fail "the alert must carry a re-authorize action: $(last_notification)" ;;
+    *"<-execute> <osascript"*"Terminal"*) ;;
+    *) fail "the alert must open a terminal for its remedy: $(last_notification)" ;;
 esac
 [ -e "$alert_file" ] || fail "losing the credential must record an alert"
 
@@ -141,5 +145,54 @@ set_state 1 ok
 run_check || fail "a working credential must exit zero"
 grep -q -- '--account mike@example.com gmail search' "$gog_calls" \
     || fail "the probe must name the account it is validating: $(cat "$gog_calls")"
+
+# ── each setup stage names itself and its own remedy ─────────────────────────
+rm -f "$alert_file"
+set_state 0 ok 0
+: >"$notifications"
+run_check && fail "a missing OAuth client must exit nonzero"
+case "$(last_notification)" in
+    *"no OAuth client configured"*) ;;
+    *) fail "a missing client must be named: $(last_notification)" ;;
+esac
+case "$(last_notification)" in
+    *"auth setup"*) ;;
+    *) fail "a missing client must point at setup: $(last_notification)" ;;
+esac
+
+# ── finishing a stage announces the next one, unprompted ─────────────────────
+# This is the guidance: the alert is edge-triggered on the message, so a changed
+# stage is a change, and the reader is told what to do next without asking.
+set_state 0 ok 1
+: >"$notifications"
+run_check && fail "no authorized account must exit nonzero"
+[ "$(notification_count)" -eq 1 ] || fail "advancing a stage must notify once"
+case "$(last_notification)" in
+    *"no account authorized yet"*) ;;
+    *) fail "the next stage must be named: $(last_notification)" ;;
+esac
+case "$(last_notification)" in
+    *"<-sound> <default>"*) ;;
+    *) fail "a stage change must be audible: $(last_notification)" ;;
+esac
+
+# ── a named account is offered directly rather than the guided flow ──────────
+: >"$notifications"
+rm -f "$alert_file"
+FUNK_GOG_ACCOUNT=someone@example.com run_check && fail "still nonzero"
+case "$(last_notification)" in
+    *"auth add someone@example.com --services gmail"*) ;;
+    *) fail "a configured account must be offered directly: $(last_notification)" ;;
+esac
+
+# ── an expired credential offers re-authorization, not first-time setup ──────
+rm -f "$alert_file"
+set_state 1 expired 1
+: >"$notifications"
+run_check && fail "an expired credential must exit nonzero"
+case "$(last_notification)" in
+    *"auth login"*) ;;
+    *) fail "an expired credential must offer re-authorization: $(last_notification)" ;;
+esac
 
 printf 'gog-authed tests passed\n'

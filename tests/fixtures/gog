@@ -24,6 +24,20 @@ if [ -n "${FUNK_TEST_GOG_ACCOUNTS_FILE:-}" ] \
     accounts=$(cat "$FUNK_TEST_GOG_ACCOUNTS_FILE")
 fi
 
+if [ "${1:-}" = auth ] && [ "${2:-}" = credentials ] && [ "${3:-}" = list ]; then
+    clients=${FUNK_TEST_GOG_CLIENTS:-1}
+    if [ -n "${FUNK_TEST_GOG_CLIENTS_FILE:-}" ] \
+        && [ -r "$FUNK_TEST_GOG_CLIENTS_FILE" ]; then
+        clients=$(cat "$FUNK_TEST_GOG_CLIENTS_FILE")
+    fi
+    if [ "$clients" -eq 0 ]; then
+        printf '{"clients": []}\n'
+    else
+        printf '{"clients": [{"client": "default", "default": true}]}\n'
+    fi
+    exit 0
+fi
+
 if [ "${1:-}" = auth ] && [ "${2:-}" = list ]; then
     [ "${FUNK_TEST_GOG_LIST_FAIL:-0}" -eq 0 ] || exit 1
     if [ "$accounts" -eq 0 ]; then
