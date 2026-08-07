@@ -892,12 +892,11 @@ HOME="$stow_home" "$root/bin/funk" stow
     || fail "Orca settings overlay was not stowed with normal directory folding"
 [ -L "$stow_home/AGENTS.md" ] \
     || fail "home-level agent guidance was not stowed"
-# Project locations and task-lifecycle advice moved out of the always-loaded
-# guidance and into the Art Hack extension prompts; only the repository
-# guidance convention is pinned here.
-# shellcheck disable=SC2016 # Match the literal Markdown convention.
-grep -F 'then create `CLAUDE.md` as a' "$stow_home/AGENTS.md" >/dev/null \
-    || fail "home-level agent guidance lost the repository guidance convention"
+# Global advice belongs in the Art Hack extension prompts, so the stowed home
+# guidance stays deliberately empty; the tripwire keeps advice from accreting
+# back into every session.
+[ ! -s "$stow_home/AGENTS.md" ] \
+    || fail "home-level agent guidance should stay empty — global advice belongs in the Art Hack extension prompts"
 HOME="$stow_home" "$root/bin/funk" stow --check >/dev/null 2>&1
 orca_state="$stow_home/Library/Application Support/orca/orca-data.json"
 mkdir -p "$(dirname "$orca_state")"

@@ -107,14 +107,15 @@ Funk's own agent guidance lives in this repository's `AGENTS.md` instead of a
 priming skill. Funk remains the sole owner of AI-stack installation; Art Hack
 owns its templates and their rendering and does not provide a second installer.
 
-The installer also links the shared agent guidance file into each CLI's global
-guidance location: `~/.claude/CLAUDE.md` and `~/.codex/AGENTS.md` become
-symlinks to the Stow-managed `~/AGENTS.md` (source: `agents/AGENTS.md`).
-Claude Code reads only `CLAUDE.md`, and Codex skips empty guidance files, so
-without these links the shared file is invisible to both CLIs outside sessions
-started in the home directory itself. The installer refuses to replace an
-independent non-symlink file at either location and verifies that each link
-resolves to the shared file's content.
+The installer also links each CLI's global guidance location at the shared
+file: `~/.claude/CLAUDE.md` and `~/.codex/AGENTS.md` become symlinks to the
+Stow-managed `~/AGENTS.md` (source: `agents/AGENTS.md`). That file stays
+deliberately empty — global advice belongs in the Art Hack extension prompts,
+rendered into the `hack` skill — but the links remain so future guidance has a
+delivery path, with Claude Code reading only `CLAUDE.md` and Codex skipping
+empty guidance files. The installer refuses to replace an independent
+non-symlink file at either location and verifies that each link resolves to
+the shared file's content.
 
 GitHub CLI is intentionally installed twice: once through the main Brewfile and
 again by the AI tool installer. The latter preserves an existing login and can
