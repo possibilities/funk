@@ -1,0 +1,176 @@
+#!/bin/bash
+# Repair Caskroom metadata that still installs into a previous account's home.
+
+set -euo pipefail
+
+die() {
+    printf 'Funk cask user dirs: %s\n' "$*" >&2
+    exit 1
+}
+
+find_brew() {
+    if [ -n "${FUNK_BREW_BIN:-}" ] && [ -x "$FUNK_BREW_BIN" ]; then
+        printf '%s\n' "$FUNK_BREW_BIN"
+        return
+    fi
+    if command -v brew >/dev/null 2>&1; then
+        command -v brew
+        return
+    fi
+    for candidate in /opt/homebrew/bin/brew /usr/local/bin/brew; do
+        if [ -x "$candidate" ]; then
+            printf '%s\n' "$candidate"
+            return
+        fi
+    done
+    return 1
+}
+
+usage() {
+    cat <<'EOF'
+Usage: repair-cask-user-dirs [--check] [--brewfile FILE] [CASK ...]
+
+Report Caskroom entries whose recorded install directories point into a home
+other than this account's.
+
+Homebrew writes the user directories it will install into -- fontdir,
+prefpanedir, servicedir and the rest -- into each cask's metadata at install
+time. A cask installed under a previous account keeps that account's paths
+forever, so every later upgrade tries to move artifacts through a directory
+this account usually cannot even read, and fails. Nothing about the failure
+names the cause: Homebrew reports only that a source file "is not there".
+
+Repair is a reinstall, because rewriting the recorded paths alone would leave
+Homebrew looking for the previous version's files under a directory they were
+never in. The reinstall is unprivileged for user-directory artifacts such as
+fonts, so the scheduled path stays passwordless.
+
+Options:
+  --check           Report affected casks without changing anything
+  --brewfile FILE   Also select every cask declared by FILE
+EOF
+}
+
+mode=repair
+brewfile=
+casks=()
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --check) mode=check ;;
+        --brewfile)
+            [ "$#" -ge 2 ] || {
+                usage >&2
+                exit 64
+            }
+            brewfile="$2"
+            shift
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        -*)
+            usage >&2
+            exit 64
+            ;;
+        *)
+            casks+=("$1")
+            ;;
+    esac
+    shift
+done
+
+[ "$(uname -s)" = Darwin ] || die "macOS is required"
+[ "$(id -u)" -ne 0 ] || die "run as the target user, not root"
+
+brew_bin=$(find_brew) || die "Homebrew is not installed"
+caskroom="$("$brew_bin" --prefix)/Caskroom"
+[ -d "$caskroom" ] || {
+    [ "$mode" = check ] || printf 'Funk cask user dirs: no Caskroom present\n'
+    exit 0
+}
+
+if [ -n "$brewfile" ]; then
+    [ -f "$brewfile" ] || die "Brewfile not found: $brewfile"
+    while IFS= read -r cask; do
+        [ -n "$cask" ] && casks+=("$cask")
+    done < <("$brew_bin" bundle list --file="$brewfile" --cask)
+fi
+
+if [ "${#casks[@]}" -eq 0 ]; then
+    [ "$mode" = check ] || printf 'Funk cask user dirs: no casks selected\n'
+    exit 0
+fi
+
+tmpdir=$(mktemp -d "${TMPDIR:-/tmp}/funk-cask-user-dirs.XXXXXX")
+trap 'rm -rf "$tmpdir"' EXIT
+json="$tmpdir/casks.json"
+user_dir_casks="$tmpdir/user-dir-casks"
+
+"$brew_bin" info --cask --json=v2 "${casks[@]}" >"$json"
+
+# Only these artifact kinds are installed into a user directory. A cask that
+# ships nothing but binaries or an .app never touches one, so its recorded
+# user directories are inert and reinstalling it would be pure churn.
+/usr/bin/jq -r '
+  .casks[]
+  | select(.token != null and .token != "")
+  | select(
+      [
+        .artifacts[]?
+        | keys[]?
+        | select(. == "font" or . == "colorpicker" or . == "prefpane"
+                 or . == "qlplugin" or . == "mdimporter" or . == "dictionary"
+                 or . == "service" or . == "input_method"
+                 or . == "internet_plugin" or . == "audio_unit_plugin"
+                 or . == "vst_plugin" or . == "vst3_plugin"
+                 or . == "screen_saver")
+      ] | length > 0
+    )
+  | .token
+' "$json" | LC_ALL=C sort -u >"$user_dir_casks"
+
+stale=()
+while IFS= read -r token; do
+    [ -n "$token" ] || continue
+    config="$caskroom/$token/.metadata/config.json"
+    [ -f "$config" ] || continue
+
+    # Every recorded user directory lives under a home, so a path naming a home
+    # that is not this one is a directory this account cannot install into.
+    if /usr/bin/grep -q -E '"/Users/[^"/]+/' "$config" \
+        && ! /usr/bin/grep -q -F "\"$HOME/" "$config"; then
+        stale+=("$token")
+    fi
+done <"$user_dir_casks"
+
+if [ "${#stale[@]}" -eq 0 ]; then
+    [ "$mode" = check ] || printf 'Funk cask user dirs: every cask installs into %s\n' "$HOME"
+    exit 0
+fi
+
+printf 'These casks record install directories in another account'"'"'s home, so\n'
+printf 'Homebrew cannot upgrade them:\n'
+for token in "${stale[@]}"; do
+    printf '  %s (%s)\n' "$token" \
+        "$(/usr/bin/sed -n 's/.*"fontdir":"\([^"]*\)".*/\1/p' \
+            "$caskroom/$token/.metadata/config.json" 2>/dev/null)"
+done
+
+if [ "$mode" = check ]; then
+    printf 'Run without --check to reinstall them under this account.\n'
+    exit 1
+fi
+
+status=0
+for token in "${stale[@]}"; do
+    printf 'Reinstalling %s under %s\n' "$token" "$HOME"
+    # --force tolerates artifacts already missing from the unreachable home.
+    "$brew_bin" uninstall --cask --force "$token" >/dev/null 2>&1 || true
+    "$brew_bin" install --cask "$token" >/dev/null 2>&1 || {
+        printf 'warning: could not reinstall %s\n' "$token" >&2
+        status=1
+    }
+done
+
+exit "$status"

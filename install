@@ -128,6 +128,13 @@ fi
     --brewfile "$funk_root/Brewfile" \
     claude chatgpt stablyai/orca/orca
 
+# A cask installed under a previous account keeps that account's install
+# directories forever, so its upgrades fail against a home this one cannot even
+# read -- and Homebrew reports only that some source file "is not there". Repair
+# is a reinstall, unprivileged for the user-directory artifacts this selects.
+"$funk_root/libexec/repair-cask-user-dirs" --brewfile "$funk_root/Brewfile" \
+    || printf 'install: some casks could not be reinstalled under this account\n' >&2
+
 FUNK_ROOT="$funk_root" "$funk_root/libexec/converge-brewfile"
 "$funk_command" stow
 "$funk_root/libexec/initialize-configs"

@@ -399,18 +399,50 @@ account cannot be replaced by this one, so Homebrew falls back to its own
 updater, and cancelling it leaves the Caskroom in the aborted-upgrade state
 described below.
 
-`./install` therefore reclaims those bundles first. It reassigns only installed
-cask `.app` targets that are currently owned by another non-root local account,
-in one scoped `chown`, and it is a silent no-op once ownership is correct. A
-root-owned application installed from a pkg is never touched. Inspect the plan
-without changing anything:
+`./install` therefore reclaims those bundles first. It reassigns installed cask
+`.app` targets that do not belong to this account, in one scoped `chown`, and it
+is a silent no-op once ownership is correct. Inspect the plan without changing
+anything:
 
 ```sh
 libexec/reclaim-app-ownership --check --brewfile Brewfile
 ```
 
+Root ownership is judged against the cask's artifacts rather than assumed. When
+the cask installs a pkg there is an installer that legitimately owns the bundle
+and reassigning it would fight that installer, so it is left alone. When the
+cask ships only an `.app` there is no such installer: root ownership means
+something replaced the bundle as root, and Homebrew can no longer upgrade it
+without a prompt the scheduled updater cannot answer. Treating those as
+untouchable made the updater retry an upgrade that could only ever fail, so they
+are reclaimed and, until they are, reported as needing `./install` rather than
+attempted.
+
 This is the only step of a default `./install` that can ask for a password, and
 only until it has run once.
+
+### Casks installed under a previous account
+
+Homebrew records the user directories it will install into — `fontdir`,
+`prefpanedir`, `servicedir` and the rest — in each cask's metadata at install
+time. A cask installed under a previous account keeps that account's paths
+forever, so every later upgrade moves artifacts through a home this account
+usually cannot even read. Nothing about the failure names the cause: Homebrew
+reports only that some source file `is not there`, and the scheduled updater
+fails on it indefinitely.
+
+`./install` repairs these before converging the Brewfile:
+
+```sh
+libexec/repair-cask-user-dirs --check --brewfile Brewfile
+```
+
+Only casks that actually install a user-directory artifact are selected — a cask
+shipping binaries or an `.app` never touches one, so its recorded directories
+are inert and reinstalling it would be churn. Repair is a reinstall rather than
+a metadata rewrite, because corrected paths alone would leave Homebrew looking
+for the previous version's files under a directory they were never in. Those
+artifacts are user-level, so the repair stays unprivileged.
 
 ### Aborted cask upgrades
 

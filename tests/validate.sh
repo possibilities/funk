@@ -18,6 +18,7 @@ libexec/converge-brewfile
 libexec/converge-brew-casks
 libexec/release-cask-quarantine
 libexec/repair-cask-artifacts
+libexec/repair-cask-user-dirs
 libexec/reclaim-app-ownership
 libexec/list-unattendable-casks
 libexec/install-orca
@@ -1350,6 +1351,17 @@ grep -F '"$repair_artifacts" "$@"' libexec/converge-brew-casks >/dev/null \
     || fail "cask convergence does not repair aborted-upgrade Caskroom state"
 grep -F 'libexec/reclaim-app-ownership' install >/dev/null \
     || fail "installer does not reclaim applications left by a previous account"
+grep -F 'libexec/repair-cask-user-dirs' install >/dev/null \
+    || fail "installer does not repair casks installed under a previous account"
+
+# Root ownership means an installer owns the bundle only when the cask ships a
+# pkg. Treating every root-owned bundle that way let the scheduled updater
+# attempt an app-cask upgrade that could only ever fail on a sudo prompt it
+# cannot answer, so both helpers must consult the artifact metadata.
+for ownership_helper in libexec/reclaim-app-ownership libexec/list-unattendable-casks; do
+    grep -F 'pkg_casks' "$ownership_helper" >/dev/null \
+        || fail "$ownership_helper treats every root-owned bundle as a pkg install"
+done
 
 if grep -R -E '/Users/[A-Za-z0-9._-]+|telegram|agentnotify|TCC\.db|security import|yabai-cert' \
     Brewfile bin launchd libexec system yabai skhd karabiner >/dev/null; then

@@ -29,8 +29,8 @@ usage() {
     cat <<'EOF'
 Usage: reclaim-app-ownership [--check|--list-casks] [--brewfile FILE] [CASK ...]
 
-Give the current account ownership of installed cask .app bundles that still
-belong to another local account.
+Give the current account ownership of installed cask .app bundles it cannot
+modify.
 
 An application directory owned by a different account cannot be modified by
 this account, so Homebrew falls back to "Using sudo to gain ownership of path"
@@ -39,8 +39,10 @@ LaunchAgent, and cancelling it leaves the Caskroom in the aborted-upgrade state
 that repair-cask-artifacts exists to undo. One scoped chown removes the prompt
 permanently.
 
-Only bundles currently owned by a non-root local account are reclaimed, so
-root-owned applications installed from a pkg are never touched.
+A root-owned bundle is reclaimed only when its cask installs no pkg. With a pkg
+there is an installer that legitimately owns the bundle and reassigning it would
+fight that installer; without one, root ownership means something replaced the
+app as root and left Homebrew unable to upgrade it unattended.
 
 Options:
   --check           Report the affected bundles without changing anything
@@ -101,8 +103,18 @@ tmpdir=$(mktemp -d "${TMPDIR:-/tmp}/funk-app-ownership.XXXXXX")
 trap 'rm -rf "$tmpdir"' EXIT
 json="$tmpdir/casks.json"
 records="$tmpdir/records"
+pkg_casks="$tmpdir/pkg-casks"
 
 "$brew_bin" info --cask --json=v2 "${casks[@]}" >"$json"
+
+# Which casks install a pkg. Root ownership is expected for those and anomalous
+# for an app-artifact cask, and only the metadata distinguishes them.
+/usr/bin/jq -r '
+  .casks[]
+  | select(.token != null and .token != "")
+  | select(([.artifacts[]? | select(has("pkg"))] | length) > 0)
+  | .token
+' "$json" | LC_ALL=C sort -u >"$pkg_casks"
 
 /usr/bin/jq -r '
   .casks[]
@@ -156,9 +168,13 @@ while IFS=$'\t' read -r token target; do
     owner_uid=$(stat -f '%u' "$target")
     [ "$owner" != "$target_user" ] || continue
 
-    # A root-owned bundle belongs to a pkg installer, not to a migrated account.
-    # Reassigning it would fight the installer that owns it.
-    if [ "$owner_uid" -lt 500 ]; then
+    # A root-owned bundle from a pkg cask belongs to its installer, and
+    # reassigning it would fight the installer that owns it. A cask whose only
+    # artifact is an .app has no such installer: root ownership there means
+    # something replaced the bundle as root, and it leaves Homebrew unable to
+    # upgrade the app without a prompt the scheduled agent cannot answer.
+    if [ "$owner_uid" -lt 500 ] \
+        && LC_ALL=C grep -Fxq -- "$token" "$pkg_casks"; then
         continue
     fi
 
@@ -180,8 +196,8 @@ if [ "$mode" = list ]; then
     exit 0
 fi
 
-printf 'These installed applications still belong to another local account, so\n'
-printf 'Homebrew cannot upgrade them without administrator authentication:\n'
+printf 'These installed applications do not belong to this account, so Homebrew\n'
+printf 'cannot upgrade them without administrator authentication:\n'
 for index in "${!foreign_paths[@]}"; do
     printf '  %s (owned by %s, cask %s)\n' \
         "${foreign_paths[$index]}" \

@@ -87,8 +87,19 @@ tmpdir=$(mktemp -d "${TMPDIR:-/tmp}/funk-unattendable.XXXXXX")
 trap 'rm -rf "$tmpdir"' EXIT
 json="$tmpdir/casks.json"
 owned="$tmpdir/owned"
+pkg_casks="$tmpdir/pkg-casks"
 
 "$brew_bin" info --cask --json=v2 "${casks[@]}" >"$json"
+
+# Which casks install a pkg. Root ownership means one thing for these and
+# something else entirely for an app-artifact cask, and only the metadata can
+# tell the two apart.
+/usr/bin/jq -r '
+  .casks[]
+  | select(.token != null and .token != "")
+  | select(([.artifacts[]? | select(has("pkg"))] | length) > 0)
+  | .token
+' "$json" | LC_ALL=C sort -u >"$pkg_casks"
 
 # An application directory owned by another local account cannot be replaced by
 # this account, so Homebrew would have to elevate to converge it.
@@ -148,9 +159,15 @@ owned="$tmpdir/owned"
         owner=$(stat -f '%Su' "$target" 2>/dev/null) || continue
         owner_uid=$(stat -f '%u' "$target" 2>/dev/null) || continue
         [ "$owner" != "$current_user" ] || continue
-        # A root-owned bundle belongs to a pkg installer, which the artifact
-        # scan above already reports.
-        [ "$owner_uid" -ge 500 ] || continue
+        # For a pkg cask the artifact scan above already reports it, so root
+        # ownership adds nothing. For an app-artifact cask root ownership is an
+        # anomaly -- something replaced the bundle as root -- and Homebrew still
+        # has to elevate to move it. Skipping those made the scheduled path
+        # attempt an upgrade that could only ever fail.
+        if [ "$owner_uid" -lt 500 ] \
+            && LC_ALL=C grep -Fxq -- "$token" "$pkg_casks"; then
+            continue
+        fi
 
         printf '%s\n' "$token"
     done <"$owned"
