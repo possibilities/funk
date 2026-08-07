@@ -15,6 +15,9 @@ installers:
   Codex CLI, OpenCode, and Pi
 - The AgentVoice desktop application, installed by AgentVoice's own
   `app:install` contract from `~/code/agentvoice`
+- The AgentVoiceNext voice CLI (`agentvoicenext`), linked editable by its own
+  `cli:install` contract from `~/code/agentvoicenext` when that checkout
+  exists
 - Orca CLI, orchestration, computer-use, skill-discovery, frontend design,
   web-design review, React engineering, Vercel AI SDK, AI Elements, shadcn,
   Native SDK discovery, and the Art Hack agent skills

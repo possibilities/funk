@@ -461,6 +461,18 @@ command -v bun >/dev/null 2>&1 \
 printf 'Verifying the installed Native SDK agent documentation helpers.\n'
 native skills list >/dev/null
 
+# The AgentVoiceNext voice CLI is linked editable from its own checkout by its
+# cli:install contract (dependencies, sox, a global bun link). Funk only
+# invokes it; a machine without the checkout skips inside the script, so only
+# a present-but-broken checkout fails here.
+agentvoicenext_cli_status=0
+"$script_dir/install-agentvoicenext-cli" || agentvoicenext_cli_status=$?
+if [ "$agentvoicenext_cli_status" -ne 0 ]; then
+    printf 'Funk AI tools installer: AgentVoiceNext CLI install failed (exit %s). Fix the reported problem, then rerun ./install or libexec/install-agentvoicenext-cli.\n' \
+        "$agentvoicenext_cli_status" >&2
+    exit "$agentvoicenext_cli_status"
+fi
+
 # The pinned Native SDK CLI and Zig above are AgentVoice's packaging
 # prerequisites, so the desktop application is installed last. AgentVoice owns
 # packaging, bundle replacement, launch, and readiness verification; Funk only
