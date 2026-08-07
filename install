@@ -164,6 +164,13 @@ fi
 notifications_blocked=0
 "$funk_command" verify-notifications || notifications_blocked=1
 
+# Installing a service proves only that a plist was written. These checks prove
+# the daemons answer, which is a different question and the one that matters:
+# an ingress that is loaded but unreachable, or a worker whose conduit wiring an
+# older installer quietly dropped, both look installed and neither works.
+local_services_degraded=0
+"$funk_command" verify-local-services || local_services_degraded=1
+
 if [ "$with_system_settings" -eq 1 ]; then
     "$funk_command" configure-system
 fi
@@ -199,5 +206,14 @@ Action required: notifications are blocked for terminal-notifier, so Funk's
 unattended health alerts reach no one. Enable them at System Settings >
 Notifications > terminal-notifier, choosing the Alerts style, then run:
 funk verify-notifications
+EOF
+fi
+
+if [ "$local_services_degraded" -eq 1 ]; then
+    cat <<'EOF'
+
+Action required: the resident Agentbrain and Agentweb services installed, but
+one or more of them is not answering. The failures are listed above. Re-check
+with: funk verify-local-services
 EOF
 fi

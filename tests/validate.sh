@@ -33,6 +33,7 @@ libexec/install-tailscale-agent
 libexec/install-home-awake
 libexec/install-home-awake-agent
 libexec/install-local-services
+libexec/verify-local-services
 libexec/configure-macos
 libexec/verify-notifications
 libexec/configure-system

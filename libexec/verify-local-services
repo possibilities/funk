@@ -1,0 +1,115 @@
+#!/bin/bash
+
+set -uo pipefail
+
+usage() {
+    cat <<'EOF'
+Usage: verify-local-services
+
+Check that the resident services owned by local checkouts are not merely
+installed but actually working: the Agentbrain worker and share ingress, and
+the Agentweb daemon.
+
+Exits non-zero when any check fails, so it is usable after a converge, after a
+merge, or on its own to answer "is sharing actually working right now".
+EOF
+}
+
+case "${1:-}" in
+    "") ;;
+    -h|--help) usage; exit 0 ;;
+    *) usage >&2; exit 64 ;;
+esac
+
+failures=0
+
+ok() { printf '  ok    %s\n' "$*"; }
+bad() { printf '  FAIL  %s\n' "$*" >&2; failures=$((failures + 1)); }
+
+service_running() {
+    local label="$1"
+    launchctl print "gui/$(id -u)/$label" 2>/dev/null | grep -q '^	state = running'
+}
+
+printf 'Resident services\n'
+for label in agentbrain.worker agentweb.daemon; do
+    if service_running "$label"; then
+        ok "$label is loaded and running"
+    else
+        bad "$label is not running"
+    fi
+done
+
+# The ingress is opt-in, so its absence is only a failure when this host has a
+# tailnet address for it to have been bound to.
+tailnet_address=$(command -v tailscale >/dev/null 2>&1 &&
+    tailscale ip -4 2>/dev/null | head -n 1 | grep -E '^[0-9.]+$')
+if service_running agentbrain.share; then
+    ok "agentbrain.share is loaded and running"
+elif [ -n "$tailnet_address" ]; then
+    bad "agentbrain.share is not running, though this host is on the tailnet at $tailnet_address"
+else
+    ok "agentbrain.share is absent, and no tailnet address asks for one"
+fi
+
+printf 'Agentweb\n'
+if [ "$(agentweb daemon status 2>/dev/null)" = ready ]; then
+    ok "daemon answers ready"
+else
+    bad "daemon does not answer ready"
+fi
+
+printf 'Extraction dependencies\n'
+# Agentscrape resolves this candidate before falling back to PATH, and launchd's
+# minimal PATH never reaches a tool installed under a Node version manager.
+if [ -x "$HOME/.local/bin/agent-browser" ]; then
+    ok "agent-browser resolves at ~/.local/bin"
+else
+    bad "agent-browser is missing from ~/.local/bin"
+fi
+
+printf 'Conduit wiring\n'
+worker_plist="$HOME/Library/LaunchAgents/agentbrain.worker.plist"
+agentweb_state="${XDG_STATE_HOME:-$HOME/.local/state}/agentweb"
+for pair in \
+    "AGENTSCRAPE_CONDUIT_SOCKET:$agentweb_state/runtime/agentweb.sock" \
+    "AGENTSCRAPE_CONDUIT_TOKEN_FILE:$agentweb_state/worker-token"; do
+    key="${pair%%:*}"
+    want="${pair#*:}"
+    got=$(plutil -extract "EnvironmentVariables.$key" raw -o - "$worker_plist" 2>/dev/null)
+    if [ "$got" = "$want" ]; then
+        ok "worker carries $key"
+    else
+        bad "worker $key is '${got:-unset}', expected '$want'"
+    fi
+done
+
+printf 'Share ingress reachability\n'
+if service_running agentbrain.share && [ -n "$tailnet_address" ]; then
+    # The token is read into a variable and never printed, and never placed on a
+    # command line where another process could read it from the process table.
+    token=$(agentbrain share token show --reveal 2>/dev/null)
+    if [ -z "$token" ]; then
+        bad "no share token is readable"
+    else
+        status=$(printf 'authorization: Bearer %s\n' "$token" |
+            curl -sS -m 5 -o /dev/null -w '%{http_code}' \
+                -H @- "http://$tailnet_address:8787/v1/health" 2>/dev/null)
+        unset token
+        if [ "$status" = 200 ]; then
+            ok "ingress answers /v1/health over the tailnet"
+        else
+            bad "ingress health returned '${status:-no response}'"
+        fi
+    fi
+else
+    ok "ingress reachability not checked (no running ingress on a tailnet address)"
+fi
+
+printf '\n'
+if [ "$failures" -eq 0 ]; then
+    printf 'verify-local-services: all checks passed\n'
+    exit 0
+fi
+printf 'verify-local-services: %s check(s) failed\n' "$failures" >&2
+exit 1
