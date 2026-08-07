@@ -341,6 +341,24 @@ update_notifier_log="$update_test_dir/notifier.log"
 # Pinning something keeps the branch deterministic rather than depending on
 # whether the machine running the tests happens to have Orca open.
 update_running_binary=/sbin/launchd
+# Orca's version now comes from the bundle rather than Homebrew's receipt,
+# because the app updates itself and the receipt stops describing what is
+# installed the moment it does. Pin a fixture bundle so the assertions below do
+# not depend on which Orca the machine running the tests happens to have.
+update_orca_plist="$update_test_dir/Orca-Info.plist"
+write_orca_plist() {
+    /bin/cat >"$update_orca_plist" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleShortVersionString</key>
+	<string>$1</string>
+</dict>
+</plist>
+EOF
+}
+write_orca_plist 0.9.0
 mkdir -p "$update_home/.agents"
 printf '%s\n' \
     $'formula:terminal-notifier\t1.0.0' \
@@ -375,6 +393,7 @@ update_output=$(
         FUNK_TEST_BREW_STATE="$update_state" \
         FUNK_TEST_BREW_LOG="$update_brew_log" \
         FUNK_TEST_BUN_LOG="$update_bun_log" \
+        FUNK_ORCA_INFO_PLIST="$update_orca_plist" \
         "$root/bin/funk" update 2>&1
 )
 update_status=$?
@@ -395,7 +414,7 @@ HOME="$update_home" \
     FUNK_TEST_BREW_STATE="$update_state" \
     FUNK_TEST_BREW_LOG="$update_brew_log" \
     FUNK_TEST_FORMULA_NEW=2.0.0 \
-    FUNK_TEST_ORCA_NEW=1.0.0 \
+    FUNK_TEST_ORCA_BUNDLE_NEW=1.0.0 \
     FUNK_TEST_ORCA_CLI_HASH=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
     FUNK_TEST_NPX_LOG="$update_npx_log" \
     FUNK_TEST_BUN_LOG="$update_bun_log" \
@@ -403,11 +422,22 @@ HOME="$update_home" \
     FUNK_NPX_BIN="$root/tests/fixtures/npx" \
     FUNK_BUN_BIN="$root/tests/fixtures/bun" \
     FUNK_ORCA_BINARY="$update_running_binary" \
+    FUNK_ORCA_INFO_PLIST="$update_orca_plist" \
     FUNK_TERMINAL_NOTIFIER_BIN="$root/tests/fixtures/terminal-notifier" \
     "$root/bin/funk" update --notify >/dev/null
-grep -F 'brew-stub <upgrade> <--cask> <--greedy> <--yes> <stablyai/orca/orca>' \
-    "$update_brew_log" >/dev/null \
-    || fail "scheduled update did not explicitly upgrade installed Orca"
+# Orca ships its own updater and the cask marks itself auto_updates so Homebrew
+# will not compete with it; --greedy is the one flag that overrides that. Doing
+# it anyway replaces the bundle under a running app, whose renderer then cannot
+# resolve the code-split chunks it was built against -- Preferences was the
+# pane that surfaced it. An installed Orca must be left alone.
+if grep -F '<--greedy>' "$update_brew_log" >/dev/null; then
+    fail "scheduled update greedily upgraded a cask that updates itself"
+fi
+if grep -F 'brew-stub <upgrade> <--cask>' "$update_brew_log" >/dev/null; then
+    fail "scheduled update upgraded Orca instead of leaving it to its own updater"
+fi
+grep -F 'brew-stub <list> <--cask> <--versions> <orca>' "$update_brew_log" >/dev/null \
+    || fail "scheduled update did not check whether Orca is installed at all"
 grep -F 'npx-stub <--yes> <skills> <add> <https://github.com/stablyai/orca>' \
     "$update_npx_log" >/dev/null \
     || fail "scheduled update did not synchronize Orca skills"
@@ -435,13 +465,14 @@ if printf '%s\n' "$notification" | grep -Eq 'orchestration|computer-use'; then
     fail "change-aware notification listed unchanged Orca skills"
 fi
 
-# Homebrew replaces Orca's bundle without quitting it, so a running Orca serves
-# the old bundle until restarted. On a machine where Orca is always open that is
-# otherwise invisible, so the upgrade must say so -- in its own notification
-# group, not buried in the "Updated: ..." summary.
+# Whatever replaced the bundle -- now Orca's own updater rather than Homebrew --
+# a running Orca goes on serving code that is no longer on disk. On a machine
+# where Orca is always open that is otherwise invisible until a pane fails to
+# load, so the run must say so, in its own notification group rather than buried
+# in the "Updated: ..." summary.
 restart_notification=$(grep -F '<Restart Orca>' "$update_notifier_log" | tail -n 1 || true)
 [ -n "$restart_notification" ] \
-    || fail "upgrading a running Orca did not prompt for a restart"
+    || fail "a bundle that changed under a running Orca did not prompt for a restart"
 printf '%s\n' "$restart_notification" | grep -F '1.0.0' >/dev/null \
     || fail "Orca restart prompt omitted the version now on disk"
 printf '%s\n' "$restart_notification" \
@@ -456,11 +487,11 @@ HOME="$update_home" \
     FUNK_TEST_BREW_STATE="$update_state" \
     FUNK_TEST_BREW_LOG="$update_brew_log" \
     FUNK_TEST_FORMULA_NEW=2.0.0 \
-    FUNK_TEST_ORCA_NEW=1.0.0 \
     FUNK_TEST_ORCA_CLI_HASH=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
     FUNK_TEST_NPX_LOG="$update_npx_log" \
     FUNK_TEST_NOTIFIER_LOG="$update_notifier_log" \
     FUNK_NPX_BIN="$root/tests/fixtures/npx" \
+    FUNK_ORCA_INFO_PLIST="$update_orca_plist" \
     FUNK_TERMINAL_NOTIFIER_BIN="$root/tests/fixtures/terminal-notifier" \
     "$root/bin/funk" update --notify >/dev/null
 grep -F '<-message> <Installer ran; no updates.>' "$update_notifier_log" >/dev/null \
@@ -481,6 +512,7 @@ update_output=$(
         FUNK_TEST_BUN_EXIT=17 \
         FUNK_TEST_NOTIFIER_LOG="$update_notifier_log" \
         FUNK_NPX_BIN="$root/tests/fixtures/npx" \
+        FUNK_ORCA_INFO_PLIST="$update_orca_plist" \
         FUNK_TERMINAL_NOTIFIER_BIN="$root/tests/fixtures/terminal-notifier" \
         "$root/bin/funk" update --notify 2>&1
 )
@@ -490,8 +522,7 @@ set -e
     || fail "funk update did not propagate an AgentVoice installer failure"
 printf '%s\n' "$update_output" | grep -F 'FAILED with exit status 17' >/dev/null \
     || fail "funk update did not log the AgentVoice installer failure"
-grep -F 'brew-stub <upgrade> <--cask> <--greedy> <--yes> <stablyai/orca/orca>' \
-    "$update_brew_log" >/dev/null \
+grep -F 'brew-stub <list> <--cask> <--versions> <orca>' "$update_brew_log" >/dev/null \
     || fail "AgentVoice installer failure test did not converge Orca before failing"
 grep -F "bun-stub <run> <--cwd> <$update_agentvoice_root> <skills:install>" \
     "$update_bun_log" >/dev/null \
@@ -809,6 +840,51 @@ funk-zap-sudo'
 [ "$unattendable" = "$expected_unattendable" ] \
     || fail "unattendable cask triage did not match the required set: $unattendable"
 
+# A cask installed under a previous account records that account's user
+# directories forever, so Homebrew hunts for the old version's artifacts in a
+# home this account cannot read and fails the whole unattended run reporting
+# only that a source file "is not there". The scheduled path skips those too,
+# because repairing one is a reinstall and an unattended run is the wrong place
+# to remove a working cask on the chance the reinstall succeeds.
+user_dirs_home="$update_test_dir/user-dirs-home"
+user_dirs_info="$update_test_dir/user-dirs-info.json"
+mkdir -p "$user_dirs_home"
+/usr/bin/jq -n '{casks:[
+    {token:"funk-font-foreign",installed:"1.0.0",artifacts:[{font:["Funk.ttf"]}]},
+    {token:"funk-font-mine",installed:"1.0.0",artifacts:[{font:["Mine.ttf"]}]},
+    {token:"funk-app-foreign",installed:"1.0.0",artifacts:[{app:["Funk App.app"]}]}
+]}' >"$user_dirs_info"
+for user_dirs_token in funk-font-foreign funk-font-mine funk-app-foreign; do
+    mkdir -p "$repair_prefix/Caskroom/$user_dirs_token/.metadata"
+done
+printf '{"default":{"fontdir":"/Users/someone-else/Library/Fonts"}}' \
+    >"$repair_prefix/Caskroom/funk-font-foreign/.metadata/config.json"
+printf '{"default":{"fontdir":"%s/Library/Fonts"}}' "$user_dirs_home" \
+    >"$repair_prefix/Caskroom/funk-font-mine/.metadata/config.json"
+printf '{"default":{"fontdir":"/Users/someone-else/Library/Fonts"}}' \
+    >"$repair_prefix/Caskroom/funk-app-foreign/.metadata/config.json"
+stale_user_dirs=$(
+    HOME="$user_dirs_home" \
+        FUNK_BREW_BIN="$root/tests/fixtures/brew" \
+        FUNK_TEST_BREW_PREFIX="$repair_prefix" \
+        FUNK_TEST_CASK_INFO="$user_dirs_info" \
+        "$root/libexec/repair-cask-user-dirs" --list \
+            funk-font-foreign funk-font-mine funk-app-foreign
+)
+# Only the font cask recording another home: a cask whose recorded directories
+# this account owns converges normally, and an .app cask never installs into a
+# user directory at all, so its recorded paths are inert.
+[ "$stale_user_dirs" = 'funk-font-foreign' ] \
+    || fail "cask user-dir triage did not match the required set: $stale_user_dirs"
+# --list is what the scheduled path consumes, so it must report rather than
+# exit nonzero the way --check does for an interactive caller.
+HOME="$user_dirs_home" \
+    FUNK_BREW_BIN="$root/tests/fixtures/brew" \
+    FUNK_TEST_BREW_PREFIX="$repair_prefix" \
+    FUNK_TEST_CASK_INFO="$user_dirs_info" \
+    "$root/libexec/repair-cask-user-dirs" --list funk-font-foreign >/dev/null \
+    || fail "cask user-dir triage exited nonzero when it found affected casks"
+
 # Ownership reclamation must stay silent when every application already belongs
 # to this account, so ./install never asks for a password it does not need.
 ownership_home="$update_test_dir/ownership-home"
@@ -1116,7 +1192,7 @@ for required_ai_install in \
     'brew install or upgrade --cask --greedy claude' \
     'brew install or upgrade --cask --greedy chatgpt' \
     'brew install --cask --yes stablyai/orca/orca  # when missing' \
-    'brew upgrade --cask --greedy --yes stablyai/orca/orca  # when installed' \
+    'leave an installed Orca to its own updater  # never brew upgrade' \
     'remove com.apple.quarantine only from Homebrew'\''s declared Orca.app target' \
     'curl -fsSL https://claude.ai/install.sh | bash' \
     'curl -fsSL https://chatgpt.com/codex/install.sh | CODEX_NON_INTERACTIVE=1 sh' \
@@ -1374,6 +1450,21 @@ if grep -Fq 'reclaim-app-ownership' libexec/list-unattendable-casks; then
 fi
 grep -F 'HOMEBREW_BUNDLE_CASK_SKIP' libexec/funk-update >/dev/null \
     || fail "scheduled updater does not skip casks that need administrator authentication"
+# shellcheck disable=SC2016 # Match the literal triage invocation in the script.
+grep -F '"$cask_dir_lister" --list --brewfile "$brewfile"' \
+    libexec/funk-update >/dev/null \
+    || fail "scheduled updater does not skip casks installed under a previous account"
+
+# Orca updates itself; the cask sets auto_updates so Homebrew will not compete,
+# and --greedy is the single flag that overrides that. Overriding it replaces
+# the bundle under a running app, which then fails to resolve the code-split
+# chunks it was built against. Nothing on the scheduled path may ask for it.
+grep -F -- '--install-only stablyai/orca/orca' libexec/install-orca >/dev/null \
+    || fail "Orca installer does not leave an installed Orca to its own updater"
+# Comments here explain why --greedy is wrong for Orca, so scan code only.
+if grep -v '^[[:space:]]*#' libexec/install-orca | grep -F -- '--greedy' >/dev/null; then
+    fail "Orca installer still asks Homebrew to upgrade a self-updating cask"
+fi
 
 # Homebrew fails every later upgrade of a cask left in the aborted-upgrade state,
 # so both convergence paths must repair it before asking Homebrew to move an app.
