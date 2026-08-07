@@ -300,3 +300,20 @@ if run_ensure --nonsense >/dev/null 2>&1; then
 fi
 [ ! -s "$notifications" ] || fail "a usage error notified the operator"
 [ ! -e "$alert_state" ] || fail "a usage error recorded an alert"
+
+# A phone that is asleep is not this Mac's outage: the caller that asked about
+# the peer is told, and nobody at this machine is interrupted.
+for peer_state in Offline Missing; do
+    : >"$notifications"
+    rm -f "$alert_state"
+    if FUNK_TEST_TAILSCALE_PEER_STATE="$peer_state" run_ensure --peer smolbird \
+        >/dev/null 2>"$test_home/quiet-peer-error"; then
+        fail "an unavailable peer was accepted"
+    fi
+    [ -s "$test_home/quiet-peer-error" ] \
+        || fail "an unavailable peer was not reported to its caller"
+    [ ! -s "$notifications" ] \
+        || fail "an unavailable peer notified the operator"
+    [ ! -e "$alert_state" ] \
+        || fail "an unavailable peer recorded an alert"
+done

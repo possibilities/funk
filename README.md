@@ -248,8 +248,8 @@ or error output to `~/Library/Logs/Funk/tailscale-online.log`. It does not
 install a root daemon, a Homebrew `tailscaled` service, or an `/etc/resolver`
 file.
 
-A log file nobody reads is not a detector, so every health verdict also reaches
-the operator through `terminal-notifier` under the
+A log file nobody reads is not a detector, so every verdict about this Mac's own
+Tailscale health also reaches the operator through `terminal-notifier` under the
 `com.arthack.funk.tailscale-online` group. A shared group keeps one entry in
 Notification Center, but macOS re-displays the banner on every post, so posting
 each run would put the same alert back on screen every five minutes. An
@@ -260,7 +260,9 @@ same day. Override the interval with
 `FUNK_TAILSCALE_ALERT_REMINDER_SECONDS`. Only a change in the condition itself
 is immediate and audible, and recovery clears the recorded history so a
 recurrence is audible again. Usage errors stay silent — a mistyped flag is not
-an outage.
+an outage — and so do `--peer` verdicts: a phone that is asleep or off the
+network is neither this machine's outage nor something this machine can fix, so
+it goes to the caller that asked rather than interrupting whoever is here.
 
 A notifier that cannot notify is the same silent failure one level up, so
 `funk verify-notifications` posts a probe and asks NotificationCenter what it

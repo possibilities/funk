@@ -12,7 +12,8 @@ Usage: tailscale-ensure-online [--peer TAILNET_HOST] [--print-peer-id]
 With no state change required, this command is silent. A Stopped backend is
 reconnected with the GUI client's saved configuration. NeedsLogin, invalid
 daemon responses, offline nodes, and unsupported states are never changed
-silently.
+silently. Only this machine's own Tailscale health notifies; a --peer verdict
+is reported to the caller alone.
 
 Use --disable before an intentional disconnect. The persistent opt-out prevents
 both scheduled and Screen Copy recovery until --enable removes it.
@@ -328,12 +329,16 @@ qualify_peer() {
         *)
             suffix=$("$jq_bin" -r '.MagicDNSSuffix // empty' <<<"$tailnet_status")
             [ -n "$suffix" ] \
-                || die_unhealthy "Tailscale is online but did not report a MagicDNS suffix"
+                || die "Tailscale is online but did not report a MagicDNS suffix"
             printf '%s.%s\n' "$peer" "${suffix%.}"
             ;;
     esac
 }
 
+# Peer verdicts never notify. A notification interrupts whoever is at this Mac,
+# and it can only ever be acted on here; a phone that is asleep or off the
+# network is neither this machine's outage nor something this machine can fix.
+# The caller that asked about the peer still gets the error text and exit status.
 check_peer() {
     local allow_short=false
     local count
@@ -364,11 +369,11 @@ check_peer() {
     count=$("$jq_bin" -r 'length' <<<"$peer_matches")
     case "$count" in
         0)
-            die_unhealthy "Tailnet peer $qualified_peer is missing; confirm the hostname and that the phone still belongs to this tailnet"
+            die "Tailnet peer $qualified_peer is missing; confirm the hostname and that the phone still belongs to this tailnet"
             ;;
         1) ;;
         *)
-            die_unhealthy "Tailnet peer $qualified_peer is ambiguous in Tailscale status; resolve duplicate device names"
+            die "Tailnet peer $qualified_peer is ambiguous in Tailscale status; resolve duplicate device names"
             ;;
     esac
 
@@ -377,7 +382,7 @@ check_peer() {
         then .[0].id else "invalid" end
     ' <<<"$peer_matches")
     [ "$peer_id" != invalid ] \
-        || die_unhealthy "Tailscale returned invalid device identity for peer $qualified_peer"
+        || die "Tailscale returned invalid device identity for peer $qualified_peer"
 
     online=$("$jq_bin" -r '
         if (.[0].online | type) == "boolean" then .[0].online else "invalid" end
@@ -385,10 +390,10 @@ check_peer() {
     case "$online" in
         true) ;;
         false)
-            die_unhealthy "Tailnet peer $qualified_peer is offline; enable Tailscale and networking on the phone"
+            die "Tailnet peer $qualified_peer is offline; enable Tailscale and networking on the phone"
             ;;
         *)
-            die_unhealthy "Tailscale returned invalid online state for peer $qualified_peer"
+            die "Tailscale returned invalid online state for peer $qualified_peer"
             ;;
     esac
 
@@ -501,17 +506,19 @@ case "$backend" in
         ;;
 esac
 
-if [ -n "$peer" ]; then
-    check_peer
-fi
-
-# Reached only when the tailnet is healthy. A staged extension upgrade is still
-# worth surfacing here, because it is the one condition that is invisible while
-# everything works and disabling while away from the machine.
+# This machine's verdict is complete here, so settle it before asking about any
+# peer: a phone that is offline must not hold a recovered Mac's alert on screen.
+# A staged extension upgrade is still worth surfacing, because it is the one
+# condition that is invisible while everything works and disabling while away
+# from the machine.
 staged=$(describe_staged_upgrade)
 if [ -n "$staged" ]; then
     alert "$staged"
     printf 'tailscale-ensure-online: %s\n' "$staged" >&2
 else
     clear_alert
+fi
+
+if [ -n "$peer" ]; then
+    check_peer
 fi
