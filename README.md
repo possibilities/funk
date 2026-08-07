@@ -97,10 +97,15 @@ OpenCode additionally get the official shadcn registry MCP server.
 Finally, the installer synchronizes the locally authored Art Hack skills —
 `hack`, `resource-create`, and `resource-update` — from `~/code/arthack` into the
 shared `~/.agents/skills` directory discovered by Codex Desktop and the other
-agent skill locations. Funk's own agent guidance lives in this repository's
-`AGENTS.md` instead of a priming skill. Funk is the sole owner of AI-stack
-installation; Art Hack remains the source of those skills and does not provide a
-second installer.
+agent skill locations, then invokes Art Hack's `scripts/render`, which replaces
+each installed `SKILL.md` with its rendered artifact: the template composed with
+the operator's extension prompts from `~/.config/arthack/`. The skills installer
+ships raw templates, so rendering always follows it; skipping it would strip the
+extensions until the next render. The rendered copies are read-only and marked
+do-not-edit — the templates and extension prompts are the places to change them.
+Funk's own agent guidance lives in this repository's `AGENTS.md` instead of a
+priming skill. Funk remains the sole owner of AI-stack installation; Art Hack
+owns its templates and their rendering and does not provide a second installer.
 
 The installer also links the shared agent guidance file into each CLI's global
 guidance location: `~/.claude/CLAUDE.md` and `~/.codex/AGENTS.md` become

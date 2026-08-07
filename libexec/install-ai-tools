@@ -257,6 +257,7 @@ EOF
   npx --yes skills add https://github.com/shadcn/ui --agent codex claude-code opencode pi --skill shadcn --global --yes
   npx --yes skills add https://github.com/vercel-labs/native --agent codex claude-code opencode pi --skill native-sdk --global --yes
   npx --yes skills add "$HOME/code/arthack" --agent codex claude-code opencode pi --skill hack resource-create resource-update --global --yes
+  "$HOME/code/arthack/scripts/render"
 EOF
     exit 0
 fi
@@ -279,6 +280,8 @@ for art_hack_skill in resource-create resource-update; do
     [ -f "$art_hack_root/$art_hack_skill/MANIFEST.md" ] \
         || die "Art Hack resource schema is missing: $art_hack_root/$art_hack_skill/MANIFEST.md"
 done
+[ -x "$art_hack_root/scripts/render" ] \
+    || die "Art Hack skill renderer is missing: $art_hack_root/scripts/render"
 
 brew_bin=$(find_brew) || die "Homebrew is not installed"
 brew_prefix=$("$brew_bin" --prefix)
@@ -445,6 +448,15 @@ npx --yes skills add "$art_hack_root" \
     --agent codex claude-code opencode pi \
     --skill hack resource-create resource-update \
     --global --yes
+
+# The skills installer ships the raw templates, so rendering must always
+# follow it: Art Hack's renderer replaces each shared SKILL.md with the
+# template composed with the operator's extension prompts from
+# ~/.config/arthack, and the per-agent links keep resolving to that artifact.
+printf 'Rendering the Art Hack skills with their extension prompts.\n'
+command -v bun >/dev/null 2>&1 \
+    || die "bun is required to render the Art Hack skills"
+"$art_hack_root/scripts/render"
 
 printf 'Verifying the installed Native SDK agent documentation helpers.\n'
 native skills list >/dev/null

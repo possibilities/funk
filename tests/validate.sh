@@ -892,15 +892,9 @@ HOME="$stow_home" "$root/bin/funk" stow
     || fail "Orca settings overlay was not stowed with normal directory folding"
 [ -L "$stow_home/AGENTS.md" ] \
     || fail "home-level agent guidance was not stowed"
-# shellcheck disable=SC2016 # Match the literal Markdown path.
-grep -F 'Upstream and third-party project clones live under `/Users/arthack/src`.' \
-    "$stow_home/AGENTS.md" >/dev/null \
-    || fail "home-level agent guidance lost the upstream project location"
-grep -F "The user's own projects live under \`/Users/arthack/code\`." \
-    "$stow_home/AGENTS.md" >/dev/null \
-    || fail "home-level agent guidance lost the user project location"
-grep -F 'archive it after its work is complete' "$stow_home/AGENTS.md" >/dev/null \
-    || fail "home-level agent guidance lost completed-task archival"
+# Project locations and task-lifecycle advice moved out of the always-loaded
+# guidance and into the Art Hack extension prompts; only the repository
+# guidance convention is pinned here.
 # shellcheck disable=SC2016 # Match the literal Markdown convention.
 grep -F 'then create `CLAUDE.md` as a' "$stow_home/AGENTS.md" >/dev/null \
     || fail "home-level agent guidance lost the repository guidance convention"
@@ -1160,7 +1154,8 @@ for required_ai_install in \
     'npx --yes skills add https://github.com/vercel/ai-elements --agent codex claude-code opencode pi --skill ai-elements --global --yes' \
     'npx --yes skills add https://github.com/shadcn/ui --agent codex claude-code opencode pi --skill shadcn --global --yes' \
     'npx --yes skills add https://github.com/vercel-labs/native --agent codex claude-code opencode pi --skill native-sdk --global --yes' \
-    "npx --yes skills add \"\$HOME/code/arthack\" --agent codex claude-code opencode pi --skill hack --global --yes"; do
+    "npx --yes skills add \"\$HOME/code/arthack\" --agent codex claude-code opencode pi --skill hack resource-create resource-update --global --yes" \
+    "\"\$HOME/code/arthack/scripts/render\""; do
     printf '%s\n' "$ai_install_plan" | grep -F "$required_ai_install" >/dev/null \
         || fail "AI installation plan is missing: $required_ai_install"
 done
@@ -1174,6 +1169,8 @@ grep -F "art_hack_root=\"\$HOME/code/arthack\"" libexec/install-ai-tools >/dev/n
     || fail "AI installer does not own the Art Hack skill source"
 grep -F "npx --yes skills add \"\$art_hack_root\"" libexec/install-ai-tools >/dev/null \
     || fail "AI installer does not synchronize the Hack skill"
+grep -F "\"\$art_hack_root/scripts/render\"" libexec/install-ai-tools >/dev/null \
+    || fail "AI installer does not render the Art Hack skills"
 grep -F "\$art_hack_root/hack/SKILL.md" libexec/install-ai-tools >/dev/null \
     || fail "AI installer does not validate the Hack skill source"
 grep -F "\$art_hack_root/hack/agents/openai.yaml" libexec/install-ai-tools >/dev/null \
