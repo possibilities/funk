@@ -11,6 +11,12 @@ tailscale_fixture="$root/tests/fixtures/tailscale"
 resolver_fixture="$root/tests/fixtures/dscacheutil"
 dns_sd_fixture="$root/tests/fixtures/dns-sd"
 nc_fixture="$root/tests/fixtures/nc"
+# Exported for every child, not passed per invocation: this suite drives the
+# connect helper through paths that reach tailscale-ensure-online, and an
+# unpinned notifier posts the fixture's fictional tailnet into the operator's
+# real Notification Center. Losing one test to a missed variable is cheap;
+# teaching someone to distrust these alerts is not.
+export FUNK_TERMINAL_NOTIFIER_BIN="$root/tests/fixtures/terminal-notifier"
 jq_bin=$(command -v jq)
 test_home=$(mktemp -d "${TMPDIR:-/tmp}/funk-adb-test.XXXXXX")
 trap 'rm -rf "$test_home"' EXIT

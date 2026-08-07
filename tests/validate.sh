@@ -102,6 +102,17 @@ if command -v shellcheck >/dev/null 2>&1; then
     shellcheck --shell=bash $shell_files
 fi
 
+# A suite that reaches tailscale-ensure-online without pinning the notifier
+# posts the fixture's fictional tailnet into the operator's real Notification
+# Center, which reads as a genuine outage on a machine that is fine. Nothing in
+# the run itself reports that, so the wiring is checked rather than the output.
+for file in tests/*.sh; do
+    [ "$file" != tests/validate.sh ] || continue
+    grep -q 'tailscale-ensure-online\|adb-wireless-connect' "$file" || continue
+    grep -q 'FUNK_TERMINAL_NOTIFIER_BIN' "$file" \
+        || fail "$file drives the Tailscale helper without pinning the notifier"
+done
+
 /usr/bin/plutil -lint launchd/com.arthack.funk.update.plist.in >/dev/null
 /usr/bin/plutil -lint launchd/com.arthack.funk.tailscale-online.plist.in >/dev/null
 /usr/bin/plutil -lint launchd/com.arthack.funk.gog-authed.plist.in >/dev/null
