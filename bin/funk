@@ -32,6 +32,8 @@ Commands:
                       Install the login/five-minute Tailscale recovery agent
   home-awake [option] Converge or report home-network sleep and screen lock
   install-home-awake  Install the home-network sleep and screen-lock agent
+  install-local-services
+                      Install the resident Agentbrain and Agentweb services
   configure-orca     Apply Funk's Stow-managed Orca settings overlay
   configure-macos    Apply Funk's user-level macOS preferences
   verify-notifications
@@ -74,6 +76,10 @@ case "$command_name" in
     install-home-awake)
         shift
         exec "$FUNK_ROOT/libexec/install-home-awake" "$@"
+        ;;
+    install-local-services)
+        shift
+        exec "$FUNK_ROOT/libexec/install-local-services" "$@"
         ;;
     configure-orca)
         shift

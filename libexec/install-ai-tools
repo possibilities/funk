@@ -228,6 +228,8 @@ Command-line tools:
   curl -fsSL https://pi.dev/install.sh | sh  # in its own session, no controlling terminal
   brew install or upgrade zig  # AgentVoice native packaging needs 0.16 or newer
   npm install --global @native-sdk/cli@0.7  # AgentVoice refuses other lines
+  npm install --global agent-browser@0.33.2  # Agentweb's config.json digest-locks this exact build
+  ln -sfn "$(command -v agent-browser)" ~/.local/bin/agent-browser  # the candidate Agentscrape resolves before PATH
 
 Desktop applications from local checkouts:
   bun run --cwd "$HOME/code/agentvoice" app:install  # AgentVoice owns packaging and launch
@@ -343,6 +345,37 @@ native_sdk_version=0.7
 printf 'Installing the Native SDK CLI %s and its version-matched agent helpers.\n' \
     "$native_sdk_version"
 npm install --global "@native-sdk/cli@$native_sdk_version"
+
+# agent-browser is the browser Agentscrape and Agentweb both drive, and it is
+# pinned rather than tracked: Agentweb records a SHA-256 digest and version lock
+# in its config.json and refuses to launch a browser whose binary does not match,
+# so an unannounced upgrade here would take Agentweb's browser offline until an
+# operator re-locked it. Raising this version means re-locking that config too.
+agent_browser_version=0.33.2
+printf 'Installing agent-browser %s for Agentscrape and Agentweb.\n' \
+    "$agent_browser_version"
+npm install --global "agent-browser@$agent_browser_version"
+
+# Publish the stable candidate Agentscrape resolves before falling back to PATH.
+# Both consumers run under launchd, whose minimal PATH never reaches a tool
+# installed under a Node version manager, and the version-manager path itself
+# changes with every Node upgrade. This link is the one address that does not.
+link_agent_browser() {
+    local source
+    local target="$HOME/.local/bin/agent-browser"
+
+    source=$(command -v agent-browser) \
+        || die "agent-browser is not on PATH after installing it"
+    if [ -e "$target" ] && [ ! -L "$target" ]; then
+        die "refusing to replace independent file: $target"
+    fi
+    mkdir -p "$HOME/.local/bin"
+    ln -sfn "$source" "$target"
+    [ -x "$target" ] || die "linked agent-browser is not executable: $target"
+}
+
+printf 'Linking the stable agent-browser candidate into ~/.local/bin.\n'
+link_agent_browser
 
 command -v npx >/dev/null 2>&1 || die "npx is required to install agent skills"
 

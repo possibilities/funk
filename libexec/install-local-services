@@ -1,0 +1,76 @@
+#!/bin/bash
+
+set -euo pipefail
+
+check_only=0
+
+usage() {
+    cat <<'EOF'
+Usage: install-local-services [--check]
+
+Install the resident services owned by local project checkouts: the Agentbrain
+worker and share ingress, and the Agentweb daemon.
+
+Options:
+  --check  Print the installation plan without changing the system
+EOF
+}
+
+die() {
+    printf 'Funk local services installer: %s\n' "$*" >&2
+    exit 1
+}
+
+case "${1:-}" in
+    "") ;;
+    --check) check_only=1 ;;
+    -h|--help) usage; exit 0 ;;
+    *) usage >&2; exit 64 ;;
+esac
+[ "$#" -le 1 ] || { usage >&2; exit 64; }
+
+agentbrain_root="$HOME/code/agentbrain"
+agentweb_root="$HOME/code/agentweb"
+
+# Each project owns its own installer, its own launchd label, and its own
+# refusal rules for foreign files. Funk decides only that these services should
+# be resident on this machine, and supplies the one fact neither project can
+# know for itself: which address this host answers on inside the tailnet.
+tailnet_address() {
+    command -v tailscale >/dev/null 2>&1 || return 1
+    tailscale ip -4 2>/dev/null | head -n 1 | grep -E '^[0-9.]+$' || return 1
+}
+
+if [ "$check_only" -eq 1 ]; then
+    cat <<'EOF'
+Resident services from local checkouts:
+  ~/code/agentbrain/scripts/install.sh --install  # agentbrain.worker, always
+      AGENTBRAIN_INSTALL_SHARE_HOST=<tailscale ip -4>  # agentbrain.share, only when the tailnet is up
+  ~/code/agentweb/scripts/install.sh --install    # agentweb.daemon
+EOF
+    exit 0
+fi
+
+[ "$(uname -s)" = Darwin ] || die "macOS is required"
+[ "$(id -u)" -ne 0 ] || die "run as the target user, not root"
+
+[ -f "$agentbrain_root/scripts/install.sh" ] \
+    || die "Agentbrain checkout not found: $agentbrain_root/scripts/install.sh is missing"
+[ -f "$agentweb_root/scripts/install.sh" ] \
+    || die "Agentweb checkout not found: $agentweb_root/scripts/install.sh is missing"
+
+# The ingress is the only listener among these services, and Agentbrain refuses
+# to expose one that nobody named an address for. A tailnet that is down at
+# install time is not a reason to fail the run, and not a reason to withdraw an
+# ingress either: an unset variable leaves an already-installed one alone.
+if share_host=$(tailnet_address); then
+    printf 'Installing Agentbrain, with the share ingress bound to %s.\n' "$share_host"
+    AGENTBRAIN_INSTALL_SHARE_HOST="$share_host" \
+        "$agentbrain_root/scripts/install.sh" --install
+else
+    printf 'Installing Agentbrain; no tailnet address, so the share ingress is left as it is.\n' >&2
+    "$agentbrain_root/scripts/install.sh" --install
+fi
+
+printf 'Installing Agentweb.\n'
+"$agentweb_root/scripts/install.sh" --install
