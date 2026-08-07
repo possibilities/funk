@@ -250,16 +250,14 @@ file.
 
 A log file nobody reads is not a detector, so every verdict about this Mac's own
 Tailscale health also reaches the operator through `terminal-notifier` under the
-`com.arthack.funk.tailscale-online` group. A shared group keeps one entry in
-Notification Center, but macOS re-displays the banner on every post, so posting
-each run would put the same alert back on screen every five minutes. An
-unchanged condition therefore posts nothing at all until it has stood for an
-hour, then reminds once, silently — long enough that an outage is not a
-recurring interruption, short enough that a dismissed alert still returns the
-same day. Override the interval with
-`FUNK_TAILSCALE_ALERT_REMINDER_SECONDS`. Only a change in the condition itself
-is immediate and audible, and recovery clears the recorded history so a
-recurrence is audible again. Usage errors stay silent — a mistyped flag is not
+`com.arthack.funk.tailscale-online` group. An outage is worth exactly two posts:
+one when it arrives and one when it clears. macOS re-displays the banner on
+every post, so a check that runs every five minutes must say nothing at all
+while its verdict is unchanged; the shared group leaves the first post standing
+in Notification Center for as long as the outage lasts, and recovery replaces it
+with a single "healthy again". Both are audible. A machine that was healthy all
+along says nothing, and recovery clears the recorded history so a recurrence is
+heard again. Usage errors stay silent — a mistyped flag is not
 an outage — and so do `--peer` verdicts: a phone that is asleep or off the
 network is neither this machine's outage nor something this machine can fix, so
 it goes to the caller that asked rather than interrupting whoever is here.

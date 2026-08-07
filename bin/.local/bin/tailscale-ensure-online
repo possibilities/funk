@@ -79,43 +79,39 @@ record_alert() {
     umask 077
     mkdir -p "$directory"
     temporary="${alert_file}.tmp.$$"
-    printf '%s\n%s\n' "$1" "$2" >"$temporary"
+    printf '%s\n' "$1" >"$temporary"
     chmod 600 "$temporary"
     mv -f "$temporary" "$alert_file"
 }
 
-# A shared --group keeps one entry in Notification Center, but macOS re-displays
-# the banner on every post, so re-posting each run would put the same alert back
-# on screen every five minutes. An unchanged condition therefore posts nothing at
-# all until the reminder interval elapses; only a change in the condition itself
-# is immediate, and only that plays a sound. Set terminal-notifier's alert style
-# to Alerts in System Settings so the standing entry persists until dismissed.
+# Two posts per outage and no more: one when the condition arrives, one when it
+# clears. macOS re-displays the banner on every post, so a check that runs every
+# five minutes must say nothing at all while its verdict is unchanged -- the
+# shared --group leaves the first post standing in Notification Center for as
+# long as the outage lasts. Set terminal-notifier's alert style to Alerts in
+# System Settings so that entry persists until dismissed.
 alert() {
     local message="$1"
     local previous=
-    local previous_at=0
-    local now
 
-    now=$(date +%s)
-    if [ -r "$alert_file" ]; then
-        previous_at=$(sed -n '1p' "$alert_file")
-        previous=$(sed -n '2,$p' "$alert_file")
-    fi
-    case "$previous_at" in
-        ''|*[!0-9]*) previous_at=0 ;;
-    esac
-
-    if [ "$previous" = "$message" ]; then
-        [ "$((now - previous_at))" -ge "$alert_reminder_seconds" ] || return 0
-        record_alert "$now" "$message"
-        notify "$message" ''
-        return 0
-    fi
-    record_alert "$now" "$message"
+    [ ! -r "$alert_file" ] || previous=$(cat "$alert_file")
+    [ "$previous" != "$message" ] || return 0
+    record_alert "$message"
     notify "$message" default
 }
 
-clear_alert() {
+# Recovery is the outage's other half, so it is worth a post of its own -- but
+# only when an outage actually stood. A machine that was healthy all along says
+# nothing.
+resolve_alert() {
+    [ -e "$alert_file" ] || return 0
+    forget_alert
+    notify 'Tailscale is healthy again.' default
+}
+
+# Drops the recorded condition without announcing anything, for the paths where
+# a standing alert stops being true but nothing was repaired.
+forget_alert() {
     rm -f "$alert_file"
 }
 
@@ -448,18 +444,12 @@ done
 # share one alert history so they do not re-alert on each other's behalf.
 disabled_file="$HOME/.local/state/funk/tailscale-auto-recovery.disabled"
 alert_file="$HOME/.local/state/funk/tailscale-ensure-online.alert"
-# How long an unchanged condition stays quiet before reminding once. Long
-# enough that a standing outage is not a recurring interruption, short enough
-# that a dismissed alert still comes back the same day.
-alert_reminder_seconds=${FUNK_TAILSCALE_ALERT_REMINDER_SECONDS:-3600}
-case "$alert_reminder_seconds" in
-    ''|*[!0-9]*) die "FUNK_TAILSCALE_ALERT_REMINDER_SECONDS must be a whole number of seconds" ;;
-esac
 case "$mode" in
     disable)
         write_disabled_marker
-        # A deliberate disconnect must not leave a standing outage notification.
-        clear_alert
+        # A deliberate disconnect must not leave a standing outage notification,
+        # and nothing was repaired, so it drops the record without announcing.
+        forget_alert
         printf 'Automatic Tailscale recovery disabled; disconnect manually when ready.\n'
         exit 0
         ;;
@@ -516,7 +506,7 @@ if [ -n "$staged" ]; then
     alert "$staged"
     printf 'tailscale-ensure-online: %s\n' "$staged" >&2
 else
-    clear_alert
+    resolve_alert
 fi
 
 if [ -n "$peer" ]; then

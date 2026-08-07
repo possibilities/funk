@@ -192,34 +192,32 @@ last_notification | grep -F '<-group> <com.arthack.funk.tailscale-online>' >/dev
     || fail "outage notification was not grouped for replacement"
 
 # macOS re-displays the banner on every post, so re-posting each run would put
-# the same alert back on screen every five minutes. An unchanged condition must
-# post nothing at all until the reminder interval elapses.
-: >"$notifications"
-if FUNK_TEST_SYSEXT_STATE=wedged FUNK_TEST_TAILSCALE_STATUS_FAIL=1 run_ensure \
-    >/dev/null 2>&1; then
-    fail "repeated wedged extension was accepted"
-fi
-[ ! -s "$notifications" ] \
-    || fail "an unchanged outage re-posted its notification within the interval"
+# the same alert back on screen every five minutes. A standing outage must post
+# nothing at all, however long it stands.
+for _ in 1 2 3; do
+    : >"$notifications"
+    if FUNK_TEST_SYSEXT_STATE=wedged FUNK_TEST_TAILSCALE_STATUS_FAIL=1 \
+        run_ensure >/dev/null 2>&1; then
+        fail "repeated wedged extension was accepted"
+    fi
+    [ ! -s "$notifications" ] \
+        || fail "a standing outage re-posted its notification"
+done
 
-# It must still come back eventually, or a dismissed alert is gone for good.
+# The outage's other half: recovery is the second and last post.
 : >"$notifications"
-if FUNK_TEST_SYSEXT_STATE=wedged FUNK_TEST_TAILSCALE_STATUS_FAIL=1 \
-    FUNK_TAILSCALE_ALERT_REMINDER_SECONDS=0 run_ensure >/dev/null 2>&1; then
-    fail "wedged extension was accepted at the reminder interval"
-fi
-last_notification | grep -F 'system extension upgrade is wedged' >/dev/null \
-    || fail "a standing outage never reminded the operator again"
-if last_notification | grep -F '<-sound>' >/dev/null; then
-    fail "a reminder for an unchanged outage was audible"
-fi
+FUNK_TEST_SYSEXT_STATE=healthy run_ensure >/dev/null 2>&1 \
+    || fail "a recovered tailnet was not accepted"
+last_notification | grep -F 'Tailscale is healthy again' >/dev/null \
+    || fail "recovery from an outage was not announced"
+last_notification | grep -F '<-sound> <default>' >/dev/null \
+    || fail "recovery from an outage was not audible"
 
-# A malformed interval is a configuration error, not something to alert about.
+# And having said it once, it stays quiet.
 : >"$notifications"
-if FUNK_TAILSCALE_ALERT_REMINDER_SECONDS=soon run_ensure >/dev/null 2>&1; then
-    fail "a non-numeric reminder interval was accepted"
-fi
-[ ! -s "$notifications" ] || fail "a configuration error notified the operator"
+FUNK_TEST_SYSEXT_STATE=healthy run_ensure >/dev/null 2>&1 \
+    || fail "a healthy tailnet was not accepted"
+[ ! -s "$notifications" ] || fail "a still-healthy machine repeated the recovery"
 
 # An invalid daemon response has the same cause and deserves the same answer.
 : >"$notifications"
@@ -277,7 +275,14 @@ FUNK_TEST_SYSEXT_STATE=healthy run_ensure \
 [ ! -s "$test_home/recovered-output" ] && [ ! -s "$test_home/recovered-error" ] \
     || fail "a fully healthy run was not a silent no-op"
 [ ! -e "$alert_state" ] || fail "recovery did not clear the alert history"
-[ ! -s "$notifications" ] || fail "a healthy run notified the operator"
+last_notification | grep -F 'Tailscale is healthy again' >/dev/null \
+    || fail "recovery from a staged upgrade was not announced"
+
+# A machine that was healthy all along has nothing to announce.
+: >"$notifications"
+FUNK_TEST_SYSEXT_STATE=healthy run_ensure >/dev/null 2>&1 \
+    || fail "a healthy tailnet with a healthy extension was not accepted"
+[ ! -s "$notifications" ] || fail "an uneventful healthy run notified the operator"
 
 : >"$notifications"
 FUNK_TEST_SYSEXT_STATE=staged run_ensure >/dev/null 2>&1 \
@@ -285,11 +290,14 @@ FUNK_TEST_SYSEXT_STATE=staged run_ensure >/dev/null 2>&1 \
 last_notification | grep -F '<-sound> <default>' >/dev/null \
     || fail "a condition returning after recovery was not audible again"
 
-# A deliberate disconnect is not an outage and must not leave one standing.
+# A deliberate disconnect is not an outage and must not leave one standing --
+# nor is it a repair, so it announces nothing on its way out.
 : >"$notifications"
 run_ensure --disable >/dev/null
 [ ! -e "$alert_state" ] \
     || fail "an intentional disconnect left a standing outage alert"
+[ ! -s "$notifications" ] \
+    || fail "an intentional disconnect announced a repair"
 run_ensure --enable >/dev/null 2>&1 || true
 
 # A mistyped flag is a usage error, not something to wake the operator for.
