@@ -191,18 +191,35 @@ last_notification | grep -F '<-sound> <default>' >/dev/null \
 last_notification | grep -F '<-group> <com.arthack.funk.tailscale-online>' >/dev/null \
     || fail "outage notification was not grouped for replacement"
 
-# The five-minute LaunchAgent must not re-alert 288 times a day for one
-# unresolved outage; the standing notification refreshes silently instead.
+# macOS re-displays the banner on every post, so re-posting each run would put
+# the same alert back on screen every five minutes. An unchanged condition must
+# post nothing at all until the reminder interval elapses.
 : >"$notifications"
 if FUNK_TEST_SYSEXT_STATE=wedged FUNK_TEST_TAILSCALE_STATUS_FAIL=1 run_ensure \
     >/dev/null 2>&1; then
     fail "repeated wedged extension was accepted"
 fi
-last_notification | grep -F 'system extension upgrade is wedged' >/dev/null \
-    || fail "unresolved outage stopped refreshing its notification"
-if last_notification | grep -F '<-sound>' >/dev/null; then
-    fail "an unchanged outage re-alerted audibly"
+[ ! -s "$notifications" ] \
+    || fail "an unchanged outage re-posted its notification within the interval"
+
+# It must still come back eventually, or a dismissed alert is gone for good.
+: >"$notifications"
+if FUNK_TEST_SYSEXT_STATE=wedged FUNK_TEST_TAILSCALE_STATUS_FAIL=1 \
+    FUNK_TAILSCALE_ALERT_REMINDER_SECONDS=0 run_ensure >/dev/null 2>&1; then
+    fail "wedged extension was accepted at the reminder interval"
 fi
+last_notification | grep -F 'system extension upgrade is wedged' >/dev/null \
+    || fail "a standing outage never reminded the operator again"
+if last_notification | grep -F '<-sound>' >/dev/null; then
+    fail "a reminder for an unchanged outage was audible"
+fi
+
+# A malformed interval is a configuration error, not something to alert about.
+: >"$notifications"
+if FUNK_TAILSCALE_ALERT_REMINDER_SECONDS=soon run_ensure >/dev/null 2>&1; then
+    fail "a non-numeric reminder interval was accepted"
+fi
+[ ! -s "$notifications" ] || fail "a configuration error notified the operator"
 
 # An invalid daemon response has the same cause and deserves the same answer.
 : >"$notifications"

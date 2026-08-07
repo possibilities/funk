@@ -78,27 +78,39 @@ record_alert() {
     umask 077
     mkdir -p "$directory"
     temporary="${alert_file}.tmp.$$"
-    printf '%s\n' "$1" >"$temporary"
+    printf '%s\n%s\n' "$1" "$2" >"$temporary"
     chmod 600 "$temporary"
     mv -f "$temporary" "$alert_file"
 }
 
-# This LaunchAgent runs every five minutes, so an unrecovered outage would
-# otherwise alert 288 times a day and train the operator to ignore it. The
-# shared --group means each notification replaces the previous one, leaving a
-# single standing entry, and the sound fires only when the condition itself
-# changes. Set terminal-notifier's alert style to Alerts in System Settings for
-# that entry to persist until dismissed rather than auto-dismissing as a banner.
+# A shared --group keeps one entry in Notification Center, but macOS re-displays
+# the banner on every post, so re-posting each run would put the same alert back
+# on screen every five minutes. An unchanged condition therefore posts nothing at
+# all until the reminder interval elapses; only a change in the condition itself
+# is immediate, and only that plays a sound. Set terminal-notifier's alert style
+# to Alerts in System Settings so the standing entry persists until dismissed.
 alert() {
     local message="$1"
     local previous=
+    local previous_at=0
+    local now
 
-    [ ! -r "$alert_file" ] || previous=$(cat "$alert_file")
-    record_alert "$message"
+    now=$(date +%s)
+    if [ -r "$alert_file" ]; then
+        previous_at=$(sed -n '1p' "$alert_file")
+        previous=$(sed -n '2,$p' "$alert_file")
+    fi
+    case "$previous_at" in
+        ''|*[!0-9]*) previous_at=0 ;;
+    esac
+
     if [ "$previous" = "$message" ]; then
+        [ "$((now - previous_at))" -ge "$alert_reminder_seconds" ] || return 0
+        record_alert "$now" "$message"
         notify "$message" ''
         return 0
     fi
+    record_alert "$now" "$message"
     notify "$message" default
 }
 
@@ -431,6 +443,13 @@ done
 # share one alert history so they do not re-alert on each other's behalf.
 disabled_file="$HOME/.local/state/funk/tailscale-auto-recovery.disabled"
 alert_file="$HOME/.local/state/funk/tailscale-ensure-online.alert"
+# How long an unchanged condition stays quiet before reminding once. Long
+# enough that a standing outage is not a recurring interruption, short enough
+# that a dismissed alert still comes back the same day.
+alert_reminder_seconds=${FUNK_TAILSCALE_ALERT_REMINDER_SECONDS:-3600}
+case "$alert_reminder_seconds" in
+    ''|*[!0-9]*) die "FUNK_TAILSCALE_ALERT_REMINDER_SECONDS must be a whole number of seconds" ;;
+esac
 case "$mode" in
     disable)
         write_disabled_marker

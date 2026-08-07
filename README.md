@@ -241,11 +241,17 @@ file.
 
 A log file nobody reads is not a detector, so every health verdict also reaches
 the operator through `terminal-notifier` under the
-`com.arthack.funk.tailscale-online` group. Because that group is shared, each
-notification replaces the previous one and an unresolved outage stands as a
-single entry rather than 288 a day; the sound fires only when the condition
-itself changes, and recovery clears the recorded history so a recurrence is
-audible again. Usage errors stay silent — a mistyped flag is not an outage.
+`com.arthack.funk.tailscale-online` group. A shared group keeps one entry in
+Notification Center, but macOS re-displays the banner on every post, so posting
+each run would put the same alert back on screen every five minutes. An
+unchanged condition therefore posts nothing at all until it has stood for an
+hour, then reminds once, silently — long enough that an outage is not a
+recurring interruption, short enough that a dismissed alert still returns the
+same day. Override the interval with
+`FUNK_TAILSCALE_ALERT_REMINDER_SECONDS`. Only a change in the condition itself
+is immediate and audible, and recovery clears the recorded history so a
+recurrence is audible again. Usage errors stay silent — a mistyped flag is not
+an outage.
 
 A notifier that cannot notify is the same silent failure one level up, so
 `funk verify-notifications` posts a probe and asks NotificationCenter what it
