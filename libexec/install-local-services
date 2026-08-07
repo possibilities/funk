@@ -63,13 +63,27 @@ fi
 # to expose one that nobody named an address for. A tailnet that is down at
 # install time is not a reason to fail the run, and not a reason to withdraw an
 # ingress either: an unset variable leaves an already-installed one alone.
+# Agentweb brokers the browser sessions a human established, and Agentscrape —
+# which Agentbrain's worker spawns for every fetch — asks it whether a site has
+# one before navigating. Wiring the two together is Funk's business because
+# neither project may assume the other is installed: Agentbrain passes these
+# through without interpreting them, and unset simply means extraction proceeds
+# without a session.
+agentweb_state="${XDG_STATE_HOME:-$HOME/.local/state}/agentweb"
+conduit_socket="$agentweb_state/runtime/agentweb.sock"
+conduit_token_file="$agentweb_state/worker-token"
+
 if share_host=$(tailnet_address); then
     printf 'Installing Agentbrain, with the share ingress bound to %s.\n' "$share_host"
     AGENTBRAIN_INSTALL_SHARE_HOST="$share_host" \
+        AGENTBRAIN_INSTALL_CONDUIT_SOCKET="$conduit_socket" \
+        AGENTBRAIN_INSTALL_CONDUIT_TOKEN_FILE="$conduit_token_file" \
         "$agentbrain_root/scripts/install.sh" --install
 else
     printf 'Installing Agentbrain; no tailnet address, so the share ingress is left as it is.\n' >&2
-    "$agentbrain_root/scripts/install.sh" --install
+    AGENTBRAIN_INSTALL_CONDUIT_SOCKET="$conduit_socket" \
+        AGENTBRAIN_INSTALL_CONDUIT_TOKEN_FILE="$conduit_token_file" \
+        "$agentbrain_root/scripts/install.sh" --install
 fi
 
 printf 'Installing Agentweb.\n'
