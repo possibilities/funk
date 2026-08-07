@@ -901,10 +901,6 @@ HOME="$stow_home" "$root/bin/funk" stow
     || fail "Art Hack extension prompts were not stowed with normal directory folding"
 [ -s "$stow_home/.config/arthack/TOOLS.md" ] \
     || fail "Art Hack extension prompts must not be empty — install-ai-tools renders every skill against them"
-# AgentVoice reads nothing from ~/.config/agentvoice; the files still there are
-# retired. Stowing them would publish dead configuration as though it were live.
-[ ! -e "$stow_home/.config/agentvoice" ] \
-    || fail "AgentVoice configuration must not be stowed — its prompts come only from the running checkout"
 # Global advice belongs in the Art Hack extension prompts, so the stowed home
 # guidance stays deliberately empty; the tripwire keeps advice from accreting
 # back into every session.

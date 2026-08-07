@@ -107,11 +107,10 @@ and `funk configure-orca` reconciles only the keys Funk owns. Adopt a file only
 when Funk is its sole writer.
 
 Prove a configuration file is read before adopting it. A directory under
-`~/.config` named for a program is not evidence that the program loads it:
-AgentVoice composes prompts only from `prompts/` in the running checkout, and
-the `orchestration.json` and `system.md` under `~/.config/agentvoice/` are
-retired files nothing loads. Adopting them would have published dead
-configuration as live.
+`~/.config` named for a program is not evidence that the program loads it —
+programs move their configuration into the checkout and leave the old files
+behind. Find the code path that reads the file, or leave it where it is;
+adopting a retired file publishes dead configuration as live.
 
 After changing AI tooling or skill installation, run:
 

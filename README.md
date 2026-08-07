@@ -182,14 +182,6 @@ produced skills with the extensions silently missing. It folds: nothing but an
 extension prompt belongs in that directory, and a new one should land in this
 repository rather than beside it.
 
-`~/.config/agentvoice/` is deliberately not a package, despite looking like the
-obvious next one. AgentVoice composes every prompt from `prompts/` in the
-running checkout and reads nothing from a configuration directory — its own
-`AGENTS.md` states the rule and `tests/prompts.test.ts` proves a populated
-`~/.config/agentvoice` changes nothing — so the `orchestration.json` and
-`system.md` still sitting there are retired files no program loads. Stowing
-them would publish dead configuration as though it were live.
-
 Funk's current Yabai, skhd, and reviewed Karabiner configurations take
 precedence where the two repositories overlapped. Privileged helpers,
 LaunchAgents, generated application state, credentials, and remote Termux
