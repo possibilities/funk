@@ -174,6 +174,7 @@ collect_changes() {
 send_notification() {
     local title="$1"
     local message="$2"
+    local group="${3:-com.arthack.funk.update}"
     local notifier
     local notifier_app
     local lsregister
@@ -200,7 +201,38 @@ send_notification() {
     "$notifier" \
         -title "$title" \
         -message "$message" \
-        -group com.arthack.funk.update
+        -group "$group"
+}
+
+# Homebrew replaces Orca's bundle without quitting it -- the cask declares no
+# quit directive -- so a running Orca keeps serving the old bundle until it is
+# restarted. Nothing else would say so, and this is a machine where Orca is
+# always running, so the upgrade is otherwise invisible until something behaves
+# oddly. A dedicated group keeps the prompt from being buried in the general
+# "Updated: ..." summary.
+orca_restart_notice() {
+    local version
+    local running_processes
+
+    version=$(
+        /usr/bin/awk '$1 == "Orca" { print $NF; exit }' "$changes"
+    )
+    [ -n "$version" ] || return 0
+    # Only a running Orca needs restarting; a stopped one picks the new bundle
+    # up on its next launch, and nagging about that would be noise. `pgrep -x`
+    # does not match this bundle on macOS, and matching the name alone would
+    # also catch the Helper processes, so compare the executable path exactly.
+    #
+    # Deliberately not a pipeline: `grep -q` exits on its first match, which
+    # SIGPIPEs `ps`, and under this script's `pipefail` that reads as a failed
+    # pipeline even though the match succeeded -- silently skipping the very
+    # notification this exists to send.
+    running_processes=$(/bin/ps -axo comm= || true)
+    /usr/bin/grep -qxF \
+        "${FUNK_ORCA_BINARY:-/Applications/Orca.app/Contents/MacOS/Orca}" \
+        <<<"$running_processes" || return 0
+    printf 'Orca %s is installed; the running copy is still the old one.\n' \
+        "$version"
 }
 
 snapshot_versions "$before"
@@ -264,6 +296,13 @@ if [ "$notify" -eq 1 ]; then
             notification_body="$notification_body Needs ./install: $skipped_summary."
         fi
         send_notification "Funk Update" "$notification_body" || status=1
+        orca_restart=$(orca_restart_notice)
+        if [ -n "$orca_restart" ]; then
+            log "Orca was upgraded while running; restart is pending"
+            send_notification "Restart Orca" \
+                "$orca_restart Restart it when you are ready." \
+                com.arthack.funk.orca-restart || true
+        fi
     else
         if [ -n "$change_summary" ]; then
             notification_body="Installer failed after updating: $change_summary. See update.log."

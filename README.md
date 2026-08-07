@@ -506,6 +506,16 @@ components whose recorded version or revision actually changed. A no-op says
 `Installer ran; no updates.` Failures retain their exit status and send a short
 failure notification when `terminal-notifier` is available.
 
+Orca is upgraded on this path, and Homebrew replaces its bundle without quitting
+it — the cask declares no quit directive — so a running Orca keeps serving the
+old bundle until it is restarted. On a machine where Orca is always open that is
+invisible until something behaves oddly, so an upgrade that finds Orca running
+sends a second notification, in its own `com.arthack.funk.orca-restart` group so
+it is not buried in the `Updated: …` summary. A stopped Orca gets no prompt: it
+picks the new bundle up on its next launch. The check compares the executable
+path exactly, because `pgrep -x` does not match this bundle on macOS and the
+name alone would also match the `Orca Helper` processes.
+
 Other AI tools remain outside the scheduled path: their vendor installers,
 application updaters, account-sensitive MCP setup, and local Hack skill source
 are not all suitable for a background LaunchAgent. Re-running `./install`

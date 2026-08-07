@@ -335,6 +335,12 @@ update_brew_log="$update_test_dir/brew.log"
 update_npx_log="$update_test_dir/npx.log"
 update_bun_log="$update_test_dir/bun.log"
 update_notifier_log="$update_test_dir/notifier.log"
+# Stand in for a running Orca. launchd is always running and needs no cleanup:
+# spawning a process here instead would outlive any fail() exit, which happens
+# before a cleanup line and holds this suite's output pipe open until it dies.
+# Pinning something keeps the branch deterministic rather than depending on
+# whether the machine running the tests happens to have Orca open.
+update_running_binary=/sbin/launchd
 mkdir -p "$update_home/.agents"
 printf '%s\n' \
     $'formula:terminal-notifier\t1.0.0' \
@@ -396,6 +402,7 @@ HOME="$update_home" \
     FUNK_TEST_NOTIFIER_LOG="$update_notifier_log" \
     FUNK_NPX_BIN="$root/tests/fixtures/npx" \
     FUNK_BUN_BIN="$root/tests/fixtures/bun" \
+    FUNK_ORCA_BINARY="$update_running_binary" \
     FUNK_TERMINAL_NOTIFIER_BIN="$root/tests/fixtures/terminal-notifier" \
     "$root/bin/funk" update --notify >/dev/null
 grep -F 'brew-stub <upgrade> <--cask> <--greedy> <--yes> <stablyai/orca/orca>' \
@@ -414,7 +421,10 @@ fi
 if grep -F 'install-agentvoice-app' libexec/funk-update >/dev/null; then
     fail "scheduled updater references the interactive AgentVoice app installer"
 fi
-notification=$(tail -n 1 "$update_notifier_log")
+# Select by title rather than by position: an upgrade of a running Orca sends a
+# second, separate notification, and reading whichever happened to be last would
+# make these assertions depend on that.
+notification=$(grep -F '<Funk Update>' "$update_notifier_log" | tail -n 1)
 printf '%s\n' "$notification" | grep -F 'terminal-notifier 1.0.0 → 2.0.0' >/dev/null \
     || fail "change-aware notification omitted the upgraded formula"
 printf '%s\n' "$notification" | grep -F 'Orca 0.9.0 → 1.0.0' >/dev/null \
@@ -424,6 +434,19 @@ printf '%s\n' "$notification" | grep -F 'orca-cli skill rev 11111111 → aaaaaaa
 if printf '%s\n' "$notification" | grep -Eq 'orchestration|computer-use'; then
     fail "change-aware notification listed unchanged Orca skills"
 fi
+
+# Homebrew replaces Orca's bundle without quitting it, so a running Orca serves
+# the old bundle until restarted. On a machine where Orca is always open that is
+# otherwise invisible, so the upgrade must say so -- in its own notification
+# group, not buried in the "Updated: ..." summary.
+restart_notification=$(grep -F '<Restart Orca>' "$update_notifier_log" | tail -n 1 || true)
+[ -n "$restart_notification" ] \
+    || fail "upgrading a running Orca did not prompt for a restart"
+printf '%s\n' "$restart_notification" | grep -F '1.0.0' >/dev/null \
+    || fail "Orca restart prompt omitted the version now on disk"
+printf '%s\n' "$restart_notification" \
+    | grep -F '<-group> <com.arthack.funk.orca-restart>' >/dev/null \
+    || fail "Orca restart prompt shares the general update notification group"
 
 : >"$update_notifier_log"
 HOME="$update_home" \
