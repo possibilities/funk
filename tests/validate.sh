@@ -67,9 +67,11 @@ tests/home-awake.sh
 tests/kiosk-launcher.sh
 tests/scrcpy-launchers.sh
 tests/tailscale-online.sh
+tests/gog-authed.sh
 tests/fixtures/adb
 tests/fixtures/brew
 tests/fixtures/bun
+tests/fixtures/gog
 tests/fixtures/chrome
 tests/fixtures/dscacheutil
 tests/fixtures/dns-sd
@@ -102,6 +104,7 @@ fi
 
 /usr/bin/plutil -lint launchd/com.arthack.funk.update.plist.in >/dev/null
 /usr/bin/plutil -lint launchd/com.arthack.funk.tailscale-online.plist.in >/dev/null
+/usr/bin/plutil -lint launchd/com.arthack.funk.gog-authed.plist.in >/dev/null
 /usr/bin/plutil -lint system/com.arthack.funk.harden-boot.plist >/dev/null
 /usr/bin/plutil -lint launchd/com.arthack.funk.home-awake.plist.in >/dev/null
 /usr/bin/plutil -lint launchd/com.arthack.funk.home-awake-caffeinate.plist >/dev/null
@@ -1308,6 +1311,7 @@ grep -Fx 'brew "scrcpy"' Brewfile >/dev/null \
 grep -Fx 'cask "android-platform-tools", greedy: true' Brewfile >/dev/null \
     || fail "Android Platform Tools are missing from the Brewfile"
 "$root/tests/tailscale-online.sh"
+"$root/tests/gog-authed.sh"
 "$root/tests/home-awake.sh"
 "$root/tests/adb-wireless.sh"
 "$root/tests/scrcpy-launchers.sh"

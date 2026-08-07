@@ -1,0 +1,88 @@
+#!/bin/bash
+
+set -euo pipefail
+
+label=com.arthack.funk.gog-authed
+
+die() {
+    printf 'funk install-gog-authed-agent: %s\n' "$*" >&2
+    exit 1
+}
+
+check_only=0
+case "${1:-}" in
+    "") ;;
+    --check)
+        [ "$#" -eq 1 ] || {
+            printf 'Usage: funk install-gog-authed-agent [--check]\n' >&2
+            exit 64
+        }
+        check_only=1
+        ;;
+    *)
+        printf 'Usage: funk install-gog-authed-agent [--check]\n' >&2
+        exit 64
+        ;;
+esac
+
+[ "$(uname -s)" = Darwin ] || die "macOS is required"
+[ "$(id -u)" -ne 0 ] || die "run this command as the target user, not root"
+
+funk_root=${FUNK_ROOT:?FUNK_ROOT is not set}
+template="$funk_root/launchd/$label.plist.in"
+helper="$funk_root/bin/.local/bin/gog-ensure-authed"
+agent_dir="$HOME/Library/LaunchAgents"
+agent_path="$agent_dir/$label.plist"
+log_dir="$HOME/Library/Logs/Funk"
+log_path="$log_dir/gog-authed.log"
+domain="gui/$(id -u)"
+
+[ -f "$template" ] || die "template not found: $template"
+[ -x "$helper" ] || die "auth checker is missing or not executable: $helper"
+
+tmpdir=$(mktemp -d "${TMPDIR:-/tmp}/funk-tailscale-agent.XXXXXX")
+trap 'rm -rf "$tmpdir"' EXIT
+rendered="$tmpdir/$label.plist"
+
+cp "$template" "$rendered"
+/usr/bin/plutil -remove ProgramArguments.0 "$rendered"
+/usr/bin/plutil -insert ProgramArguments.0 -string "$helper" "$rendered"
+/usr/bin/plutil -replace EnvironmentVariables.HOME -string "$HOME" "$rendered"
+/usr/bin/plutil -replace StandardOutPath -string "$log_path" "$rendered"
+/usr/bin/plutil -replace StandardErrorPath -string "$log_path" "$rendered"
+/usr/bin/plutil -lint "$rendered" >/dev/null
+
+[ "$(/usr/libexec/PlistBuddy -c 'Print :ProgramArguments:0' "$rendered")" = "$helper" ] \
+    || die "rendered auth checker is incorrect"
+[ "$(/usr/libexec/PlistBuddy -c 'Print :EnvironmentVariables:HOME' "$rendered")" = "$HOME" ] \
+    || die "rendered auth-check HOME is incorrect"
+if /usr/libexec/PlistBuddy -c 'Print :ProgramArguments:1' "$rendered" >/dev/null 2>&1; then
+    die "rendered auth-check agent has an unexpected extra argument"
+fi
+[ "$(/usr/libexec/PlistBuddy -c 'Print :RunAtLoad' "$rendered")" = true ] \
+    || die "rendered auth-check agent does not run at login"
+[ "$(/usr/libexec/PlistBuddy -c 'Print :StartInterval' "$rendered")" = 900 ] \
+    || die "rendered auth-check agent does not run every fifteen minutes"
+
+if [ "$check_only" -eq 1 ]; then
+    printf 'Google auth check LaunchAgent renders and validates successfully.\n'
+    exit 0
+fi
+
+mkdir -p "$agent_dir" "$log_dir"
+if [ -L "$agent_path" ]; then
+    die "refusing to replace symlink: $agent_path"
+fi
+
+if [ -e "$agent_path" ]; then
+    existing_label=$(/usr/libexec/PlistBuddy -c 'Print :Label' "$agent_path" 2>/dev/null || true)
+    [ "$existing_label" = "$label" ] \
+        || die "refusing to replace unrelated file: $agent_path"
+fi
+
+/usr/bin/install -m 0644 "$rendered" "$agent_path"
+/bin/launchctl bootout "$domain/$label" 2>/dev/null || true
+/bin/launchctl bootstrap "$domain" "$agent_path"
+
+printf 'Installed %s (at login and every fifteen minutes)\n' "$agent_path"
+printf 'Logs append to %s\n' "$log_path"

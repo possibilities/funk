@@ -1,0 +1,249 @@
+#!/bin/bash
+# Report whether gog holds a working Google credential, alerting on change.
+
+set -euo pipefail
+
+usage() {
+    cat <<'EOF'
+Usage: gog-ensure-authed [--check]
+
+With a working credential this command is silent. Losing one posts a clickable
+alert whose action runs `gog auth login`; regaining one clears that alert and
+says so. A standing outage is not re-announced until the reminder interval
+elapses, so a laptop left unauthenticated overnight is not a recurring banner.
+
+Authentication itself is never attempted here: `gog auth login` needs a browser
+and a human. --check reports the verdict and exits without alerting.
+EOF
+}
+
+die() {
+    printf 'gog-ensure-authed: %s\n' "$*" >&2
+    exit 1
+}
+
+notify() {
+    local message="$1"
+    local sound="$2"
+    local execute="$3"
+    local notifier
+    local notifier_app
+    local lsregister
+    local -a args
+
+    if [ -n "${FUNK_TERMINAL_NOTIFIER_BIN:-}" ] \
+        && [ -x "$FUNK_TERMINAL_NOTIFIER_BIN" ]; then
+        notifier="$FUNK_TERMINAL_NOTIFIER_BIN"
+    elif command -v terminal-notifier >/dev/null 2>&1; then
+        notifier=$(command -v terminal-notifier)
+    else
+        return 0
+    fi
+
+    # macOS will not surface notifications from an application it has not
+    # registered, and a Homebrew upgrade relocates the bundle. funk-update
+    # re-registers for the same reason; both paths must, because whichever runs
+    # first is the one that keeps notifications working.
+    if [ -z "${FUNK_TERMINAL_NOTIFIER_BIN:-}" ]; then
+        notifier_app="$(dirname "$(dirname "$notifier")")/opt/terminal-notifier/terminal-notifier.app"
+        lsregister=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
+        if [ -d "$notifier_app" ] && [ -x "$lsregister" ]; then
+            "$lsregister" -f "$notifier_app" >/dev/null 2>&1 || true
+        fi
+    fi
+
+    args=(-title Google -message "$message" -ignoreDnD
+        -group com.arthack.funk.gog-authed)
+    [ -n "$sound" ] && args+=(-sound "$sound")
+    # Clicking the alert runs the one command that can fix it. Without this the
+    # notification would only inform, leaving the reader to remember the verb.
+    [ -n "$execute" ] && args+=(-execute "$execute")
+
+    # A missing notifier must never change this check's exit status: the health
+    # verdict is the product, the notification only carries it.
+    "$notifier" "${args[@]}" >/dev/null 2>&1 || true
+}
+
+record_alert() {
+    local directory
+    local temporary
+
+    directory=$(dirname "$alert_file")
+    umask 077
+    mkdir -p "$directory"
+    temporary="${alert_file}.tmp.$$"
+    printf '%s\n%s\n' "$1" "$2" >"$temporary"
+    chmod 600 "$temporary"
+    mv -f "$temporary" "$alert_file"
+}
+
+# A shared --group keeps one entry in Notification Center, but macOS re-displays
+# the banner on every post, so re-posting each run would put the same alert back
+# on screen every fifteen minutes. An unchanged condition therefore posts nothing
+# at all until the reminder interval elapses; only a change in the condition
+# itself is immediate, and only that plays a sound. Set terminal-notifier's alert
+# style to Alerts in System Settings so the standing entry persists until
+# dismissed.
+alert() {
+    local message="$1"
+    local previous=
+    local previous_at=0
+    local now
+
+    now=$(date +%s)
+    if [ -r "$alert_file" ]; then
+        previous_at=$(sed -n '1p' "$alert_file")
+        previous=$(sed -n '2,$p' "$alert_file")
+    fi
+    case "$previous_at" in
+        '' | *[!0-9]*) previous_at=0 ;;
+    esac
+
+    if [ "$previous" = "$message" ]; then
+        [ "$((now - previous_at))" -ge "$alert_reminder_seconds" ] || return 0
+        record_alert "$now" "$message"
+        notify "$message" '' "$login_command"
+        return 0
+    fi
+    record_alert "$now" "$message"
+    notify "$message" default "$login_command"
+}
+
+# Recovery is announced once, then the history is dropped so the next outage
+# reads as a change rather than a repeat.
+clear_alert() {
+    [ -e "$alert_file" ] || return 0
+    rm -f "$alert_file"
+    notify "$1" default ''
+}
+
+gog_binary() {
+    local candidate
+    for candidate in "${GOG:-}" gog /opt/homebrew/bin/gog /usr/local/bin/gog; do
+        [ -n "$candidate" ] || continue
+        if command -v "$candidate" >/dev/null 2>&1; then
+            command -v "$candidate"
+            return 0
+        fi
+    done
+    return 1
+}
+
+jq_binary() {
+    local candidate
+    for candidate in "${JQ:-}" jq /opt/homebrew/bin/jq /usr/local/bin/jq; do
+        [ -n "$candidate" ] || continue
+        if command -v "$candidate" >/dev/null 2>&1; then
+            command -v "$candidate"
+            return 0
+        fi
+    done
+    return 1
+}
+
+# A dead credential and an unreachable network fail the same command. Only these
+# say the credential itself is the problem; anything else is an outage somewhere
+# between here and Google, and alerting on it would train the reader to ignore
+# the alert that matters.
+credential_failure() {
+    printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | grep -qE \
+        'invalid_grant|token has been expired|revoked|unauthorized_client|invalid_client|not authenticated|no token'
+}
+
+# Emits the verdict on stdout as "ok|<detail>" or "down|<detail>".
+verdict() {
+    local gog
+    local jq
+    local listing
+    local accounts
+    local emails
+    local detail
+    local probe_status
+    local probe_error
+
+    gog=$(gog_binary) || {
+        printf 'down|gog is not installed\n'
+        return 0
+    }
+    jq=$(jq_binary) || die "jq is required"
+
+    listing=$("$gog" auth list --json 2>/dev/null) || {
+        printf 'down|gog auth list failed\n'
+        return 0
+    }
+    accounts=$(printf '%s' "$listing" | "$jq" -r '.accounts | length' 2>/dev/null) || accounts=0
+    case "$accounts" in
+        '' | *[!0-9]*) accounts=0 ;;
+    esac
+    if [ "$accounts" -eq 0 ]; then
+        printf 'down|no authenticated Google account\n'
+        return 0
+    fi
+    emails=$(printf '%s' "$listing" \
+        | "$jq" -r '[.accounts[].email // "unknown"] | join(", ")' 2>/dev/null) \
+        || emails=unknown
+    detail="$accounts account(s): $emails"
+
+    # Listing a stored credential does not prove Google still honors it, so the
+    # verdict rests on a real call. Without this an expired refresh token reads
+    # as healthy right up until the work that needed it fails.
+    probe_error=$("$gog" gmail search 'newer_than:1d' --max 1 --json 2>&1 >/dev/null) \
+        && probe_status=0 || probe_status=$?
+    if [ "$probe_status" -ne 0 ]; then
+        if credential_failure "$probe_error"; then
+            printf 'down|credential expired or revoked (%s)\n' "$detail"
+            return 0
+        fi
+        printf 'gog-ensure-authed: probe failed without a credential fault: %s\n' \
+            "$probe_error" >&2
+    fi
+    printf 'ok|%s\n' "$detail"
+}
+
+check_only=0
+case "${1:-}" in
+    "") ;;
+    --check) check_only=1 ;;
+    -h | --help)
+        usage
+        exit 0
+        ;;
+    *)
+        usage >&2
+        exit 64
+        ;;
+esac
+[ "$#" -le 1 ] || {
+    usage >&2
+    exit 64
+}
+
+# Ignores XDG_STATE_HOME deliberately: interactive shells and launchd must share
+# one alert history so they do not re-alert on each other's behalf.
+alert_file="$HOME/.local/state/funk/gog-ensure-authed.alert"
+# How long an unchanged condition stays quiet before reminding once. Long enough
+# that a standing outage is not a recurring interruption, short enough that a
+# dismissed alert still comes back the same day.
+alert_reminder_seconds=${FUNK_GOG_ALERT_REMINDER_SECONDS:-14400}
+case "$alert_reminder_seconds" in
+    '' | *[!0-9]*) die "FUNK_GOG_ALERT_REMINDER_SECONDS must be a whole number of seconds" ;;
+esac
+login_command="$(gog_binary || printf gog) auth login"
+
+result=$(verdict)
+state=${result%%|*}
+detail=${result#*|}
+
+if [ "$check_only" -eq 1 ]; then
+    printf '%s: %s\n' "$state" "$detail"
+    [ "$state" = ok ]
+    exit
+fi
+
+if [ "$state" = ok ]; then
+    clear_alert "Google auth recovered ($detail)."
+    exit 0
+fi
+
+alert "$detail — click to re-authorize"
+exit 1

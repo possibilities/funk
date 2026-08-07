@@ -1,0 +1,50 @@
+#!/bin/bash
+# Stub gog. Auth listing and the live probe are driven independently so a test
+# can express "a credential is stored but Google no longer honors it".
+
+set -u
+
+if [ -n "${FUNK_TEST_GOG_LOG:-}" ]; then
+    printf '%s\n' "$*" >>"$FUNK_TEST_GOG_LOG"
+fi
+
+accounts=${FUNK_TEST_GOG_ACCOUNTS:-0}
+if [ -n "${FUNK_TEST_GOG_ACCOUNTS_FILE:-}" ] \
+    && [ -r "$FUNK_TEST_GOG_ACCOUNTS_FILE" ]; then
+    accounts=$(cat "$FUNK_TEST_GOG_ACCOUNTS_FILE")
+fi
+
+if [ "${1:-}" = auth ] && [ "${2:-}" = list ]; then
+    [ "${FUNK_TEST_GOG_LIST_FAIL:-0}" -eq 0 ] || exit 1
+    if [ "$accounts" -eq 0 ]; then
+        printf '{"accounts": []}\n'
+    else
+        printf '{"accounts": [{"email": "mike@example.com", "services": ["gmail"]}]}\n'
+    fi
+    exit 0
+fi
+
+if [ "${1:-}" = gmail ] && [ "${2:-}" = search ]; then
+    probe=${FUNK_TEST_GOG_PROBE:-ok}
+    if [ -n "${FUNK_TEST_GOG_PROBE_FILE:-}" ] \
+        && [ -r "$FUNK_TEST_GOG_PROBE_FILE" ]; then
+        probe=$(cat "$FUNK_TEST_GOG_PROBE_FILE")
+    fi
+    case "$probe" in
+        ok)
+            printf '{"messages": []}\n'
+            exit 0
+            ;;
+        expired)
+            printf 'oauth2: cannot fetch token: invalid_grant\n' >&2
+            exit 1
+            ;;
+        network)
+            printf 'dial tcp: lookup gmail.googleapis.com: no such host\n' >&2
+            exit 1
+            ;;
+    esac
+    exit 1
+fi
+
+exit 1
