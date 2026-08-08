@@ -15,8 +15,6 @@ brew "terminal-notifier"
 brew "yq"
 # Snapshots the Claude Code transcript archive to B2/silverbird (transcript-vault).
 brew "restic"
-# Snapshots the Claude Code transcript archive to B2/silverbird (transcript-vault).
-brew "restic"
 brew "ripgrep"
 brew "fzf"
 brew "btop"
