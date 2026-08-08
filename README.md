@@ -26,7 +26,7 @@ installers:
   Native SDK discovery, and the Art Hack agent skills
 - Yabai, skhd, and the narrowly justified Karabiner-Elements layer
 - Git Delta, Neovim, tmux, Starship, btop, GNU Stow, and supporting
-  shell/development tools, including `terminal-notifier` and `restic` and `restic`
+  shell/development tools, including `terminal-notifier` and `restic`
 
 `libexec/install-ai-tools` uses the official shell installers for
 [Claude Code](https://code.claude.com/docs/en/terminal-guide),
@@ -700,39 +700,11 @@ keeps every session searchable:
    `/Volumes/Scratch/cass`, so coding-agent session search covers the full
    history.
 
-`funk install-transcript-vault` renders and bootstraps the
-`com.arthack.funk.transcript-vault` LaunchAgent (at login and hourly);
-`funk transcript-vault` runs the pipeline once in the foreground. Logs append
-to `~/Library/Logs/Funk/transcript-vault.log`. Every stage no-ops cleanly
-when its prerequisite is missing: an unmounted archive volume ends the run,
-missing credentials skip that repository, a missing cass skips indexing.
-
-Credentials are deliberately not Stow-managed: the vault reads
-`~/.config/restic/b2.env` and `~/.config/restic/silverbird.env` (mode 0600,
-migrated from the previous account) and skips any repository whose file is
-missing. The cass index location is unified across shells, LaunchAgents, and
-the Agentchats installer by symlinking cass's default data directory
-(`~/Library/Application Support/com.coding-agent-search.coding-agent-search`)
-to `/Volumes/Scratch/cass`; the internal disk cannot hold an index over the
-full transcript archive.
-
-## Transcript vault
-
-Claude Code deletes transcripts from `~/.claude/projects` once they age past
-`cleanupPeriodDays`. The transcript vault makes that pruning survivable and
-keeps every session searchable:
-
-1. `rsync` the live `~/.claude/projects` into the canonical archive at
-   `/Volumes/Scratch/claude-archive/home/.claude/projects` (additive only —
-   the vault never deletes archive content).
-2. `restic backup` of the archive plus the live `~/.claude` to the B2
-   repository, tagged `claude-transcripts`, and to the silverbird repository
-   when that host is reachable. The vault never runs `forget` or `prune`;
-   snapshots accumulate indefinitely.
-3. `cass index` over the live tree, then over the archive tree through the
-   archive's `home/` HOME shim, into the shared index on
-   `/Volumes/Scratch/cass`, so coding-agent session search covers the full
-   history.
+The hourly index passes are incremental and watermark-gated: they pick up
+files whose mtimes are recent, which covers everything the rsync stage adds
+in normal operation. After bulk-importing historic files (old mtimes) into
+the archive, run the one-shot full pass so they are ingested:
+`HOME=/Volumes/Scratch/claude-archive/home cass index --full --data-dir /Volumes/Scratch/cass`.
 
 `funk install-transcript-vault` renders and bootstraps the
 `com.arthack.funk.transcript-vault` LaunchAgent (at login and hourly);
