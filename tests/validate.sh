@@ -591,6 +591,87 @@ printf '%s\n' "$agentvoice_missing_output" \
         >/dev/null \
     || fail "AgentVoice skill installer did not report the missing checkout clearly"
 
+# Each agent CLI ships its own runbook as a skill, and Funk finds those skills
+# by convention instead of by list: an agent* checkout that exports
+# skills/<name>/SKILL.md is a participant, and everything else under the root
+# is not. The scan must batch one invocation per project naming every skill it
+# found, and it must leave AgentVoice alone -- AgentVoice's own installer links
+# its skills live from the checkout, so a `skills add` over the same names
+# would replace those links with copies on every single run.
+code_skills_root="$update_test_dir/code-root"
+code_skills_log="$update_test_dir/code-skills-npx.log"
+mkdir -p \
+    "$code_skills_root/agentdemo/skills/demo" \
+    "$code_skills_root/agentdemo/skills/second" \
+    "$code_skills_root/agentquiet/src" \
+    "$code_skills_root/agentvoice/skills/story" \
+    "$code_skills_root/notagent/skills/x"
+for code_skills_fixture in \
+    agentdemo/skills/demo \
+    agentdemo/skills/second \
+    agentvoice/skills/story \
+    notagent/skills/x; do
+    printf '# fixture skill\n' >"$code_skills_root/$code_skills_fixture/SKILL.md"
+done
+
+code_skills_plan=$(
+    FUNK_CODE_ROOT="$code_skills_root" \
+        FUNK_NPX_BIN="$root/tests/fixtures/npx" \
+        FUNK_TEST_NPX_LOG="$code_skills_log" \
+        "$root/libexec/install-code-skills" --check
+)
+[ ! -s "$code_skills_log" ] \
+    || fail "project skill plan invoked the skills tool instead of only printing"
+printf '%s\n' "$code_skills_plan" \
+    | grep -F "npx --yes skills add \"$code_skills_root/agentdemo\" --agent codex claude-code opencode pi --skill demo second --global --yes" \
+        >/dev/null \
+    || fail "project skill plan omits the skills discovered in a participating checkout"
+if printf '%s\n' "$code_skills_plan" | grep -Eq 'agentvoice|agentquiet|notagent'; then
+    fail "project skill plan includes a checkout that is not a participant"
+fi
+
+FUNK_CODE_ROOT="$code_skills_root" \
+    FUNK_NPX_BIN="$root/tests/fixtures/npx" \
+    FUNK_TEST_NPX_LOG="$code_skills_log" \
+    "$root/libexec/install-code-skills" >/dev/null
+grep -F "npx-stub <--yes> <skills> <add> <$code_skills_root/agentdemo> <--agent> <codex> <claude-code> <opencode> <pi> <--skill> <demo> <second> <--global> <--yes>" \
+    "$code_skills_log" >/dev/null \
+    || fail "project skill scan did not ship both discovered skills in one invocation"
+if grep -E 'agentvoice|agentquiet|notagent' "$code_skills_log" >/dev/null; then
+    fail "project skill scan synchronized a checkout that is not a participant"
+fi
+[ "$(grep -c 'npx-stub' "$code_skills_log")" -eq 1 ] \
+    || fail "project skill scan did not invoke the skills tool exactly once per participant"
+
+# A checkout without skills is silently not a participant, but a participant
+# whose synchronization fails is a real error, and the message has to name the
+# project: the operator is being asked to go fix that repository.
+set +e
+code_skills_failure=$(
+    FUNK_CODE_ROOT="$code_skills_root" \
+        FUNK_NPX_BIN="$root/tests/fixtures/npx" \
+        FUNK_TEST_NPX_EXIT=9 \
+        "$root/libexec/install-code-skills" 2>&1
+)
+code_skills_failure_status=$?
+set -e
+[ "$code_skills_failure_status" -ne 0 ] \
+    || fail "project skill scan ignored a failing skills tool"
+printf '%s\n' "$code_skills_failure" | grep -F 'agentdemo' >/dev/null \
+    || fail "project skill scan failure does not name the project to fix"
+
+# shellcheck disable=SC2016 # Match the literal exclusion guard in the script.
+grep -F '[ "$project_name" != agentvoice ] || continue' \
+    libexec/install-code-skills >/dev/null \
+    || fail "project skill scan lost the AgentVoice exclusion"
+# shellcheck disable=SC2016 # Match the literal installer declaration.
+grep -F 'code_skills_installer="$funk_root/libexec/install-code-skills"' \
+    libexec/funk-update >/dev/null \
+    || fail "scheduled updater does not preflight the project skill installer"
+# shellcheck disable=SC2016 # Match the literal helper invocation in the script.
+grep -F '"$code_skills_installer" || status=$?' libexec/funk-update >/dev/null \
+    || fail "scheduled updater does not synchronize the per-project agent skills"
+
 # The desktop application bridge: Funk provisions Zig and the pinned Native SDK
 # CLI, then calls AgentVoice's own app:install contract. These cases use stubs
 # only; nothing is installed globally, no bundle is written, no app is launched.
@@ -1434,6 +1515,7 @@ if grep -Eqi 'bundle cleanup|uninstall|fetch-head|telegram|sudo' \
     bin/funk libexec/funk-update libexec/install-update-agent \
     libexec/install-orca libexec/converge-brewfile libexec/converge-brew-casks \
     libexec/repair-cask-artifacts libexec/install-agentvoice-skills \
+    libexec/install-code-skills \
     launchd/com.arthack.funk.update.plist.in; then
     fail "scheduled updater contains a prohibited operation"
 fi
