@@ -17,3 +17,12 @@ exact flags. All emit structured output (`--json` or an envelope).
 - `agentweb` — the browser control plane for authorized, signed-in browser
   work: it holds origin rules and the sessions a human established; attach a
   session or ask the human to run `agentweb signin`.
+- `agentwiki` — the document vault: capture snippets and full documents as
+  plain markdown, search and link them, publish immutable versioned artifacts.
+  Take `path <ref>` and edit the file directly rather than round-tripping
+  content through the CLI; refs accept spoken phrases, and `resolve` ranks
+  the candidates when a phrase is ambiguous.
+- `agentboard` — the planning board: capture work at any granularity, `ready`
+  for what is unblocked, `claim` before starting, `done` when finished. Speak
+  labels, never ids; bulk reshaping goes through `groom export`/`apply`, and
+  `render --publish` snapshots the board into agentwiki.

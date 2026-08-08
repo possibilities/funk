@@ -473,6 +473,18 @@ if [ "$agentvoicenext_cli_status" -ne 0 ]; then
     exit "$agentvoicenext_cli_status"
 fi
 
+# The agentwiki and agentboard CLIs install by their own hardened contract
+# (frozen deps, ~/.local/bin symlink, deployed-SHA receipt). Funk only invokes
+# it; a machine without a checkout skips inside the script, so only a
+# present-but-broken checkout fails here.
+agent_clis_status=0
+"$script_dir/install-agent-clis" || agent_clis_status=$?
+if [ "$agent_clis_status" -ne 0 ]; then
+    printf 'Funk AI tools installer: agent CLIs install failed (exit %s). Fix the reported problem, then rerun ./install or libexec/install-agent-clis.\n' \
+        "$agent_clis_status" >&2
+    exit "$agent_clis_status"
+fi
+
 # The pinned Native SDK CLI and Zig above are AgentVoice's packaging
 # prerequisites, so the desktop application is installed last. AgentVoice owns
 # packaging, bundle replacement, launch, and readiness verification; Funk only

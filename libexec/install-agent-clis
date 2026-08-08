@@ -1,0 +1,33 @@
+#!/bin/bash
+
+set -euo pipefail
+
+die() {
+    printf 'Funk agent CLIs installer: %s\n' "$*" >&2
+    exit 1
+}
+
+[ "$#" -eq 0 ] || {
+    printf 'Usage: install-agent-clis\n' >&2
+    exit 64
+}
+
+[ "$(uname -s)" = Darwin ] || die "macOS is required"
+[ "$(id -u)" -ne 0 ] || die "run as the target user, not root"
+
+# Each project owns its own hardened installer: frozen dependency install, a
+# ~/.local/bin symlink back into the checkout, a deployed-SHA receipt, and its
+# own refusal rules for dirty trees and foreign files. Funk decides only that
+# these CLIs belong on this machine. A machine that has not cloned a checkout
+# is a skip, not a failure; a present checkout that fails to install is a real
+# error and propagates. Rerunning is safe: the installers are fix-forward and
+# relinking repoints the same command.
+for tool in agentwiki agentboard; do
+    tool_root="$HOME/code/$tool"
+    if [ ! -f "$tool_root/scripts/install.sh" ]; then
+        printf 'Funk agent CLIs installer: no checkout at %s; skipping.\n' "$tool_root"
+        continue
+    fi
+    printf 'Installing %s from %s.\n' "$tool" "$tool_root"
+    "$tool_root/scripts/install.sh" --install
+done
