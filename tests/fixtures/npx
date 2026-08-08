@@ -28,19 +28,19 @@ case "$*" in
     "name": "orca-cli",
     "scope": "global",
     "source": "stablyai/orca",
-    "agents": ["Codex", "Claude Code", "OpenCode", "Pi"]
+    "agents": ["Codex", "Claude Code", "Pi"]
   },
   {
     "name": "orchestration",
     "scope": "global",
     "source": "stablyai/orca",
-    "agents": ["Codex", "Claude Code", "OpenCode", "Pi"]
+    "agents": ["Codex", "Claude Code", "Pi"]
   },
   {
     "name": "computer-use",
     "scope": "global",
     "source": "stablyai/orca",
-    "agents": ["Codex", "Claude Code", "OpenCode", "Pi"]
+    "agents": ["Codex", "Claude Code", "Pi"]
   }
 ]
 EOF

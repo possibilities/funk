@@ -38,7 +38,7 @@ Orca:
   brew install --cask --yes stablyai/orca/orca  # when missing
   leave an installed Orca to its own updater  # never brew upgrade
   remove com.apple.quarantine only from Homebrew's declared Orca.app target
-  npx --yes skills add https://github.com/stablyai/orca --agent codex claude-code opencode pi --skill orca-cli orchestration computer-use --global --yes
+  npx --yes skills add https://github.com/stablyai/orca --agent codex claude-code pi --skill orca-cli orchestration computer-use --global --yes
   verify the cask receipt and the three global skill records
 EOF
         exit 0
@@ -61,7 +61,7 @@ brew_bin=$(find_brew) || die "Homebrew is not installed"
 brew_prefix=$("$brew_bin" --prefix)
 original_path=$PATH
 export FUNK_BREW_BIN="$brew_bin"
-export PATH="$HOME/.local/bin:$HOME/.opencode/bin:$brew_prefix/bin:/usr/bin:/bin:/usr/sbin:/sbin:$original_path"
+export PATH="$HOME/.local/bin:$brew_prefix/bin:/usr/bin:/bin:/usr/sbin:/sbin:$original_path"
 
 # Install-only, because Orca ships its own updater and the cask says so:
 # `auto_updates true` exists to keep Homebrew from competing with it, and
@@ -92,7 +92,7 @@ fi
 
 printf 'Synchronizing the globally managed Orca agent skills.\n'
 "$npx_bin" --yes skills add https://github.com/stablyai/orca \
-    --agent codex claude-code opencode pi \
+    --agent codex claude-code pi \
     --skill orca-cli orchestration computer-use \
     --global --yes
 
@@ -116,7 +116,6 @@ skills_json="$tmpdir/skills.json"
         .source == "stablyai/orca" and
         has_agent("Codex") and
         has_agent("Claude Code") and
-        has_agent("OpenCode") and
         has_agent("Pi")
       )
     | .name
@@ -125,4 +124,4 @@ skills_json="$tmpdir/skills.json"
   | sort == ["computer-use", "orca-cli", "orchestration"]
 ' "$skills_json" >/dev/null || die "Orca global skill verification failed"
 
-printf 'Verified Orca cask and global skills for Codex, Claude Code, OpenCode, and Pi.\n'
+printf 'Verified Orca cask and global skills for Codex, Claude Code, and Pi.\n'

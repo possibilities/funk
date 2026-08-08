@@ -87,7 +87,7 @@ settings_file="$HOME/.config/orca/settings.json"
     . == "command-code" or . == "copilot" or . == "cursor-agent" or
     . == "devin" or . == "droid" or . == "gemini" or . == "grok" or
     . == "hermes" or . == "kimi" or . == "kilo" or . == "minimax" or
-    . == "opencode" or . == "openclaude" or . == "pi" or . == "qwen") and
+    . == "openclaude" or . == "pi" or . == "qwen") and
   (.mobilePairingConnectionMode | . == "automatic" or . == "local-only") and
   (.notifications | type == "object" and keys == ["terminalBell"]) and
   (.notifications.terminalBell | type == "boolean") and

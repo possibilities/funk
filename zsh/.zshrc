@@ -101,8 +101,5 @@ fi
 # talking to a server of a different version restarts the server and drops
 # every wireless connection. ANDROID_HOME still points build tooling at the SDK.
 
-# opencode
-export PATH="$HOME/.opencode/bin:$PATH"
-
 # bun completions
 [ -s "$HOME/.bun/_bun" ] && source "$HOME/.bun/_bun"

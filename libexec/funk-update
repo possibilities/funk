@@ -85,7 +85,7 @@ fi
 brew_prefix=$("$brew_bin" --prefix)
 original_path=$PATH
 export FUNK_BREW_BIN="$brew_bin"
-export PATH="$HOME/.local/bin:$HOME/.opencode/bin:$brew_prefix/bin:/usr/bin:/bin:/usr/sbin:/sbin:$original_path"
+export PATH="$HOME/.local/bin:$brew_prefix/bin:/usr/bin:/bin:/usr/sbin:/sbin:$original_path"
 export HOMEBREW_NO_ASK=1
 
 tmpdir=$(mktemp -d "${TMPDIR:-/tmp}/funk-update.XXXXXX")

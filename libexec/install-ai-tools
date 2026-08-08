@@ -51,40 +51,6 @@ install_official() {
 # that Funk's zsh package owns. Running it in its own session leaves it with no
 # controlling terminal, which is exactly the condition its documented
 # "No terminal detected; continuing without confirmation" path tests for.
-# OpenCode's installer resolves its release through the unauthenticated GitHub
-# API, which allows 60 requests an hour per address. Reinstalling a few times in
-# an hour exhausts that, and the installer then exits with "Failed to fetch
-# version information", failing the whole run over a transient external limit.
-# Funk already installs and authenticates gh, whose limit is 5000 an hour, so
-# resolve the tag here and hand it over. With a version supplied the installer
-# verifies the release with a plain HTTP request and never calls the API.
-install_opencode() {
-    local repo=anomalyco/opencode
-    local version
-
-    printf 'Installing OpenCode with its official installer.\n'
-
-    version=
-    if command -v gh >/dev/null 2>&1; then
-        version=$(
-            gh release view --repo "$repo" --json tagName --jq '.tagName' \
-                2>/dev/null
-        ) || version=
-    fi
-    version=${version#v}
-
-    if [ -n "$version" ]; then
-        printf 'Resolved OpenCode %s with the authenticated GitHub CLI.\n' "$version"
-        /usr/bin/curl -fsSL https://opencode.ai/install \
-            | VERSION="$version" /bin/bash -s -- --no-modify-path
-        return
-    fi
-
-    printf 'Could not resolve the latest OpenCode release with gh; letting the installer choose.\n' >&2
-    /usr/bin/curl -fsSL https://opencode.ai/install \
-        | /bin/bash -s -- --no-modify-path
-}
-
 run_without_controlling_terminal() {
     /usr/bin/perl -e '
         use POSIX ();
@@ -107,9 +73,6 @@ configure_shadcn_mcp() {
     printf 'Configuring the shadcn registry MCP server for Claude Code.\n'
     claude mcp remove --scope user shadcn >/dev/null 2>&1 || true
     claude mcp add --scope user shadcn -- npx shadcn@latest mcp
-
-    printf 'Configuring the shadcn registry MCP server for OpenCode.\n'
-    opencode mcp add shadcn -- npx shadcn@latest mcp
 }
 
 # Claude Code reads only CLAUDE.md, and Codex skips empty guidance files, so
@@ -223,8 +186,6 @@ Command-line tools:
   brew install or upgrade gh  # intentional duplicate of the Brewfile
   curl -fsSL https://claude.ai/install.sh | bash
   curl -fsSL https://chatgpt.com/codex/install.sh | CODEX_NON_INTERACTIVE=1 sh
-  gh release view --repo anomalyco/opencode --json tagName  # avoids the anonymous API limit
-  curl -fsSL https://opencode.ai/install | VERSION=<resolved> bash -s -- --no-modify-path
   curl -fsSL https://pi.dev/install.sh | sh  # in its own session, no controlling terminal
   brew install or upgrade zig  # AgentVoice native packaging needs 0.16 or newer
   npm install --global @native-sdk/cli@0.7  # AgentVoice refuses other lines
@@ -237,7 +198,6 @@ Desktop applications from local checkouts:
 Agent documentation:
   codex mcp add shadcn -- npx shadcn@latest mcp
   claude mcp add --scope user shadcn -- npx shadcn@latest mcp
-  opencode mcp add shadcn -- npx shadcn@latest mcp
   native skills list
 
 Agent guidance:
@@ -248,15 +208,15 @@ Agent skills:
 EOF
     "$script_dir/install-orca" --check
     cat <<'EOF'
-  npx --yes skills add https://github.com/vercel-labs/skills --agent codex claude-code opencode pi --skill find-skills --global --yes
-  npx --yes skills add https://github.com/anthropics/skills --agent codex claude-code opencode pi --skill frontend-design --global --yes
-  npx --yes skills add https://github.com/vercel-labs/agent-skills --agent codex claude-code opencode pi --skill web-design-guidelines --global --yes
-  npx --yes skills add https://github.com/vercel-labs/agent-skills --agent codex claude-code opencode pi --skill vercel-react-best-practices --global --yes
-  npx --yes skills add https://github.com/vercel/ai --agent codex claude-code opencode pi --skill ai-sdk --global --yes
-  npx --yes skills add https://github.com/vercel/ai-elements --agent codex claude-code opencode pi --skill ai-elements --global --yes
-  npx --yes skills add https://github.com/shadcn/ui --agent codex claude-code opencode pi --skill shadcn --global --yes
-  npx --yes skills add https://github.com/vercel-labs/native --agent codex claude-code opencode pi --skill native-sdk --global --yes
-  npx --yes skills add "$HOME/code/arthack" --agent codex claude-code opencode pi --skill hack resource-create resource-update --global --yes
+  npx --yes skills add https://github.com/vercel-labs/skills --agent codex claude-code pi --skill find-skills --global --yes
+  npx --yes skills add https://github.com/anthropics/skills --agent codex claude-code pi --skill frontend-design --global --yes
+  npx --yes skills add https://github.com/vercel-labs/agent-skills --agent codex claude-code pi --skill web-design-guidelines --global --yes
+  npx --yes skills add https://github.com/vercel-labs/agent-skills --agent codex claude-code pi --skill vercel-react-best-practices --global --yes
+  npx --yes skills add https://github.com/vercel/ai --agent codex claude-code pi --skill ai-sdk --global --yes
+  npx --yes skills add https://github.com/vercel/ai-elements --agent codex claude-code pi --skill ai-elements --global --yes
+  npx --yes skills add https://github.com/shadcn/ui --agent codex claude-code pi --skill shadcn --global --yes
+  npx --yes skills add https://github.com/vercel-labs/native --agent codex claude-code pi --skill native-sdk --global --yes
+  npx --yes skills add "$HOME/code/arthack" --agent codex claude-code pi --skill hack resource-create resource-update --global --yes
   "$HOME/code/arthack/scripts/render"
 EOF
     "$script_dir/install-code-skills" --check
@@ -298,7 +258,7 @@ brew_owner=$(stat -f '%Su' "$brew_prefix")
 # to shell startup files during this run.
 original_path=$PATH
 export FUNK_BREW_BIN="$brew_bin"
-export PATH="$HOME/.local/bin:$HOME/.opencode/bin:$brew_prefix/bin:/usr/bin:/bin:/usr/sbin:/sbin:$original_path"
+export PATH="$HOME/.local/bin:$brew_prefix/bin:/usr/bin:/bin:/usr/sbin:/sbin:$original_path"
 
 install_or_upgrade_formula() {
     local formula="$1"
@@ -329,7 +289,6 @@ printf 'Installing Codex CLI with its official installer.\n'
 /usr/bin/curl -fsSL https://chatgpt.com/codex/install.sh \
     | CODEX_NON_INTERACTIVE=1 /bin/sh
 
-install_opencode
 
 # Pi requires Node.js 22.19 or newer. The main Funk installer initializes the
 # pinned NVM default before reaching this script; load that default into this
@@ -405,51 +364,51 @@ link_agent_guidance
 
 printf 'Installing the global skill discovery helper.\n'
 npx --yes skills add https://github.com/vercel-labs/skills \
-    --agent codex claude-code opencode pi \
+    --agent codex claude-code pi \
     --skill find-skills \
     --global --yes
 
 printf 'Installing the globally managed design skills.\n'
 npx --yes skills add https://github.com/anthropics/skills \
-    --agent codex claude-code opencode pi \
+    --agent codex claude-code pi \
     --skill frontend-design \
     --global --yes
 npx --yes skills add https://github.com/vercel-labs/agent-skills \
-    --agent codex claude-code opencode pi \
+    --agent codex claude-code pi \
     --skill web-design-guidelines \
     --global --yes
 
 printf 'Installing Vercel React engineering guidance.\n'
 npx --yes skills add https://github.com/vercel-labs/agent-skills \
-    --agent codex claude-code opencode pi \
+    --agent codex claude-code pi \
     --skill vercel-react-best-practices \
     --global --yes
 
 printf 'Installing the official Vercel AI SDK and AI Elements skills.\n'
 npx --yes skills add https://github.com/vercel/ai \
-    --agent codex claude-code opencode pi \
+    --agent codex claude-code pi \
     --skill ai-sdk \
     --global --yes
 npx --yes skills add https://github.com/vercel/ai-elements \
-    --agent codex claude-code opencode pi \
+    --agent codex claude-code pi \
     --skill ai-elements \
     --global --yes
 
 printf 'Installing the official shadcn skill.\n'
 npx --yes skills add https://github.com/shadcn/ui \
-    --agent codex claude-code opencode pi \
+    --agent codex claude-code pi \
     --skill shadcn \
     --global --yes
 
 printf 'Installing the Native SDK discovery skill.\n'
 npx --yes skills add https://github.com/vercel-labs/native \
-    --agent codex claude-code opencode pi \
+    --agent codex claude-code pi \
     --skill native-sdk \
     --global --yes
 
 printf 'Synchronizing the personal Art Hack agent skills.\n'
 npx --yes skills add "$art_hack_root" \
-    --agent codex claude-code opencode pi \
+    --agent codex claude-code pi \
     --skill hack resource-create resource-update \
     --global --yes
 

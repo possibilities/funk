@@ -12,7 +12,7 @@ installers:
 - Tailscale, AltTab, Ghostty, Google Chrome, Chrome Canary, Brave, Firefox
 - ChatGPT, Claude Desktop, Orca, Obsidian, Raycast
 - GitHub CLI, Native SDK CLI (pinned to 0.7), Zig, Claude Code,
-  Codex CLI, OpenCode, and Pi
+  Codex CLI, and Pi
 - The AgentVoice desktop application, installed by AgentVoice's own
   `app:install` contract from `~/code/agentvoice`
 - The AgentVoiceNext voice CLI (`agentvoicenext`), linked editable by its own
@@ -31,7 +31,7 @@ installers:
 `libexec/install-ai-tools` uses the official shell installers for
 [Claude Code](https://code.claude.com/docs/en/terminal-guide),
 [Codex CLI](https://github.com/openai/codex#installing-and-running-codex-cli),
-[OpenCode](https://opencode.ai/docs/), and [Pi](https://pi.dev/docs/latest).
+and [Pi](https://pi.dev/docs/latest).
 ChatGPT and Claude Desktop use their Homebrew casks because their normal
 personal macOS downloads do not provide unattended installer commands. Orca
 uses the cask documented by the [Orca project](https://github.com/stablyai/orca).
@@ -72,7 +72,7 @@ LaunchAgent never rebuilds, replaces, or relaunches a running desktop app.
 Homebrew formula and cask calls are install-or-upgrade operations. The
 dedicated `libexec/install-orca` helper installs or greedily upgrades the Orca
 cask, synchronizes `orca-cli`, `orchestration`, and `computer-use` globally for
-Codex, Claude Code, OpenCode, and Pi, then verifies both the cask receipt and
+Codex, Claude Code, and Pi, then verifies both the cask receipt and
 the global skill records. Hermes is not part of this harness set.
 
 After any Funk-managed cask pass, Funk reads Homebrew's cask metadata, requires
@@ -86,19 +86,19 @@ downloads.
 
 The AI installer also reproduces the globally managed agent skills with the
 same `npx skills add` mechanism used by Orca's setup UI. For Codex, Claude Code,
-OpenCode, and Pi, it installs:
+and Pi, it installs:
 
 - `orca-cli`, `orchestration`, and `computer-use` from Orca.
 - `find-skills` from Vercel.
 - `frontend-design` from Anthropic and `web-design-guidelines` from Vercel.
 - `vercel-react-best-practices`, `ai-sdk`, and `ai-elements` from Vercel.
 - The official `shadcn` skill, paired with shadcn's registry MCP server for
-  Codex, Claude Code, and OpenCode.
+  Codex and Claude Code.
 - The `native-sdk` discovery skill from Vercel Labs Native. The globally
   installed Native CLI supplies its deeper, version-matched skills.
 
-The shadcn skill provides Pi with its CLI workflow; Codex, Claude Code, and
-OpenCode additionally get the official shadcn registry MCP server.
+The shadcn skill provides Pi with its CLI workflow; Codex and Claude Code
+additionally get the official shadcn registry MCP server.
 
 Finally, the installer synchronizes the locally authored Art Hack skills —
 `hack`, `resource-create`, and `resource-update` — from `~/code/arthack` into the
@@ -120,7 +120,7 @@ owns cass — the coding-agent session search CLI — installing the upstream
 checksummed release into `~/.local/bin` and building or refreshing the index
 over the local Claude Code, Codex, and Pi session stores, and the same pass
 synchronizes the locally authored `chats` skill, cass's agent runbook, for
-Codex, Claude Code, OpenCode, and Pi. A machine without the checkout skips
+Codex, Claude Code, and Pi. A machine without the checkout skips
 both; a present checkout that fails to install fails the run.
 
 The installer also links each CLI's global guidance location at the shared

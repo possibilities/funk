@@ -134,7 +134,7 @@ for project in "$code_root"/agent*/; do
     synchronized=$((synchronized + 1))
 
     if [ "$check_only" -eq 1 ]; then
-        printf '  npx --yes skills add "%s" --agent codex claude-code opencode pi --skill %s --global --yes\n' \
+        printf '  npx --yes skills add "%s" --agent codex claude-code pi --skill %s --global --yes\n' \
             "$project" "${skill_names[*]}"
         continue
     fi
@@ -146,7 +146,7 @@ for project in "$code_root"/agent*/; do
     printf 'Synchronizing the %s agent skills (%s).\n' \
         "$project_name" "${skill_names[*]}"
     "$npx_bin" --yes skills add "$project" \
-        --agent codex claude-code opencode pi \
+        --agent codex claude-code pi \
         --skill "${skill_names[@]}" \
         --global --yes \
         || die "synchronizing the $project_name agent skills failed: $project"

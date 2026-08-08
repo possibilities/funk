@@ -658,7 +658,7 @@ code_skills_plan=$(
 [ ! -s "$code_skills_log" ] \
     || fail "project skill plan invoked the skills tool instead of only printing"
 printf '%s\n' "$code_skills_plan" \
-    | grep -F "npx --yes skills add \"$code_skills_root/agentdemo\" --agent codex claude-code opencode pi --skill demo second --global --yes" \
+    | grep -F "npx --yes skills add \"$code_skills_root/agentdemo\" --agent codex claude-code pi --skill demo second --global --yes" \
         >/dev/null \
     || fail "project skill plan omits the skills discovered in a participating checkout"
 if printf '%s\n' "$code_skills_plan" | grep -Eq 'agentvoice|agentquiet|notagent'; then
@@ -669,7 +669,7 @@ FUNK_CODE_ROOT="$code_skills_root" \
     FUNK_NPX_BIN="$root/tests/fixtures/npx" \
     FUNK_TEST_NPX_LOG="$code_skills_log" \
     "$root/libexec/install-code-skills" >/dev/null
-grep -F "npx-stub <--yes> <skills> <add> <$code_skills_root/agentdemo> <--agent> <codex> <claude-code> <opencode> <pi> <--skill> <demo> <second> <--global> <--yes>" \
+grep -F "npx-stub <--yes> <skills> <add> <$code_skills_root/agentdemo> <--agent> <codex> <claude-code> <pi> <--skill> <demo> <second> <--global> <--yes>" \
     "$code_skills_log" >/dev/null \
     || fail "project skill scan did not ship both discovered skills in one invocation"
 if grep -E 'agentvoice|agentquiet|notagent' "$code_skills_log" >/dev/null; then
@@ -1356,29 +1356,26 @@ for required_ai_install in \
     'remove com.apple.quarantine only from Homebrew'\''s declared Orca.app target' \
     'curl -fsSL https://claude.ai/install.sh | bash' \
     'curl -fsSL https://chatgpt.com/codex/install.sh | CODEX_NON_INTERACTIVE=1 sh' \
-    'gh release view --repo anomalyco/opencode --json tagName  # avoids the anonymous API limit' \
-    'curl -fsSL https://opencode.ai/install | VERSION=<resolved> bash -s -- --no-modify-path' \
     'curl -fsSL https://pi.dev/install.sh | sh  # in its own session, no controlling terminal' \
     'brew install or upgrade zig  # AgentVoice native packaging needs 0.16 or newer' \
     'npm install --global @native-sdk/cli@0.7  # AgentVoice refuses other lines' \
     "bun run --cwd \"\$HOME/code/agentvoice\" app:install  # AgentVoice owns packaging and launch" \
     'codex mcp add shadcn -- npx shadcn@latest mcp' \
     'claude mcp add --scope user shadcn -- npx shadcn@latest mcp' \
-    'opencode mcp add shadcn -- npx shadcn@latest mcp' \
     'native skills list' \
     'ln -sfn ~/AGENTS.md ~/.claude/CLAUDE.md  # Claude Code reads CLAUDE.md, not AGENTS.md' \
     'ln -sfn ~/AGENTS.md ~/.codex/AGENTS.md  # Codex skips empty guidance files' \
-    'npx --yes skills add https://github.com/stablyai/orca --agent codex claude-code opencode pi --skill orca-cli orchestration computer-use --global --yes' \
-    'npx --yes skills add https://github.com/vercel-labs/skills --agent codex claude-code opencode pi --skill find-skills --global --yes' \
-    'npx --yes skills add https://github.com/anthropics/skills --agent codex claude-code opencode pi --skill frontend-design --global --yes' \
-    'npx --yes skills add https://github.com/vercel-labs/agent-skills --agent codex claude-code opencode pi --skill web-design-guidelines --global --yes' \
-    'npx --yes skills add https://github.com/vercel-labs/agent-skills --agent codex claude-code opencode pi --skill vercel-react-best-practices --global --yes' \
-    'npx --yes skills add https://github.com/vercel/ai --agent codex claude-code opencode pi --skill ai-sdk --global --yes' \
-    'npx --yes skills add https://github.com/vercel/ai-elements --agent codex claude-code opencode pi --skill ai-elements --global --yes' \
-    'npx --yes skills add https://github.com/shadcn/ui --agent codex claude-code opencode pi --skill shadcn --global --yes' \
-    'npx --yes skills add https://github.com/vercel-labs/native --agent codex claude-code opencode pi --skill native-sdk --global --yes' \
-    "npx --yes skills add \"\$HOME/code/arthack\" --agent codex claude-code opencode pi --skill hack resource-create resource-update --global --yes" \
-    "npx --yes skills add \"$code_skills_root/agentdemo\" --agent codex claude-code opencode pi --skill demo second --global --yes" \
+    'npx --yes skills add https://github.com/stablyai/orca --agent codex claude-code pi --skill orca-cli orchestration computer-use --global --yes' \
+    'npx --yes skills add https://github.com/vercel-labs/skills --agent codex claude-code pi --skill find-skills --global --yes' \
+    'npx --yes skills add https://github.com/anthropics/skills --agent codex claude-code pi --skill frontend-design --global --yes' \
+    'npx --yes skills add https://github.com/vercel-labs/agent-skills --agent codex claude-code pi --skill web-design-guidelines --global --yes' \
+    'npx --yes skills add https://github.com/vercel-labs/agent-skills --agent codex claude-code pi --skill vercel-react-best-practices --global --yes' \
+    'npx --yes skills add https://github.com/vercel/ai --agent codex claude-code pi --skill ai-sdk --global --yes' \
+    'npx --yes skills add https://github.com/vercel/ai-elements --agent codex claude-code pi --skill ai-elements --global --yes' \
+    'npx --yes skills add https://github.com/shadcn/ui --agent codex claude-code pi --skill shadcn --global --yes' \
+    'npx --yes skills add https://github.com/vercel-labs/native --agent codex claude-code pi --skill native-sdk --global --yes' \
+    "npx --yes skills add \"\$HOME/code/arthack\" --agent codex claude-code pi --skill hack resource-create resource-update --global --yes" \
+    "npx --yes skills add \"$code_skills_root/agentdemo\" --agent codex claude-code pi --skill demo second --global --yes" \
     "\"\$HOME/code/arthack/scripts/render\""; do
     printf '%s\n' "$ai_install_plan" | grep -F "$required_ai_install" >/dev/null \
         || fail "AI installation plan is missing: $required_ai_install"
@@ -1479,16 +1476,6 @@ grep -F 'exit "$agentvoice_app_status"' libexec/install-ai-tools >/dev/null \
     || fail "AI installer does not propagate an AgentVoice app installation failure"
 grep -F 'quit a running AgentVoice.app' libexec/install-ai-tools >/dev/null \
     || fail "AI installer failure guidance omits quitting a running AgentVoice.app"
-
-# OpenCode's installer fails the whole run once the 60-an-hour anonymous GitHub
-# API limit is exhausted, so the release must be resolved through gh instead.
-# shellcheck disable=SC2016 # Match the literal shell variables in the script.
-grep -F 'VERSION="$version" /bin/bash -s -- --no-modify-path' \
-    libexec/install-ai-tools >/dev/null \
-    || fail "OpenCode install does not supply a gh-resolved release version"
-# shellcheck disable=SC2016 # Match the literal scoped repository variable.
-grep -F 'gh release view --repo "$repo"' libexec/install-ai-tools >/dev/null \
-    || fail "OpenCode release is not resolved with the authenticated GitHub CLI"
 
 # Pi reads its prompts from /dev/tty, so only removing the controlling terminal
 # keeps ./install unattended and stops it editing Funk's Stow-managed profile.
