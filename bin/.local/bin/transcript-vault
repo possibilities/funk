@@ -27,6 +27,19 @@ set -uo pipefail
 
 PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$HOME/.local/bin"
 
+mode=${1:-run}
+case "$mode" in
+    run | backfill) ;;
+    *)
+        printf 'Usage: transcript-vault [run|backfill]\n' >&2
+        printf '  run       normal hourly pipeline (default)\n' >&2
+        printf '  backfill  force-ingest every archive project dir into cass;\n' >&2
+        printf '            needed after bulk imports of historic-mtime files,\n' >&2
+        printf '            which incremental watermarks skip and --full ignores\n' >&2
+        exit 64
+        ;;
+esac
+
 ARCHIVE_ROOT=/Volumes/Scratch/claude-archive
 ARCHIVE_HOME="$ARCHIVE_ROOT/home"
 CANON="$ARCHIVE_HOME/.claude/projects"
@@ -60,6 +73,50 @@ if [ ! -d "$ARCHIVE_ROOT" ]; then
     exit 0
 fi
 mkdir -p "$CANON" "$ARCHIVE_ROOT/history"
+
+# --- backfill mode ---------------------------------------------------------
+# cass ingests archive content three different ways, and only one works for
+# bulk history: incremental runs watermark-gate files by mtime (so historic
+# files never qualify), --full runs skip explicit local sources entirely,
+# and --watch-once force-scans exactly the paths it is given. Feed it every
+# project directory in batches, retrying a batch when another index run
+# holds the lock.
+if [ "$mode" = backfill ]; then
+    command -v cass >/dev/null 2>&1 || { log "backfill: cass missing"; exit 1; }
+    [ -d "$CASS_DATA_DIR" ] || { log "backfill: $CASS_DATA_DIR missing"; exit 1; }
+    batch_rc=0
+    run_batch() {
+        local paths="${1#,}" try rc out
+        for try in 1 2 3; do
+            rc=0
+            out=$(nice -n 20 cass index --data-dir "$CASS_DATA_DIR" \
+                --watch-once "$paths" --json --no-progress-events 2>&1) || rc=$?
+            if [ "$rc" -eq 0 ]; then
+                log "backfill batch ok: $(printf '%s' "$out" | tr -d '\n' | cut -c 1-200)"
+                return 0
+            fi
+            log "backfill batch busy/failed (exit $rc, try $try); retrying in 90s"
+            sleep 90
+        done
+        log "ERROR: backfill batch gave up after 3 tries"
+        batch_rc=1
+        return 1
+    }
+    count=0
+    list=""
+    for d in "$CANON"/*/; do
+        list="$list,${d%/}"
+        count=$((count + 1))
+        if [ "$count" -eq 100 ]; then
+            run_batch "$list" || true
+            list=""
+            count=0
+        fi
+    done
+    [ -n "$list" ] && { run_batch "$list" || true; }
+    log "backfill complete (errors=$batch_rc)"
+    exit "$batch_rc"
+fi
 
 # --- 1. live -> archive sync (additive only; never --delete) ---------------
 sync_rc=0

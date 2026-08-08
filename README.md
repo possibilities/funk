@@ -705,9 +705,11 @@ keeps every session searchable:
 
 The hourly index passes are incremental and watermark-gated: they pick up
 files whose mtimes are recent, which covers everything the rsync stage adds
-in normal operation. After bulk-importing historic files (old mtimes) into
-the archive, run the one-shot full pass so they are ingested:
-`cass index --full --data-dir /Volumes/Scratch/cass`.
+in normal operation. Historic-mtime files (bulk imports, restic restores)
+never qualify — and `cass index --full` skips explicit local sources
+entirely — so after any bulk import run `funk transcript-vault backfill`,
+which force-ingests every archive project directory through
+`cass index --watch-once` in batches.
 
 `funk install-transcript-vault` renders and bootstraps the
 `com.arthack.funk.transcript-vault` LaunchAgent (at login and hourly);
