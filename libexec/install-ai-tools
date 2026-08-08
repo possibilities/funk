@@ -258,7 +258,6 @@ EOF
   npx --yes skills add https://github.com/vercel-labs/native --agent codex claude-code opencode pi --skill native-sdk --global --yes
   npx --yes skills add "$HOME/code/arthack" --agent codex claude-code opencode pi --skill hack resource-create resource-update --global --yes
   "$HOME/code/arthack/scripts/render"
-  npx --yes skills add "$HOME/code/agentchats" --agent codex claude-code opencode pi --skill chats --global --yes
 EOF
     "$script_dir/install-code-skills" --check
     if [ -f "$HOME/code/agentchats/scripts/install.sh" ]; then
@@ -490,13 +489,12 @@ if [ "$agent_clis_status" -ne 0 ]; then
     exit "$agent_clis_status"
 fi
 
-# cass — the coding-agent session search CLI — and the chats skill that
-# teaches agents to wield it both live in the agentchats checkout. Its
-# installer owns the cass binary (upstream checksummed release) and the
-# index over the local Claude Code, Codex, and Pi session stores; the
-# skills line keeps chats current in every configured global agent skill
-# location. A machine without the checkout skips both, like the agent CLIs
-# above; a present checkout that fails to install is a real error.
+# cass — the coding-agent session search CLI — installs by the agentchats
+# checkout's own contract: the upstream checksummed release plus the index
+# over the local Claude Code, Codex, and Pi session stores. Its chats skill
+# ships through the agent* checkout skill scan like every other tool's. A
+# machine without the checkout skips, like the agent CLIs above; a present
+# checkout that fails to install is a real error.
 agentchats_root="$HOME/code/agentchats"
 if [ -f "$agentchats_root/scripts/install.sh" ]; then
     agentchats_status=0
@@ -506,24 +504,18 @@ if [ -f "$agentchats_root/scripts/install.sh" ]; then
             "$agentchats_status" "$agentchats_root" >&2
         exit "$agentchats_status"
     fi
-
-    printf 'Synchronizing the chats agent skill.\n'
-    npx --yes skills add "$agentchats_root" \
-        --agent codex claude-code opencode pi \
-        --skill chats \
-        --global --yes
 else
-    printf 'Funk AI tools installer: no agentchats checkout at %s; skipping cass and the chats skill.\n' \
+    printf 'Funk AI tools installer: no agentchats checkout at %s; skipping cass.\n' \
         "$agentchats_root"
 fi
 
 # Every other agent tool publishes its skills by convention — skills/<name>/
 # inside a checkout named agent* — so they are discovered rather than listed
 # here, and a tool that adds or renames a skill needs no edit in this file.
-# The explicit Art Hack and agentchats lines above stay explicit because they
-# are not that convention: Art Hack keeps root-level skill directories and
-# must be rendered against the operator's extension prompts afterwards, and
-# agentchats keeps its skill at chats/SKILL.md beside a binary installer.
+# That includes agentchats' chats skill at skills/chats/. The explicit Art
+# Hack lines above stay explicit because they are not that convention: Art
+# Hack keeps root-level skill directories and must be rendered against the
+# operator's extension prompts afterwards.
 "$script_dir/install-code-skills"
 
 # The pinned Native SDK CLI and Zig above are AgentVoice's packaging
