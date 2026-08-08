@@ -598,8 +598,12 @@ printf '%s\n' "$agentvoice_missing_output" \
 # found, and it must leave AgentVoice alone -- AgentVoice's own installer links
 # its skills live from the checkout, so a `skills add` over the same names
 # would replace those links with copies on every single run.
-code_skills_root="$update_test_dir/code-root"
-code_skills_log="$update_test_dir/code-skills-npx.log"
+# Its own directory rather than a corner of the update fixture: the installation
+# plan asserted much further down embeds this same scan, and the update fixture
+# is removed long before that.
+code_skills_dir=$(mktemp -d "${TMPDIR:-/tmp}/funk-code-skills-test.XXXXXX")
+code_skills_root="$code_skills_dir/code-root"
+code_skills_log="$code_skills_dir/npx.log"
 mkdir -p \
     "$code_skills_root/agentdemo/skills/demo" \
     "$code_skills_root/agentdemo/skills/second" \
@@ -1262,7 +1266,11 @@ if grep -F 'app="^browserctl-display$"' \
     fail "Yabai floats browserctl-display even though Funk does not install it"
 fi
 
-ai_install_plan=$(libexec/install-ai-tools --check)
+# The plan embeds the per-project skill scan, whose output depends on which
+# checkouts exist on this machine. Point it at the fixture tree so the plan
+# asserted here is the same on every machine, and so the discovered line can be
+# matched exactly rather than approximately.
+ai_install_plan=$(FUNK_CODE_ROOT="$code_skills_root" libexec/install-ai-tools --check)
 for required_ai_install in \
     'brew install or upgrade gh  # intentional duplicate of the Brewfile' \
     'brew install or upgrade --cask --greedy claude' \
@@ -1294,6 +1302,8 @@ for required_ai_install in \
     'npx --yes skills add https://github.com/shadcn/ui --agent codex claude-code opencode pi --skill shadcn --global --yes' \
     'npx --yes skills add https://github.com/vercel-labs/native --agent codex claude-code opencode pi --skill native-sdk --global --yes' \
     "npx --yes skills add \"\$HOME/code/arthack\" --agent codex claude-code opencode pi --skill hack resource-create resource-update --global --yes" \
+    "npx --yes skills add \"\$HOME/code/agentchats\" --agent codex claude-code opencode pi --skill chats --global --yes" \
+    "npx --yes skills add \"$code_skills_root/agentdemo\" --agent codex claude-code opencode pi --skill demo second --global --yes" \
     "\"\$HOME/code/arthack/scripts/render\""; do
     printf '%s\n' "$ai_install_plan" | grep -F "$required_ai_install" >/dev/null \
         || fail "AI installation plan is missing: $required_ai_install"
@@ -1304,6 +1314,36 @@ fi
 if printf '%s\n' "$ai_install_plan" | grep -qi 'livekit'; then
     fail "AI installation plan still includes LiveKit setup"
 fi
+# AgentVoice exports skills/ like the other agent tools, so the scan must be
+# the thing that leaves it alone -- its own installer links those skills live.
+if printf '%s\n' "$ai_install_plan" \
+    | grep -F "skills add \"$code_skills_root/agentvoice\"" >/dev/null; then
+    fail "AI installation plan synchronizes the skills AgentVoice installs itself"
+fi
+rm -rf "$code_skills_dir"
+
+# shellcheck disable=SC2016 # Match the literal helper invocations in the script.
+for code_skills_invocation in \
+    '"$script_dir/install-code-skills" --check' \
+    '"$script_dir/install-code-skills"'; do
+    grep -F "$code_skills_invocation" libexec/install-ai-tools >/dev/null \
+        || fail "AI installer does not run the per-project skill scan: $code_skills_invocation"
+done
+# The scan must follow the explicit lines it deliberately does not replace. It
+# must also precede the desktop application install, which is asserted with the
+# rest of the AgentVoice ordering below.
+ai_code_skills_line=$(
+    # shellcheck disable=SC2016 # Match the literal helper invocation.
+    grep -n -F '"$script_dir/install-code-skills"' libexec/install-ai-tools \
+        | grep -v -F -- '--check' | cut -d: -f1
+)
+ai_agentchats_skill_line=$(
+    # shellcheck disable=SC2016 # Match the literal agentchats sync in the script.
+    grep -n -F 'npx --yes skills add "$agentchats_root"' libexec/install-ai-tools \
+        | cut -d: -f1
+)
+[ "$ai_agentchats_skill_line" -lt "$ai_code_skills_line" ] \
+    || fail "AI installer runs the project skill scan before the explicit agentchats skill"
 grep -F "art_hack_root=\"\$HOME/code/arthack\"" libexec/install-ai-tools >/dev/null \
     || fail "AI installer does not own the Art Hack skill source"
 grep -F "npx --yes skills add \"\$art_hack_root\"" libexec/install-ai-tools >/dev/null \
@@ -1346,6 +1386,10 @@ ai_agentvoice_app_line=$(
 [ "$ai_zig_line" -lt "$ai_agentvoice_app_line" ] \
     && [ "$ai_native_sdk_line" -lt "$ai_agentvoice_app_line" ] \
     || fail "AI installer installs the AgentVoice app before its native prerequisites"
+# Skills are cheap and local; the desktop application install can refuse and end
+# the run. Synchronizing the runbooks first means a refusal never costs them.
+[ "$ai_code_skills_line" -lt "$ai_agentvoice_app_line" ] \
+    || fail "AI installer runs the project skill scan after the AgentVoice app install"
 # shellcheck disable=SC2016 # Match the literal status variable in the script.
 grep -F 'exit "$agentvoice_app_status"' libexec/install-ai-tools >/dev/null \
     || fail "AI installer does not propagate an AgentVoice app installation failure"

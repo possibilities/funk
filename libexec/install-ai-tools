@@ -260,6 +260,7 @@ EOF
   "$HOME/code/arthack/scripts/render"
   npx --yes skills add "$HOME/code/agentchats" --agent codex claude-code opencode pi --skill chats --global --yes
 EOF
+    "$script_dir/install-code-skills" --check
     if [ -f "$HOME/code/agentchats/scripts/install.sh" ]; then
         "$HOME/code/agentchats/scripts/install.sh" --check
     fi
@@ -515,6 +516,15 @@ else
     printf 'Funk AI tools installer: no agentchats checkout at %s; skipping cass and the chats skill.\n' \
         "$agentchats_root"
 fi
+
+# Every other agent tool publishes its skills by convention — skills/<name>/
+# inside a checkout named agent* — so they are discovered rather than listed
+# here, and a tool that adds or renames a skill needs no edit in this file.
+# The explicit Art Hack and agentchats lines above stay explicit because they
+# are not that convention: Art Hack keeps root-level skill directories and
+# must be rendered against the operator's extension prompts afterwards, and
+# agentchats keeps its skill at chats/SKILL.md beside a binary installer.
+"$script_dir/install-code-skills"
 
 # The pinned Native SDK CLI and Zig above are AgentVoice's packaging
 # prerequisites, so the desktop application is installed last. AgentVoice owns
