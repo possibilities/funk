@@ -9,10 +9,12 @@
 #   2. restic backup of the archive plus the live ~/.claude to the B2
 #      repository, and to silverbird when it is reachable. No forget or
 #      prune anywhere: repository snapshots are kept forever.
-#   3. cass index over the live tree and then the archive tree (via a HOME
-#      override into the archive's home/ shim) so coding-agent-session-search
-#      stays current. The index lives on /Volumes/Scratch because the
-#      internal disk cannot hold an index over the full transcript corpus.
+#   3. cass index so coding-agent-session-search stays current. The archive
+#      tree is covered by the "archive" local source in
+#      ~/.config/cass/sources.toml (explicit scan roots bypass cass's
+#      default per-agent discovery), so one index pass covers the live
+#      stores and the archive together. The index lives on /Volumes/Scratch
+#      because the internal disk cannot hold an index over the full corpus.
 #
 # Stages degrade independently. The exit status reflects preservation only:
 # nonzero when the live sync or the B2 backup failed, zero otherwise.
@@ -135,26 +137,20 @@ if [ -f "$CREDS_DIR/silverbird.env" ]; then
 fi
 
 # --- 3. cass search index --------------------------------------------------
-index_with() {
-    # index_with <label> [HOME override]
-    local label="$1" home_override="${2:-}" out rc=0
-    if [ -n "$home_override" ]; then
-        out=$(HOME="$home_override" nice -n 20 cass index \
-            --data-dir "$CASS_DATA_DIR" --json --no-progress-events 2>&1) || rc=$?
-    else
-        out=$(nice -n 20 cass index \
-            --data-dir "$CASS_DATA_DIR" --json --no-progress-events 2>&1) || rc=$?
-    fi
-    if [ "$rc" -eq 0 ]; then
-        log "cass index ($label) done: $(printf '%s' "$out" | tr -d '\n' | cut -c 1-300)"
-    else
-        log "cass index ($label) failed or busy, exit $rc (non-fatal)"
-    fi
-}
-
+# One incremental pass covers the live agent stores and the archive (the
+# "archive" local source in ~/.config/cass/sources.toml). Incremental runs
+# are watermark-gated by mtime, which covers everything rsync adds in normal
+# operation; bulk imports of historic-mtime files need a one-shot
+# `cass index --full --data-dir /Volumes/Scratch/cass`.
 if command -v cass >/dev/null 2>&1 && [ -d "$CASS_DATA_DIR" ]; then
-    index_with live
-    index_with archive "$ARCHIVE_HOME"
+    index_rc=0
+    index_out=$(nice -n 20 cass index \
+        --data-dir "$CASS_DATA_DIR" --json --no-progress-events 2>&1) || index_rc=$?
+    if [ "$index_rc" -eq 0 ]; then
+        log "cass index done: $(printf '%s' "$index_out" | tr -d '\n' | cut -c 1-300)"
+    else
+        log "cass index failed or busy, exit $index_rc (non-fatal)"
+    fi
 else
     log "SKIP cass: binary or $CASS_DATA_DIR missing"
 fi

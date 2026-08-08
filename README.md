@@ -695,16 +695,18 @@ keeps every session searchable:
    repository, tagged `claude-transcripts`, and to the silverbird repository
    when that host is reachable. The vault never runs `forget` or `prune`;
    snapshots accumulate indefinitely.
-3. `cass index` over the live tree, then over the archive tree through the
-   archive's `home/` HOME shim, into the shared index on
-   `/Volumes/Scratch/cass`, so coding-agent session search covers the full
-   history.
+3. `cass index` into the shared index on `/Volumes/Scratch/cass`, so
+   coding-agent session search covers the full history. The archive tree is
+   indexed through the `archive` local source in `~/.config/cass/sources.toml`
+   (explicit scan roots bypass cass's default per-agent discovery, which
+   only looks under `$HOME`), so one pass covers the live stores and the
+   archive together.
 
 The hourly index passes are incremental and watermark-gated: they pick up
 files whose mtimes are recent, which covers everything the rsync stage adds
 in normal operation. After bulk-importing historic files (old mtimes) into
 the archive, run the one-shot full pass so they are ingested:
-`HOME=/Volumes/Scratch/claude-archive/home cass index --full --data-dir /Volumes/Scratch/cass`.
+`cass index --full --data-dir /Volumes/Scratch/cass`.
 
 `funk install-transcript-vault` renders and bootstraps the
 `com.arthack.funk.transcript-vault` LaunchAgent (at login and hourly);
