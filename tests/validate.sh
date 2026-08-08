@@ -1302,7 +1302,6 @@ for required_ai_install in \
     'npx --yes skills add https://github.com/shadcn/ui --agent codex claude-code opencode pi --skill shadcn --global --yes' \
     'npx --yes skills add https://github.com/vercel-labs/native --agent codex claude-code opencode pi --skill native-sdk --global --yes' \
     "npx --yes skills add \"\$HOME/code/arthack\" --agent codex claude-code opencode pi --skill hack resource-create resource-update --global --yes" \
-    "npx --yes skills add \"\$HOME/code/agentchats\" --agent codex claude-code opencode pi --skill chats --global --yes" \
     "npx --yes skills add \"$code_skills_root/agentdemo\" --agent codex claude-code opencode pi --skill demo second --global --yes" \
     "\"\$HOME/code/arthack/scripts/render\""; do
     printf '%s\n' "$ai_install_plan" | grep -F "$required_ai_install" >/dev/null \
@@ -1319,6 +1318,13 @@ fi
 if printf '%s\n' "$ai_install_plan" \
     | grep -F "skills add \"$code_skills_root/agentvoice\"" >/dev/null; then
     fail "AI installation plan synchronizes the skills AgentVoice installs itself"
+fi
+# The agentchats checkout moved its skill to skills/chats/, so the scan ships
+# it and an explicit line would be the second synchronization path the
+# agentchats guidance forbids.
+if printf '%s\n' "$ai_install_plan" \
+    | grep -F '/code/agentchats"' >/dev/null; then
+    fail "AI installation plan still synchronizes chats explicitly beside the scan"
 fi
 rm -rf "$code_skills_dir"
 
@@ -1337,13 +1343,15 @@ ai_code_skills_line=$(
     grep -n -F '"$script_dir/install-code-skills"' libexec/install-ai-tools \
         | grep -v -F -- '--check' | cut -d: -f1
 )
-ai_agentchats_skill_line=$(
-    # shellcheck disable=SC2016 # Match the literal agentchats sync in the script.
-    grep -n -F 'npx --yes skills add "$agentchats_root"' libexec/install-ai-tools \
-        | cut -d: -f1
+ai_arthack_render_line=$(
+    # shellcheck disable=SC2016 # Match the literal render invocation in the
+    # script; the string also appears in its earlier -x precondition, so the
+    # last match is the invocation itself.
+    grep -n -F '"$art_hack_root/scripts/render"' libexec/install-ai-tools \
+        | tail -1 | cut -d: -f1
 )
-[ "$ai_agentchats_skill_line" -lt "$ai_code_skills_line" ] \
-    || fail "AI installer runs the project skill scan before the explicit agentchats skill"
+[ "$ai_arthack_render_line" -lt "$ai_code_skills_line" ] \
+    || fail "AI installer runs the project skill scan before the explicit Art Hack lines"
 grep -F "art_hack_root=\"\$HOME/code/arthack\"" libexec/install-ai-tools >/dev/null \
     || fail "AI installer does not own the Art Hack skill source"
 grep -F "npx --yes skills add \"\$art_hack_root\"" libexec/install-ai-tools >/dev/null \
