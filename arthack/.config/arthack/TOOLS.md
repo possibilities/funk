@@ -1,7 +1,8 @@
 ## Tools
 
-Bespoke local CLIs, all on PATH, built for agents. Run `<tool> --agent-help`
-before a session's first real use of one — it is the agent runbook: when to
+Bespoke local CLIs, all on PATH, built for agents — plus one adopted
+third-party tool, flagged below. Run `<tool> --agent-help` before a
+session's first real use of a bespoke one — it is the agent runbook: when to
 reach for the tool and how to use it well. `--help` stays the reference for
 exact flags. All emit structured output (`--json` or an envelope).
 
@@ -26,3 +27,9 @@ exact flags. All emit structured output (`--json` or an envelope).
   for what is unblocked, `claim` before starting, `done` when finished. Speak
   labels, never ids; bulk reshaping goes through `groom export`/`apply`, and
   `render --publish` snapshots the board into agentwiki.
+- `cass` (third-party) — search every past coding-agent session on this
+  machine: Claude Code, Codex, Pi, and twenty more. Reach for it whenever a
+  bug, error message, or decision feels familiar — the answer is often in an
+  old session. No `--agent-help`: load the `chats` skill before first use —
+  it is the runbook — and never run bare `cass` (it opens a blocking TUI);
+  always pass `--robot`.

@@ -92,7 +92,10 @@ Do not install or synchronize a separate `funk` skill. `~/code/arthack`
 remains the source of truth for the personal `hack`, `resource-create`, and
 `resource-update` skills, each of which the Funk installer must refresh
 completely, including `agents/openai.yaml`, in all configured global agent skill
-locations.
+locations. `~/code/agentchats` is likewise the source of truth for the
+`chats` skill and for the cass session-search CLI's installation contract
+(`scripts/install.sh --install`); Funk invokes both from
+`libexec/install-ai-tools` and skips them on a machine without the checkout.
 
 The extension prompts those skills render against are Funk's, not Art Hack's:
 the `arthack` package owns `~/.config/arthack/`. Edit
