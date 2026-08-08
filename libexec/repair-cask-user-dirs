@@ -28,7 +28,7 @@ find_brew() {
 
 usage() {
     cat <<'EOF'
-Usage: repair-cask-user-dirs [--check] [--brewfile FILE] [CASK ...]
+Usage: repair-cask-user-dirs [--check|--list] [--brewfile FILE] [CASK ...]
 
 Report Caskroom entries whose recorded install directories point into a home
 other than this account's.
@@ -47,6 +47,11 @@ fonts, so the scheduled path stays passwordless.
 
 Options:
   --check           Report affected casks without changing anything
+  --list            Print only the affected cask tokens, one per line, and
+                    always exit 0. The scheduled path uses this to skip them
+                    rather than reinstall them: the repair is a reinstall, and
+                    an unattended run is the wrong place to remove a working
+                    cask on the chance the reinstall succeeds.
   --brewfile FILE   Also select every cask declared by FILE
 EOF
 }
@@ -57,6 +62,7 @@ casks=()
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --check) mode=check ;;
+        --list) mode=list ;;
         --brewfile)
             [ "$#" -ge 2 ] || {
                 usage >&2
@@ -86,7 +92,7 @@ done
 brew_bin=$(find_brew) || die "Homebrew is not installed"
 caskroom="$("$brew_bin" --prefix)/Caskroom"
 [ -d "$caskroom" ] || {
-    [ "$mode" = check ] || printf 'Funk cask user dirs: no Caskroom present\n'
+    [ "$mode" != repair ] || printf 'Funk cask user dirs: no Caskroom present\n'
     exit 0
 }
 
@@ -98,7 +104,7 @@ if [ -n "$brewfile" ]; then
 fi
 
 if [ "${#casks[@]}" -eq 0 ]; then
-    [ "$mode" = check ] || printf 'Funk cask user dirs: no casks selected\n'
+    [ "$mode" != repair ] || printf 'Funk cask user dirs: no casks selected\n'
     exit 0
 fi
 
@@ -145,7 +151,12 @@ while IFS= read -r token; do
 done <"$user_dir_casks"
 
 if [ "${#stale[@]}" -eq 0 ]; then
-    [ "$mode" = check ] || printf 'Funk cask user dirs: every cask installs into %s\n' "$HOME"
+    [ "$mode" != repair ] || printf 'Funk cask user dirs: every cask installs into %s\n' "$HOME"
+    exit 0
+fi
+
+if [ "$mode" = list ]; then
+    printf '%s\n' "${stale[@]}"
     exit 0
 fi
 

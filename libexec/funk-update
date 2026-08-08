@@ -44,6 +44,7 @@ brewfile="$funk_root/Brewfile"
 orca_installer="$funk_root/libexec/install-orca"
 brewfile_installer="$funk_root/libexec/converge-brewfile"
 unattendable_lister="$funk_root/libexec/list-unattendable-casks"
+cask_dir_lister="$funk_root/libexec/repair-cask-user-dirs"
 agentvoice_installer="$funk_root/libexec/install-agentvoice-skills"
 code_skills_installer="$funk_root/libexec/install-code-skills"
 
@@ -61,6 +62,10 @@ fi
 }
 [ -x "$unattendable_lister" ] || {
     log "FAILED: cask triage helper not found at $unattendable_lister" >&2
+    exit 66
+}
+[ -x "$cask_dir_lister" ] || {
+    log "FAILED: cask user-dir helper not found at $cask_dir_lister" >&2
     exit 66
 }
 [ -x "$agentvoice_installer" ] || {
@@ -96,6 +101,7 @@ snapshot_versions() {
     local output
     local version
     local label
+    local orca_plist
     local lock_file="$HOME/.agents/.skill-lock.json"
 
     : >"$destination"
@@ -111,11 +117,19 @@ snapshot_versions() {
         done < <("$brew_bin" bundle list --file="$brewfile" --"$kind" 2>/dev/null || true)
     done
 
-    name=stablyai/orca/orca
-    output=$("$brew_bin" list --cask --versions orca 2>/dev/null || true)
-    if [ -n "$output" ]; then
-        version=${output#* }
-        printf 'brew:cask:%s\tOrca\t%s\n' "$name" "$version" >>"$destination"
+    # Orca updates itself, so Homebrew's receipt stops describing what is
+    # actually installed the first time the app's own updater applies a
+    # release. The bundle is the only honest source, and reading it also keeps
+    # the running-copy check below meaningful no matter which updater moved it.
+    orca_plist=${FUNK_ORCA_INFO_PLIST:-/Applications/Orca.app/Contents/Info.plist}
+    if [ -f "$orca_plist" ]; then
+        version=$(
+            /usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' \
+                "$orca_plist" 2>/dev/null || true
+        )
+        if [ -n "$version" ]; then
+            printf 'app:orca\tOrca\t%s\n' "$version" >>"$destination"
+        fi
     fi
 
     if [ -f "$lock_file" ]; then
@@ -209,12 +223,13 @@ send_notification() {
         -group "$group"
 }
 
-# Homebrew replaces Orca's bundle without quitting it -- the cask declares no
-# quit directive -- so a running Orca keeps serving the old bundle until it is
-# restarted. Nothing else would say so, and this is a machine where Orca is
-# always running, so the upgrade is otherwise invisible until something behaves
-# oddly. A dedicated group keeps the prompt from being buried in the general
-# "Updated: ..." summary.
+# Funk no longer upgrades Orca -- the app's own updater does, and it applies on
+# quit, so the running copy is normally the one on disk. This stays as the
+# tripwire for when that is not true: whatever replaced the bundle, a running
+# Orca goes on serving code that is no longer there, and the first lazily
+# loaded pane fails on a chunk it can no longer resolve. Nothing else would say
+# so on a machine where Orca is always open. A dedicated group keeps the prompt
+# from being buried in the general "Updated: ..." summary.
 orca_restart_notice() {
     local version
     local running_processes
@@ -246,7 +261,20 @@ snapshot_versions "$before"
 # application still owned by another local account all need administrator
 # authentication. This LaunchAgent has no terminal, so attempting one fails the
 # whole run. Leave them to ./install and report them instead of failing here.
-skipped_casks=$("$unattendable_lister" --brewfile "$brewfile" 2>/dev/null || true)
+#
+# A cask installed under a previous account fails the same way for a different
+# reason: Homebrew recorded that account's user directories, so the upgrade
+# hunts for the old version's artifacts in a home this account cannot read and
+# reports only that a source file "is not there". One such cask failed every
+# scheduled run for a day, which also meant nothing after the Brewfile step
+# ran at all. Repairing it is a reinstall, which is not something an unattended
+# run should attempt, so triage it here and leave the repair to ./install.
+skipped_casks=$(
+    {
+        "$unattendable_lister" --brewfile "$brewfile" 2>/dev/null || true
+        "$cask_dir_lister" --list --brewfile "$brewfile" 2>/dev/null || true
+    } | LC_ALL=C sort -u
+)
 skipped_summary=
 if [ -n "$skipped_casks" ]; then
     export HOMEBREW_BUNDLE_CASK_SKIP="$skipped_casks"
@@ -254,7 +282,7 @@ if [ -n "$skipped_casks" ]; then
         printf '%s\n' "$skipped_casks" \
             | /usr/bin/awk 'NF { list = list ? list ", " $0 : $0 } END { print list }'
     )
-    log "skipping casks that require administrator authentication: $skipped_summary"
+    log "skipping casks that cannot converge unattended: $skipped_summary"
 fi
 
 status=0

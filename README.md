@@ -537,6 +537,24 @@ notification as `Needs ./install: ...`, so an interactive `./install` still
 upgrades them. The helper only reads Homebrew metadata and file ownership; the
 scheduled path never elevates.
 
+A cask installed under a previous account fails the same run for a different
+reason, so its tokens join the same skip set:
+
+```sh
+libexec/repair-cask-user-dirs --list --brewfile Brewfile
+```
+
+Homebrew records the user directories it installs into — `fontdir`,
+`prefpanedir` and the rest — in each cask's metadata at install time. A cask
+installed by another account keeps that account's paths forever, so every later
+upgrade looks for the previous version's artifacts in a home this account
+usually cannot even read. Nothing in the failure names the cause: Homebrew
+reports only that a source file `is not there`. One stale font cask failed every
+scheduled run for a day that way, and because the Brewfile step aborts the run,
+nothing after it ran either. Repairing one is a reinstall, which an unattended
+run should not attempt, so the scheduled path skips and reports them and
+`./install` repairs them.
+
 The explicit `--upgrade` overrides `HOMEBREW_BUNDLE_NO_UPGRADE`; every Brewfile
 cask is also marked `greedy: true`, so Homebrew considers casks that declare
 their own updater or an unversioned latest release. Homebrew still honors a
@@ -546,21 +564,34 @@ outside Homebrew can have a version different from its Homebrew receipt.
 The user LaunchAgent runs `funk update --notify` at 00:00, 06:00, 12:00, and
 18:00 local time and appends stdout/stderr to
 `~/Library/Logs/Funk/update.log`. The updater snapshots the Homebrew receipt
-versions for the managed Brewfile entries and Orca, plus the three Orca skill
-revision hashes, before and after convergence. A notification lists only
+versions for the managed Brewfile entries, Orca's installed bundle version, plus
+the three Orca skill revision hashes, before and after convergence. Orca's
+version comes from `Orca.app/Contents/Info.plist` rather than its Homebrew
+receipt, because the app updates itself and the receipt stops describing what is
+installed the first time it does. A notification lists only
 components whose recorded version or revision actually changed. A no-op says
 `Installer ran; no updates.` Failures retain their exit status and send a short
 failure notification when `terminal-notifier` is available.
 
-Orca is upgraded on this path, and Homebrew replaces its bundle without quitting
-it — the cask declares no quit directive — so a running Orca keeps serving the
-old bundle until it is restarted. On a machine where Orca is always open that is
-invisible until something behaves oddly, so an upgrade that finds Orca running
-sends a second notification, in its own `com.arthack.funk.orca-restart` group so
-it is not buried in the `Updated: …` summary. A stopped Orca gets no prompt: it
-picks the new bundle up on its next launch. The check compares the executable
-path exactly, because `pgrep -x` does not match this bundle on macOS and the
-name alone would also match the `Orca Helper` processes.
+Orca is installed on this path but never upgraded on it. The cask marks itself
+`auto_updates true` precisely so Homebrew will not compete with the app's own
+updater, and `--greedy` is the one flag that overrides that. Overriding it
+replaced the bundle under a running Orca, whose renderer then resolved its
+code-split chunks out of a bundle that was no longer the one it had started
+from: opening Preferences produced a screen of unrelated source and a dead
+window. Orca's updater stages a release and applies it on quit, when there is
+nothing left to break, so `libexec/install-orca` converges the cask with
+`--install-only` — installing a missing Orca, leaving an installed one alone.
+See `docs/adr/0001-orca-updates-itself.md`.
+
+Something replacing the bundle under a running Orca is still worth saying out
+loud, whoever does it, so the run compares the installed bundle version across
+convergence and prompts when it moved while Orca was running. The prompt goes to
+its own `com.arthack.funk.orca-restart` group so it is not buried in the
+`Updated: …` summary. A stopped Orca gets no prompt: it picks the new bundle up
+on its next launch. The check compares the executable path exactly, because
+`pgrep -x` does not match this bundle on macOS and the name alone would also
+match the `Orca Helper` processes.
 
 Other AI tools remain outside the scheduled path: their vendor installers,
 application updaters, account-sensitive MCP setup, and local Art Hack skill

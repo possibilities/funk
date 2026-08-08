@@ -36,7 +36,7 @@ case "${1:-}" in
         cat <<'EOF'
 Orca:
   brew install --cask --yes stablyai/orca/orca  # when missing
-  brew upgrade --cask --greedy --yes stablyai/orca/orca  # when installed
+  leave an installed Orca to its own updater  # never brew upgrade
   remove com.apple.quarantine only from Homebrew's declared Orca.app target
   npx --yes skills add https://github.com/stablyai/orca --agent codex claude-code opencode pi --skill orca-cli orchestration computer-use --global --yes
   verify the cask receipt and the three global skill records
@@ -63,7 +63,15 @@ original_path=$PATH
 export FUNK_BREW_BIN="$brew_bin"
 export PATH="$HOME/.local/bin:$HOME/.opencode/bin:$brew_prefix/bin:/usr/bin:/bin:/usr/sbin:/sbin:$original_path"
 
-"$script_dir/converge-brew-casks" stablyai/orca/orca
+# Install-only, because Orca ships its own updater and the cask says so:
+# `auto_updates true` exists to keep Homebrew from competing with it, and
+# `--greedy` is precisely the flag that overrides that. Homebrew replaces the
+# bundle in place without quitting the app, so upgrading a running Orca leaves
+# its renderer resolving code-split chunks out of a bundle that is no longer
+# the one it started from -- the app breaks mid-session, most visibly on the
+# first lazily loaded pane. Orca's own updater stages the download and applies
+# it on quit, when nothing is left to break.
+"$script_dir/converge-brew-casks" --install-only stablyai/orca/orca
 
 if [ -n "${FUNK_NPX_BIN:-}" ] && [ -x "$FUNK_NPX_BIN" ]; then
     npx_bin="$FUNK_NPX_BIN"
