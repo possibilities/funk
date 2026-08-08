@@ -21,7 +21,6 @@ output (`--json` or an envelope).
   published artifacts. Skill: `wiki`.
 - `agentboard` — the shared planning board: `ready`, `claim`, `done`; speak
   labels, never ids. Skills: `board`, and `groom` for bulk reshaping.
-- `cass` (third-party) — search every past coding-agent session on this
-  machine; reach for it when a bug, error, or decision feels familiar.
-  Never run bare `cass` (blocking TUI) — subcommand + `--robot`.
-  Skill: `chats`.
+- `chats` (skill) — search every past coding-agent session on this machine;
+  reach for it when a bug, error, or decision feels familiar. The adopted
+  third-party CLI underneath is taught entirely by the skill.
