@@ -18,12 +18,15 @@ installers:
 - The AgentVoiceNext voice CLI (`agentvoicenext`), linked editable by its own
   `cli:install` contract from `~/code/agentvoicenext` when that checkout
   exists
+- cass, the coding-agent session search CLI, installed and index-prepared by
+  the Agentchats checkout's own contract from `~/code/agentchats` when that
+  checkout exists, together with its `chats` skill
 - Orca CLI, orchestration, computer-use, skill-discovery, frontend design,
   web-design review, React engineering, Vercel AI SDK, AI Elements, shadcn,
   Native SDK discovery, and the Art Hack agent skills
 - Yabai, skhd, and the narrowly justified Karabiner-Elements layer
 - Git Delta, Neovim, tmux, Starship, btop, GNU Stow, and supporting
-  shell/development tools, including `terminal-notifier`
+  shell/development tools, including `terminal-notifier` and `restic` and `restic`
 
 `libexec/install-ai-tools` uses the official shell installers for
 [Claude Code](https://code.claude.com/docs/en/terminal-guide),
@@ -110,6 +113,15 @@ extension prompts are the places to change them.
 Funk's own agent guidance lives in this repository's `AGENTS.md` instead of a
 priming skill. Funk remains the sole owner of AI-stack installation; Art Hack
 owns its templates and their rendering and does not provide a second installer.
+
+The installer then converges the searchable session archive from the
+Agentchats checkout at `~/code/agentchats`. Its `scripts/install.sh --install`
+owns cass — the coding-agent session search CLI — installing the upstream
+checksummed release into `~/.local/bin` and building or refreshing the index
+over the local Claude Code, Codex, and Pi session stores, and the same pass
+synchronizes the locally authored `chats` skill, cass's agent runbook, for
+Codex, Claude Code, OpenCode, and Pi. A machine without the checkout skips
+both; a present checkout that fails to install fails the run.
 
 The installer also links each CLI's global guidance location at the shared
 file: `~/.claude/CLAUDE.md` and `~/.codex/AGENTS.md` become symlinks to the
@@ -669,6 +681,74 @@ Everything in the LaunchAgents directory loads at login; this job must run only
 while home-awake has bootstrapped it, and launchd reaps the periodic check's
 process group as soon as that check finishes, so a plain background
 `caffeinate` would not survive.
+
+## Transcript vault
+
+Claude Code deletes transcripts from `~/.claude/projects` once they age past
+`cleanupPeriodDays`. The transcript vault makes that pruning survivable and
+keeps every session searchable:
+
+1. `rsync` the live `~/.claude/projects` into the canonical archive at
+   `/Volumes/Scratch/claude-archive/home/.claude/projects` (additive only —
+   the vault never deletes archive content).
+2. `restic backup` of the archive plus the live `~/.claude` to the B2
+   repository, tagged `claude-transcripts`, and to the silverbird repository
+   when that host is reachable. The vault never runs `forget` or `prune`;
+   snapshots accumulate indefinitely.
+3. `cass index` over the live tree, then over the archive tree through the
+   archive's `home/` HOME shim, into the shared index on
+   `/Volumes/Scratch/cass`, so coding-agent session search covers the full
+   history.
+
+`funk install-transcript-vault` renders and bootstraps the
+`com.arthack.funk.transcript-vault` LaunchAgent (at login and hourly);
+`funk transcript-vault` runs the pipeline once in the foreground. Logs append
+to `~/Library/Logs/Funk/transcript-vault.log`. Every stage no-ops cleanly
+when its prerequisite is missing: an unmounted archive volume ends the run,
+missing credentials skip that repository, a missing cass skips indexing.
+
+Credentials are deliberately not Stow-managed: the vault reads
+`~/.config/restic/b2.env` and `~/.config/restic/silverbird.env` (mode 0600,
+migrated from the previous account) and skips any repository whose file is
+missing. The cass index location is unified across shells, LaunchAgents, and
+the Agentchats installer by symlinking cass's default data directory
+(`~/Library/Application Support/com.coding-agent-search.coding-agent-search`)
+to `/Volumes/Scratch/cass`; the internal disk cannot hold an index over the
+full transcript archive.
+
+## Transcript vault
+
+Claude Code deletes transcripts from `~/.claude/projects` once they age past
+`cleanupPeriodDays`. The transcript vault makes that pruning survivable and
+keeps every session searchable:
+
+1. `rsync` the live `~/.claude/projects` into the canonical archive at
+   `/Volumes/Scratch/claude-archive/home/.claude/projects` (additive only —
+   the vault never deletes archive content).
+2. `restic backup` of the archive plus the live `~/.claude` to the B2
+   repository, tagged `claude-transcripts`, and to the silverbird repository
+   when that host is reachable. The vault never runs `forget` or `prune`;
+   snapshots accumulate indefinitely.
+3. `cass index` over the live tree, then over the archive tree through the
+   archive's `home/` HOME shim, into the shared index on
+   `/Volumes/Scratch/cass`, so coding-agent session search covers the full
+   history.
+
+`funk install-transcript-vault` renders and bootstraps the
+`com.arthack.funk.transcript-vault` LaunchAgent (at login and hourly);
+`funk transcript-vault` runs the pipeline once in the foreground. Logs append
+to `~/Library/Logs/Funk/transcript-vault.log`. Every stage no-ops cleanly
+when its prerequisite is missing: an unmounted archive volume ends the run,
+missing credentials skip that repository, a missing cass skips indexing.
+
+Credentials are deliberately not Stow-managed: the vault reads
+`~/.config/restic/b2.env` and `~/.config/restic/silverbird.env` (mode 0600,
+migrated from the previous account) and skips any repository whose file is
+missing. The cass index location is unified across shells, LaunchAgents, and
+the Agentchats installer by symlinking cass's default data directory
+(`~/Library/Application Support/com.coding-agent-search.coding-agent-search`)
+to `/Volumes/Scratch/cass`; the internal disk cannot hold an index over the
+full transcript archive.
 
 ## Full numbered-Space workflow
 

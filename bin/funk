@@ -36,6 +36,9 @@ Commands:
                       Install the resident Agentbrain and Agentweb services
   verify-local-services
                       Confirm those services are running and reachable
+  transcript-vault   Run the transcript preservation pipeline once now
+  install-transcript-vault
+                      Install the hourly transcript preservation agent
   configure-orca     Apply Funk's Stow-managed Orca settings overlay
   configure-macos    Apply Funk's user-level macOS preferences
   verify-notifications
@@ -86,6 +89,14 @@ case "$command_name" in
     verify-local-services)
         shift
         exec "$FUNK_ROOT/libexec/verify-local-services" "$@"
+        ;;
+    transcript-vault)
+        shift
+        exec "$FUNK_ROOT/bin/.local/bin/transcript-vault" "$@"
+        ;;
+    install-transcript-vault)
+        shift
+        exec "$FUNK_ROOT/libexec/install-transcript-vault-agent" "$@"
         ;;
     configure-orca)
         shift

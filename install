@@ -157,6 +157,7 @@ fi
 "$funk_command" install-tailscale-recovery
 "$funk_command" install-home-awake
 "$funk_command" install-local-services
+"$funk_command" install-transcript-vault
 "$funk_command" configure-macos
 
 # Reported, never fatal: a blocked notifier is the operator's toggle to flip,
@@ -189,6 +190,7 @@ Repository: $funk_root
 Update log: $HOME/Library/Logs/Funk/update.log
 Tailscale recovery log: $HOME/Library/Logs/Funk/tailscale-online.log
 home-awake log: $HOME/Library/Logs/Funk/home-awake.log
+Transcript vault log: $HOME/Library/Logs/Funk/transcript-vault.log
 EOF
 
 if [ "$orca_settings_deferred" -eq 1 ]; then

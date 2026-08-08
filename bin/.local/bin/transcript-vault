@@ -1,0 +1,166 @@
+#!/bin/bash
+# transcript-vault -- preserve and index Claude Code transcripts.
+#
+# Claude Code deletes transcripts older than cleanupPeriodDays from
+# ~/.claude/projects. This pipeline makes that pruning survivable:
+#
+#   1. rsync the live ~/.claude/projects into the canonical archive on
+#      /Volumes/Scratch (additive: files are added and grown, never deleted).
+#   2. restic backup of the archive plus the live ~/.claude to the B2
+#      repository, and to silverbird when it is reachable. No forget or
+#      prune anywhere: repository snapshots are kept forever.
+#   3. cass index over the live tree and then the archive tree (via a HOME
+#      override into the archive's home/ shim) so coding-agent-session-search
+#      stays current. The index lives on /Volumes/Scratch because the
+#      internal disk cannot hold an index over the full transcript corpus.
+#
+# Stages degrade independently. The exit status reflects preservation only:
+# nonzero when the live sync or the B2 backup failed, zero otherwise.
+# Runs hourly (and at login) from com.arthack.funk.transcript-vault.
+
+set -uo pipefail
+
+PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$HOME/.local/bin"
+
+ARCHIVE_ROOT=/Volumes/Scratch/claude-archive
+ARCHIVE_HOME="$ARCHIVE_ROOT/home"
+CANON="$ARCHIVE_HOME/.claude/projects"
+LIVE="$HOME/.claude/projects"
+CASS_DATA_DIR=/Volumes/Scratch/cass
+CREDS_DIR="$HOME/.config/restic"
+export RESTIC_CACHE_DIR=/Volumes/Scratch/cache/restic
+
+log() {
+    printf '[%s] %s\n' "$(date '+%Y-%m-%dT%H:%M:%S')" "$*"
+}
+
+# Single instance: an hourly firing while a long run (initial upload, full
+# index) is still working must skip, not stack.
+LOCK_DIR="/tmp/transcript-vault.$(id -u).lock"
+if ! mkdir "$LOCK_DIR" 2>/dev/null; then
+    other=$(cat "$LOCK_DIR/pid" 2>/dev/null || true)
+    if [ -n "$other" ] && kill -0 "$other" 2>/dev/null; then
+        log "another run (pid $other) is active; skipping"
+        exit 0
+    fi
+    rm -rf "$LOCK_DIR"
+    mkdir "$LOCK_DIR" 2>/dev/null || { log "lock contention; skipping"; exit 0; }
+fi
+printf '%s\n' $$ >"$LOCK_DIR/pid"
+trap 'rm -rf "$LOCK_DIR"' EXIT
+
+if [ ! -d "$ARCHIVE_ROOT" ]; then
+    log "$ARCHIVE_ROOT is not mounted; nothing to do"
+    exit 0
+fi
+mkdir -p "$CANON" "$ARCHIVE_ROOT/history"
+
+# --- 1. live -> archive sync (additive only; never --delete) ---------------
+sync_rc=0
+if [ -d "$LIVE" ]; then
+    rsync -a -- "$LIVE/" "$CANON/" || sync_rc=$?
+    case "$sync_rc" in
+        0) log "live projects synced into archive" ;;
+        23 | 24)
+            log "live projects synced; some files vanished mid-copy (rsync exit $sync_rc)"
+            sync_rc=0
+            ;;
+        *) log "ERROR: rsync of live projects failed (exit $sync_rc)" ;;
+    esac
+    cp -p "$HOME/.claude/history.jsonl" "$ARCHIVE_ROOT/history/arthack-history.jsonl" 2>/dev/null \
+        || log "history.jsonl copy failed (non-fatal)"
+else
+    log "live projects directory missing; sync skipped"
+fi
+
+# --- 2. restic snapshots ---------------------------------------------------
+backup_to() {
+    # Source the repo env in a subshell so repositories cannot leak
+    # credentials or targets into each other.
+    local name="$1"
+    (
+        set -a
+        # shellcheck disable=SC1090
+        . "$CREDS_DIR/$name.env" || exit 90
+        set +a
+        restic unlock >/dev/null 2>&1 || true # removes stale locks only
+        exec restic backup \
+            --quiet \
+            --retry-lock 5m \
+            --tag claude-transcripts \
+            --exclude "$ARCHIVE_ROOT/home/.cache" \
+            --exclude "$HOME/.claude/cache" \
+            --exclude "$HOME/.claude/paste-cache" \
+            --exclude "$HOME/.claude/chrome" \
+            --exclude "$HOME/.claude/daemon" \
+            --exclude "$HOME/.claude/telemetry" \
+            --exclude "$HOME/.claude/session-env" \
+            --exclude "$HOME/.claude/shell-snapshots" \
+            --exclude "$HOME/.claude/downloads" \
+            --exclude "$HOME/.claude/debug" \
+            --exclude '*.merge-tmp' \
+            "$ARCHIVE_ROOT" \
+            "$HOME/.claude" \
+            "$HOME/.claude.json"
+    )
+}
+
+b2_rc=0
+if [ -f "$CREDS_DIR/b2.env" ]; then
+    log "restic backup to b2 starting"
+    if backup_to b2; then
+        log "b2 backup complete"
+    else
+        b2_rc=$?
+        log "ERROR: b2 backup failed (exit $b2_rc)"
+    fi
+else
+    log "SKIP b2: $CREDS_DIR/b2.env missing"
+    b2_rc=91
+fi
+
+if [ -f "$CREDS_DIR/silverbird.env" ]; then
+    if ssh -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new \
+        silverbird true 2>/dev/null; then
+        log "restic backup to silverbird starting"
+        if backup_to silverbird; then
+            log "silverbird backup complete"
+        else
+            log "silverbird backup failed (non-fatal)"
+        fi
+    else
+        log "SKIP silverbird: unreachable"
+    fi
+fi
+
+# --- 3. cass search index --------------------------------------------------
+index_with() {
+    # index_with <label> [HOME override]
+    local label="$1" home_override="${2:-}" out rc=0
+    if [ -n "$home_override" ]; then
+        out=$(HOME="$home_override" nice -n 20 cass index \
+            --data-dir "$CASS_DATA_DIR" --json --no-progress-events 2>&1) || rc=$?
+    else
+        out=$(nice -n 20 cass index \
+            --data-dir "$CASS_DATA_DIR" --json --no-progress-events 2>&1) || rc=$?
+    fi
+    if [ "$rc" -eq 0 ]; then
+        log "cass index ($label) done: $(printf '%s' "$out" | tr -d '\n' | cut -c 1-300)"
+    else
+        log "cass index ($label) failed or busy, exit $rc (non-fatal)"
+    fi
+}
+
+if command -v cass >/dev/null 2>&1 && [ -d "$CASS_DATA_DIR" ]; then
+    index_with live
+    index_with archive "$ARCHIVE_HOME"
+else
+    log "SKIP cass: binary or $CASS_DATA_DIR missing"
+fi
+
+if [ "$sync_rc" -eq 0 ] && [ "$b2_rc" -eq 0 ]; then
+    log "vault run complete"
+    exit 0
+fi
+log "vault run finished with preservation errors (sync=$sync_rc b2=$b2_rc)"
+exit 1

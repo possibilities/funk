@@ -34,6 +34,8 @@ libexec/install-home-awake
 libexec/install-home-awake-agent
 libexec/install-local-services
 libexec/verify-local-services
+libexec/install-transcript-vault-agent
+libexec/install-transcript-vault-agent
 libexec/configure-macos
 libexec/verify-notifications
 libexec/configure-system
@@ -56,6 +58,7 @@ bin/.local/bin/ginit
 bin/.local/bin/ghinit
 bin/.local/bin/tailscale-ensure-online
 bin/.local/bin/home-awake
+bin/.local/bin/transcript-vault
 bin/.local/bin/adb-wireless-connect
 bin/.local/bin/adb-wireless-pair
 bin/.local/bin/raycast/scrcpy.sh
@@ -129,6 +132,8 @@ done
 /usr/bin/plutil -lint launchd/com.arthack.funk.update.plist.in >/dev/null
 /usr/bin/plutil -lint launchd/com.arthack.funk.tailscale-online.plist.in >/dev/null
 /usr/bin/plutil -lint launchd/com.arthack.funk.gog-authed.plist.in >/dev/null
+/usr/bin/plutil -lint launchd/com.arthack.funk.transcript-vault.plist.in >/dev/null
+/usr/bin/plutil -lint launchd/com.arthack.funk.transcript-vault.plist.in >/dev/null
 /usr/bin/plutil -lint system/com.arthack.funk.harden-boot.plist >/dev/null
 /usr/bin/plutil -lint launchd/com.arthack.funk.home-awake.plist.in >/dev/null
 /usr/bin/plutil -lint launchd/com.arthack.funk.home-awake-caffeinate.plist >/dev/null
@@ -231,6 +236,68 @@ actual_home_awake_rules=$(
 grep -F '"$funk_command" install-home-awake' install >/dev/null \
     || fail "installer does not install the trusted-network agent"
 
+transcript_vault_plist=launchd/com.arthack.funk.transcript-vault.plist.in
+[ "$(/usr/libexec/PlistBuddy -c 'Print :RunAtLoad' "$transcript_vault_plist")" = true ] \
+    || fail "transcript vault agent does not run at login"
+[ "$(/usr/libexec/PlistBuddy -c 'Print :StartInterval' "$transcript_vault_plist")" = 3600 ] \
+    || fail "transcript vault agent does not run hourly"
+[ "$(/usr/libexec/PlistBuddy -c 'Print :ProgramArguments:0' "$transcript_vault_plist")" \
+    = __TRANSCRIPT_VAULT__ ] \
+    || fail "transcript vault agent does not invoke the stowed helper"
+[ "$(/usr/libexec/PlistBuddy -c 'Print :EnvironmentVariables:HOME' "$transcript_vault_plist")" \
+    = __FUNK_HOME__ ] \
+    || fail "transcript vault agent does not pin the target user HOME"
+if /usr/libexec/PlistBuddy -c 'Print :ProgramArguments:1' "$transcript_vault_plist" \
+    >/dev/null 2>&1 \
+    || /usr/libexec/PlistBuddy -c 'Print :KeepAlive' "$transcript_vault_plist" \
+        >/dev/null 2>&1; then
+    fail "transcript vault agent has an unapproved argument or trigger"
+fi
+
+# The vault exists to preserve transcripts; nothing in it may ever delete
+# archive or repository content, and its snapshots must stay identifiable.
+if sed 's/#.*//' bin/.local/bin/transcript-vault \
+    | grep -E -- '--delete|restic forget|restic prune' >/dev/null; then
+    fail "transcript vault contains a deletion path"
+fi
+grep -q -- '--tag claude-transcripts' bin/.local/bin/transcript-vault \
+    || fail "transcript vault snapshots are not tagged"
+
+# shellcheck disable=SC2016 # The installer's literal source line is the subject.
+grep -F '"$funk_command" install-transcript-vault' install >/dev/null \
+    || fail "installer does not install the transcript vault agent"
+
+transcript_vault_plist=launchd/com.arthack.funk.transcript-vault.plist.in
+[ "$(/usr/libexec/PlistBuddy -c 'Print :RunAtLoad' "$transcript_vault_plist")" = true ] \
+    || fail "transcript vault agent does not run at login"
+[ "$(/usr/libexec/PlistBuddy -c 'Print :StartInterval' "$transcript_vault_plist")" = 3600 ] \
+    || fail "transcript vault agent does not run hourly"
+[ "$(/usr/libexec/PlistBuddy -c 'Print :ProgramArguments:0' "$transcript_vault_plist")" \
+    = __TRANSCRIPT_VAULT__ ] \
+    || fail "transcript vault agent does not invoke the stowed helper"
+[ "$(/usr/libexec/PlistBuddy -c 'Print :EnvironmentVariables:HOME' "$transcript_vault_plist")" \
+    = __FUNK_HOME__ ] \
+    || fail "transcript vault agent does not pin the target user HOME"
+if /usr/libexec/PlistBuddy -c 'Print :ProgramArguments:1' "$transcript_vault_plist" \
+    >/dev/null 2>&1 \
+    || /usr/libexec/PlistBuddy -c 'Print :KeepAlive' "$transcript_vault_plist" \
+        >/dev/null 2>&1; then
+    fail "transcript vault agent has an unapproved argument or trigger"
+fi
+
+# The vault exists to preserve transcripts; nothing in it may ever delete
+# archive or repository content, and its snapshots must stay identifiable.
+if sed 's/#.*//' bin/.local/bin/transcript-vault \
+    | grep -E -- '--delete|restic forget|restic prune' >/dev/null; then
+    fail "transcript vault contains a deletion path"
+fi
+grep -q -- '--tag claude-transcripts' bin/.local/bin/transcript-vault \
+    || fail "transcript vault snapshots are not tagged"
+
+# shellcheck disable=SC2016 # The installer's literal source line is the subject.
+grep -F '"$funk_command" install-transcript-vault' install >/dev/null \
+    || fail "installer does not install the transcript vault agent"
+
 if command -v ruby >/dev/null 2>&1; then
     ruby -rjson -e '
       data = JSON.parse(File.read(ARGV.fetch(0)))
@@ -323,6 +390,8 @@ brew "jq"
 brew "poppler"
 brew "terminal-notifier"
 brew "yq"
+# Snapshots the Claude Code transcript archive to B2/silverbird (transcript-vault).
+brew "restic"
 brew "ripgrep"
 brew "fzf"
 brew "btop"

@@ -1,0 +1,98 @@
+#!/bin/bash
+
+set -euo pipefail
+
+label=com.arthack.funk.transcript-vault
+
+die() {
+    printf 'funk install-transcript-vault-agent: %s\n' "$*" >&2
+    exit 1
+}
+
+check_only=0
+case "${1:-}" in
+    "") ;;
+    --check)
+        [ "$#" -eq 1 ] || {
+            printf 'Usage: funk install-transcript-vault [--check]\n' >&2
+            exit 64
+        }
+        check_only=1
+        ;;
+    *)
+        printf 'Usage: funk install-transcript-vault [--check]\n' >&2
+        exit 64
+        ;;
+esac
+
+[ "$(uname -s)" = Darwin ] || die "macOS is required"
+[ "$(id -u)" -ne 0 ] || die "run this command as the target user, not root"
+
+funk_root=${FUNK_ROOT:?FUNK_ROOT is not set}
+template="$funk_root/launchd/$label.plist.in"
+helper="$funk_root/bin/.local/bin/transcript-vault"
+agent_dir="$HOME/Library/LaunchAgents"
+agent_path="$agent_dir/$label.plist"
+log_dir="$HOME/Library/Logs/Funk"
+log_path="$log_dir/transcript-vault.log"
+domain="gui/$(id -u)"
+
+[ -f "$template" ] || die "template not found: $template"
+[ -x "$helper" ] || die "vault helper is missing or not executable: $helper"
+
+# The pipeline degrades gracefully at runtime, so missing prerequisites are
+# reported rather than fatal: the agent starts doing useful work the moment
+# they appear.
+[ -f "$HOME/.config/restic/b2.env" ] \
+    || printf 'note: %s/.config/restic/b2.env is missing; restic uploads will be skipped until it exists\n' "$HOME"
+[ -d /Volumes/Scratch/claude-archive ] \
+    || printf 'note: /Volumes/Scratch/claude-archive is not mounted; runs will no-op until it is\n'
+command -v cass >/dev/null 2>&1 || [ -x "$HOME/.local/bin/cass" ] \
+    || printf 'note: cass is not installed; search indexing will be skipped\n'
+
+tmpdir=$(mktemp -d "${TMPDIR:-/tmp}/funk-transcript-vault.XXXXXX")
+trap 'rm -rf "$tmpdir"' EXIT
+rendered="$tmpdir/$label.plist"
+
+cp "$template" "$rendered"
+/usr/bin/plutil -remove ProgramArguments.0 "$rendered"
+/usr/bin/plutil -insert ProgramArguments.0 -string "$helper" "$rendered"
+/usr/bin/plutil -replace EnvironmentVariables.HOME -string "$HOME" "$rendered"
+/usr/bin/plutil -replace StandardOutPath -string "$log_path" "$rendered"
+/usr/bin/plutil -replace StandardErrorPath -string "$log_path" "$rendered"
+/usr/bin/plutil -lint "$rendered" >/dev/null
+
+[ "$(/usr/libexec/PlistBuddy -c 'Print :ProgramArguments:0' "$rendered")" = "$helper" ] \
+    || die "rendered vault helper is incorrect"
+[ "$(/usr/libexec/PlistBuddy -c 'Print :EnvironmentVariables:HOME' "$rendered")" = "$HOME" ] \
+    || die "rendered vault HOME is incorrect"
+if /usr/libexec/PlistBuddy -c 'Print :ProgramArguments:1' "$rendered" >/dev/null 2>&1; then
+    die "rendered vault agent has an unexpected extra argument"
+fi
+[ "$(/usr/libexec/PlistBuddy -c 'Print :RunAtLoad' "$rendered")" = true ] \
+    || die "rendered vault agent does not run at login"
+[ "$(/usr/libexec/PlistBuddy -c 'Print :StartInterval' "$rendered")" = 3600 ] \
+    || die "rendered vault agent does not run hourly"
+
+if [ "$check_only" -eq 1 ]; then
+    printf 'Transcript vault LaunchAgent renders and validates successfully.\n'
+    exit 0
+fi
+
+mkdir -p "$agent_dir" "$log_dir"
+if [ -L "$agent_path" ]; then
+    die "refusing to replace symlink: $agent_path"
+fi
+
+if [ -e "$agent_path" ]; then
+    existing_label=$(/usr/libexec/PlistBuddy -c 'Print :Label' "$agent_path" 2>/dev/null || true)
+    [ "$existing_label" = "$label" ] \
+        || die "refusing to replace unrelated file: $agent_path"
+fi
+
+/usr/bin/install -m 0644 "$rendered" "$agent_path"
+/bin/launchctl bootout "$domain/$label" 2>/dev/null || true
+/bin/launchctl bootstrap "$domain" "$agent_path"
+
+printf 'Installed %s (at login and hourly)\n' "$agent_path"
+printf 'Logs append to %s\n' "$log_path"
