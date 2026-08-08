@@ -1,26 +1,29 @@
 ## Tools
 
-Bespoke local CLIs, all on PATH, built for agents — plus one adopted
-third-party tool, flagged below. Every tool's runbook is its agent skill:
-load the named skill before a session's first real use of that tool.
-`--help` stays the reference for exact flags, and `--agent-help` remains as
-the in-binary fallback when a skill is unavailable. All emit structured
-output (`--json` or an envelope).
+Local capabilities, each delivered as an agent skill. The skill is the
+runbook — it teaches the tool underneath — so load the named skill before
+a session's first real use of that capability. These lines exist only to
+say when.
 
-- `agentsearch` — paid, grounded web research: `ask` for synthesized, cited
-  answers, `find` for links. Skill: `search`.
-- `agentscrape` — turn a specific URL into Markdown, link lists, or feed
-  entries; prefer it over curl whenever a page's content is the goal.
-  Skill: `scrape`.
-- `agentbrain` — durable local research index; check it before reaching for
-  the web — the answer is often already here. Skill: `brain`.
-- `agentweb` — the browser control plane for authorized, signed-in browser
-  work; sessions are established by a human (`agentweb signin`).
-  Skill: `browser`.
-- `agentwiki` — the document vault: durable markdown, links, immutable
-  published artifacts. Skill: `wiki`.
-- `agentboard` — the shared planning board: `ready`, `claim`, `done`; speak
-  labels, never ids. Skills: `board`, and `groom` for bulk reshaping.
-- `chats` (skill) — search every past coding-agent session on this machine;
-  reach for it when a bug, error, or decision feels familiar. The adopted
-  third-party CLI underneath is taught entirely by the skill.
+- `search` — live web research for a cited answer or source links: "look
+  this up", a fact newer than training, a claim that needs an outside
+  source. Paid per call, so load the skill before the first one.
+- `scrape` — you have a URL and want what is on it: the page as Markdown,
+  its links, a timeline, a feed. Load before fetching anything you hold a
+  URL for.
+- `brain` — the research already collected on this machine, searchable
+  offline. Load before any web search — the answer is often already local
+  — and when something is worth keeping.
+- `browser` — a real, signed-in browser for interaction: clicking, forms,
+  anything behind a login, handing control to a human. Fetching content is
+  `scrape`; finding pages is `search`.
+- `wiki` — durable notes: capturing what should outlive the session,
+  finding where something was written down, publishing citable artifacts.
+- `board` — the shared plan: capturing work, asking what to do next,
+  claiming an item before starting and closing it when done.
+- `groom` — reshaping the plan in bulk: merging duplicates, splitting an
+  epic, re-planning. Several board changes at once is `groom`, not
+  `board`.
+- `chats` — every past coding-agent session on this machine: load when a
+  bug, error, or decision feels familiar, or to reconstruct what an
+  earlier session did.
