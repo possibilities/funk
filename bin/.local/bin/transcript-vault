@@ -48,6 +48,7 @@ if ! mkdir "$LOCK_DIR" 2>/dev/null; then
 fi
 printf '%s\n' $$ >"$LOCK_DIR/pid"
 trap 'rm -rf "$LOCK_DIR"' EXIT
+log "vault run starting (pid $$)"
 
 if [ ! -d "$ARCHIVE_ROOT" ]; then
     log "$ARCHIVE_ROOT is not mounted; nothing to do"
