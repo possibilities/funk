@@ -115,6 +115,17 @@ for file in tests/*.sh; do
         || fail "$file drives the Tailscale helper without pinning the notifier"
 done
 
+# ./install runs with a deliberately minimal PATH, so a service check that
+# probes Agentweb, Agentbrain, or Tailscale by bare name finds nothing and
+# reports a healthy daemon as not answering — the shape of failure that looks
+# like a broken machine and is really a broken probe.
+grep -q '\.local/bin:/usr/local/bin:' libexec/verify-local-services \
+    || fail "verify-local-services must resolve its CLIs outside the installer's minimal PATH"
+for probe in agentweb agentbrain; do
+    grep -q "command -v $probe" libexec/verify-local-services \
+        || fail "verify-local-services must report a missing $probe as missing, not as an unhealthy service"
+done
+
 /usr/bin/plutil -lint launchd/com.arthack.funk.update.plist.in >/dev/null
 /usr/bin/plutil -lint launchd/com.arthack.funk.tailscale-online.plist.in >/dev/null
 /usr/bin/plutil -lint launchd/com.arthack.funk.gog-authed.plist.in >/dev/null

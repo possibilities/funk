@@ -21,6 +21,15 @@ case "${1:-}" in
     *) usage >&2; exit 64 ;;
 esac
 
+# Every CLI probed below is installed outside the minimal PATH ./install runs
+# with: Agentweb and Agentbrain link into ~/.local/bin, and Tailscale's CLI
+# lands in /usr/local/bin. Probing them by bare name meant the installer's own
+# verification could not find them, and a missing command is indistinguishable
+# from a sick service once stderr is discarded -- a healthy daemon was reported
+# as not answering on every install. Look where they are actually installed.
+PATH="$HOME/.local/bin:/usr/local/bin:$PATH"
+export PATH
+
 failures=0
 
 ok() { printf '  ok    %s\n' "$*"; }
@@ -53,7 +62,9 @@ else
 fi
 
 printf 'Agentweb\n'
-if [ "$(agentweb daemon status 2>/dev/null)" = ready ]; then
+if ! command -v agentweb >/dev/null 2>&1; then
+    bad "agentweb is not installed; run funk install-local-services"
+elif [ "$(agentweb daemon status 2>/dev/null)" = ready ]; then
     ok "daemon answers ready"
 else
     bad "daemon does not answer ready"
@@ -88,10 +99,13 @@ printf 'Share ingress reachability\n'
 if service_running agentbrain.share && [ -n "$tailnet_address" ]; then
     # The token is read into a variable and never printed, and never placed on a
     # command line where another process could read it from the process table.
-    token=$(agentbrain share token show --reveal 2>/dev/null)
-    if [ -z "$token" ]; then
-        bad "no share token is readable"
+    token=
+    if command -v agentbrain >/dev/null 2>&1; then
+        token=$(agentbrain share token show --reveal 2>/dev/null)
     else
+        bad "agentbrain is not installed; run funk install-local-services"
+    fi
+    if [ -n "$token" ]; then
         status=$(printf 'authorization: Bearer %s\n' "$token" |
             curl -sS -m 5 -o /dev/null -w '%{http_code}' \
                 -H @- "http://$tailnet_address:8787/v1/health" 2>/dev/null)
@@ -101,6 +115,8 @@ if service_running agentbrain.share && [ -n "$tailnet_address" ]; then
         else
             bad "ingress health returned '${status:-no response}'"
         fi
+    elif command -v agentbrain >/dev/null 2>&1; then
+        bad "no share token is readable"
     fi
 else
     ok "ingress reachability not checked (no running ingress on a tailnet address)"
