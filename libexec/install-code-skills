@@ -53,14 +53,13 @@ esac
 # a skill — or renames one — is synchronized on the next convergence without
 # an edit here.
 #
-# Two checkouts stay explicit in libexec/install-ai-tools rather than joining
-# the convention. ~/code/agentchats keeps its skill at chats/SKILL.md, in the
-# repository root rather than under skills/, so this scan does not see it; its
-# explicit line remains the chats skill's sync path until agentchats moves to
-# skills/chats/, at which point that line goes away. ~/code/arthack likewise
-# keeps root-level skill directories, and its skills must be rendered against
-# the operator's extension prompts after every sync, which is a contract this
-# scanner deliberately knows nothing about.
+# One checkout stays explicit in libexec/install-ai-tools rather than joining
+# the convention: ~/code/arthack keeps root-level skill directories, and its
+# skills must be rendered against the operator's extension prompts after every
+# sync, which is a contract this scanner deliberately knows nothing about.
+# ~/code/agentchats was the other one until it moved its skill to
+# skills/chats/; the chats skill now syncs through this scan like every other
+# tool's, and install-ai-tools invokes that checkout only to install cass.
 #
 # FUNK_CODE_ROOT exists so the tests can point the scan at a fixture tree.
 code_root="${FUNK_CODE_ROOT:-$HOME/code}"
