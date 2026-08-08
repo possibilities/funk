@@ -22,7 +22,7 @@ die() {
 # is a skip, not a failure; a present checkout that fails to install is a real
 # error and propagates. Rerunning is safe: the installers are fix-forward and
 # relinking repoints the same command.
-for tool in agentwiki agentboard; do
+for tool in agentwiki agentboard agentsearch; do
     tool_root="$HOME/code/$tool"
     if [ ! -f "$tool_root/scripts/install.sh" ]; then
         printf 'Funk agent CLIs installer: no checkout at %s; skipping.\n' "$tool_root"
