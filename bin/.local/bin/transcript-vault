@@ -6,9 +6,11 @@
 #
 #   1. rsync the live ~/.claude/projects into the canonical archive on
 #      /Volumes/Scratch (additive: files are added and grown, never deleted).
-#   2. restic backup of the archive plus the live ~/.claude to the B2
-#      repository, and to silverbird when it is reachable. No forget or
-#      prune anywhere: repository snapshots are kept forever.
+#   2. restic backup of the archive plus the live ~/.claude to the
+#      silverbird repository whenever that host is reachable. No forget or
+#      prune anywhere: repository snapshots are kept forever. (B2 was
+#      deliberately dropped as a transcript target — the operator does not
+#      want long-term session data there.)
 #   3. cass index so coding-agent-session-search stays current. The archive
 #      tree is covered by the "archive" local source in
 #      ~/.config/cass/sources.toml (explicit scan roots bypass cass's
@@ -17,7 +19,8 @@
 #      because the internal disk cannot hold an index over the full corpus.
 #
 # Stages degrade independently. The exit status reflects preservation only:
-# nonzero when the live sync or the B2 backup failed, zero otherwise.
+# nonzero when the live sync failed, or when silverbird was reachable and
+# its backup failed. An unreachable silverbird is a clean skip.
 # Runs hourly (and at login) from com.arthack.funk.transcript-vault.
 
 set -uo pipefail
@@ -108,20 +111,7 @@ backup_to() {
     )
 }
 
-b2_rc=0
-if [ -f "$CREDS_DIR/b2.env" ]; then
-    log "restic backup to b2 starting"
-    if backup_to b2; then
-        log "b2 backup complete"
-    else
-        b2_rc=$?
-        log "ERROR: b2 backup failed (exit $b2_rc)"
-    fi
-else
-    log "SKIP b2: $CREDS_DIR/b2.env missing"
-    b2_rc=91
-fi
-
+sb_rc=0
 if [ -f "$CREDS_DIR/silverbird.env" ]; then
     if ssh -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new \
         silverbird true 2>/dev/null; then
@@ -129,11 +119,14 @@ if [ -f "$CREDS_DIR/silverbird.env" ]; then
         if backup_to silverbird; then
             log "silverbird backup complete"
         else
-            log "silverbird backup failed (non-fatal)"
+            sb_rc=$?
+            log "ERROR: silverbird backup failed (exit $sb_rc)"
         fi
     else
         log "SKIP silverbird: unreachable"
     fi
+else
+    log "SKIP silverbird: $CREDS_DIR/silverbird.env missing"
 fi
 
 # --- 3. cass search index --------------------------------------------------
@@ -155,9 +148,9 @@ else
     log "SKIP cass: binary or $CASS_DATA_DIR missing"
 fi
 
-if [ "$sync_rc" -eq 0 ] && [ "$b2_rc" -eq 0 ]; then
+if [ "$sync_rc" -eq 0 ] && [ "$sb_rc" -eq 0 ]; then
     log "vault run complete"
     exit 0
 fi
-log "vault run finished with preservation errors (sync=$sync_rc b2=$b2_rc)"
+log "vault run finished with preservation errors (sync=$sync_rc silverbird=$sb_rc)"
 exit 1

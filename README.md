@@ -691,9 +691,10 @@ keeps every session searchable:
 1. `rsync` the live `~/.claude/projects` into the canonical archive at
    `/Volumes/Scratch/claude-archive/home/.claude/projects` (additive only —
    the vault never deletes archive content).
-2. `restic backup` of the archive plus the live `~/.claude` to the B2
-   repository, tagged `claude-transcripts`, and to the silverbird repository
-   when that host is reachable. The vault never runs `forget` or `prune`;
+2. `restic backup` of the archive plus the live `~/.claude` to the
+   silverbird repository whenever that host is reachable, tagged
+   `claude-transcripts`. B2 is deliberately not a transcript target (no
+   long-term session data there). The vault never runs `forget` or `prune`;
    snapshots accumulate indefinitely.
 3. `cass index` into the shared index on `/Volumes/Scratch/cass`, so
    coding-agent session search covers the full history. The archive tree is
@@ -716,9 +717,10 @@ when its prerequisite is missing: an unmounted archive volume ends the run,
 missing credentials skip that repository, a missing cass skips indexing.
 
 Credentials are deliberately not Stow-managed: the vault reads
-`~/.config/restic/b2.env` and `~/.config/restic/silverbird.env` (mode 0600,
-migrated from the previous account) and skips any repository whose file is
-missing. The cass index location is unified across shells, LaunchAgents, and
+`~/.config/restic/silverbird.env` (mode 0600, migrated from the previous
+account) and skips the repository when the file is missing or the host is
+unreachable. `~/.config/restic/b2.env` remains only for reading the old
+account's historical snapshots, never as a vault target. The cass index location is unified across shells, LaunchAgents, and
 the Agentchats installer by symlinking cass's default data directory
 (`~/Library/Application Support/com.coding-agent-search.coding-agent-search`)
 to `/Volumes/Scratch/cass`; the internal disk cannot hold an index over the
