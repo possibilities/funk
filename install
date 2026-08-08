@@ -20,7 +20,7 @@ Default installation:
   - installs and loads the update and Tailscale recovery LaunchAgents
   - installs the home-network sleep and screen-lock agent
   - installs the resident services owned by local checkouts: the Agentbrain
-    worker and share ingress, and the Agentweb daemon
+    worker and share ingress, the Agentweb daemon, and the Agentusage daemon
   - applies Funk's user-level macOS preferences
 
 Options:
@@ -214,8 +214,8 @@ fi
 if [ "$local_services_degraded" -eq 1 ]; then
     cat <<'EOF'
 
-Action required: the resident Agentbrain and Agentweb services installed, but
-one or more of them is not answering. The failures are listed above. Re-check
-with: funk verify-local-services
+Action required: the resident Agentbrain, Agentweb, and Agentusage services
+installed, but one or more of them is not answering. The failures are listed
+above. Re-check with: funk verify-local-services
 EOF
 fi

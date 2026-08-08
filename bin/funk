@@ -33,7 +33,7 @@ Commands:
   home-awake [option] Converge or report home-network sleep and screen lock
   install-home-awake  Install the home-network sleep and screen-lock agent
   install-local-services
-                      Install the resident Agentbrain and Agentweb services
+                      Install the resident Agentbrain, Agentweb, and Agentusage services
   verify-local-services
                       Confirm those services are running and reachable
   transcript-vault   Run the transcript preservation pipeline once now

@@ -97,6 +97,18 @@ locations. `~/code/agentchats` is likewise the source of truth for the
 (`scripts/install.sh --install`); Funk invokes both from
 `libexec/install-ai-tools` and skips them on a machine without the checkout.
 
+Every other agent tool exports its skills by convention rather than by a line
+here: a checkout under `~/code` whose name matches `agent*` publishes each
+global skill at `skills/<name>/SKILL.md`. `libexec/install-code-skills`
+discovers those checkouts and synchronizes every skill it finds into all
+configured global agent skill locations, from both `./install` (through
+`libexec/install-ai-tools`) and the scheduled updater. Adding, renaming, or
+removing a skill in one of those repositories therefore needs no change in
+Funk. `agentvoice` is the deliberate exception: its own installer links its
+skills live from the checkout, so the scanner skips it by name rather than
+overwriting those links with copies. `TOOLS.md` advertises one line per tool
+and the name of its skill; the runbooks themselves live in the skills.
+
 The extension prompts those skills render against are Funk's, not Art Hack's:
 the `arthack` package owns `~/.config/arthack/`. Edit
 `arthack/.config/arthack/` here and run `funk stow`, so a fresh account renders

@@ -45,6 +45,7 @@ orca_installer="$funk_root/libexec/install-orca"
 brewfile_installer="$funk_root/libexec/converge-brewfile"
 unattendable_lister="$funk_root/libexec/list-unattendable-casks"
 agentvoice_installer="$funk_root/libexec/install-agentvoice-skills"
+code_skills_installer="$funk_root/libexec/install-code-skills"
 
 if [ ! -f "$brewfile" ]; then
     log "FAILED: Brewfile not found at $brewfile" >&2
@@ -64,6 +65,10 @@ fi
 }
 [ -x "$agentvoice_installer" ] || {
     log "FAILED: AgentVoice skill installer not found at $agentvoice_installer" >&2
+    exit 66
+}
+[ -x "$code_skills_installer" ] || {
+    log "FAILED: project skill installer not found at $code_skills_installer" >&2
     exit 66
 }
 
@@ -260,6 +265,15 @@ if [ "$status" -eq 0 ]; then
 fi
 if [ "$status" -eq 0 ]; then
     "$agentvoice_installer" || status=$?
+fi
+# Each agent CLI's runbook now ships as a skill inside its own checkout, and a
+# stale runbook misleads a session as badly as a stale binary does. Refreshing
+# them reads local directories and rewrites skill files: no downloads, no
+# elevation, no application restarts. That is exactly the kind of work this
+# six-hour path is for, so the runbooks track the checkouts without waiting for
+# the next ./install.
+if [ "$status" -eq 0 ]; then
+    "$code_skills_installer" || status=$?
 fi
 
 snapshot_versions "$after"

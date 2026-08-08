@@ -46,3 +46,7 @@ case "$*" in
 EOF
         ;;
 esac
+
+# Callers that need to see a failing skills tool set this; everything else gets
+# the successful path above regardless of which branch matched.
+exit "${FUNK_TEST_NPX_EXIT:-0}"

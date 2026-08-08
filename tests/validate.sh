@@ -23,6 +23,7 @@ libexec/reclaim-app-ownership
 libexec/list-unattendable-casks
 libexec/install-orca
 libexec/install-agentvoice-skills
+libexec/install-code-skills
 libexec/install-agentvoice-app
 libexec/stow-config
 libexec/initialize-configs

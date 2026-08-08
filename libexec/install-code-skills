@@ -1,0 +1,158 @@
+#!/bin/bash
+
+set -euo pipefail
+
+die() {
+    printf 'Funk code skills installer: %s\n' "$*" >&2
+    exit 1
+}
+
+find_brew() {
+    if [ -n "${FUNK_BREW_BIN:-}" ] && [ -x "$FUNK_BREW_BIN" ]; then
+        printf '%s\n' "$FUNK_BREW_BIN"
+        return
+    fi
+    if command -v brew >/dev/null 2>&1; then
+        command -v brew
+        return
+    fi
+    for candidate in /opt/homebrew/bin/brew /usr/local/bin/brew; do
+        if [ -x "$candidate" ]; then
+            printf '%s\n' "$candidate"
+            return
+        fi
+    done
+    return 1
+}
+
+check_only=0
+case "${1:-}" in
+    "")
+        ;;
+    --check)
+        check_only=1
+        ;;
+    -h|--help)
+        printf 'Usage: install-code-skills [--check]\n'
+        exit 0
+        ;;
+    *)
+        printf 'Usage: install-code-skills [--check]\n' >&2
+        exit 64
+        ;;
+esac
+[ "$#" -le 1 ] || {
+    printf 'Usage: install-code-skills [--check]\n' >&2
+    exit 64
+}
+
+# Mike's agent CLIs each teach agents how to wield them, and the runbook ships
+# beside the code it documents: a checkout named agent* that exports skills
+# does it at skills/<name>/SKILL.md. That convention is the whole interface.
+# Funk discovers participants instead of listing them, so a project that grows
+# a skill — or renames one — is synchronized on the next convergence without
+# an edit here.
+#
+# Two checkouts stay explicit in libexec/install-ai-tools rather than joining
+# the convention. ~/code/agentchats keeps its skill at chats/SKILL.md, in the
+# repository root rather than under skills/, so this scan does not see it; its
+# explicit line remains the chats skill's sync path until agentchats moves to
+# skills/chats/, at which point that line goes away. ~/code/arthack likewise
+# keeps root-level skill directories, and its skills must be rendered against
+# the operator's extension prompts after every sync, which is a contract this
+# scanner deliberately knows nothing about.
+#
+# FUNK_CODE_ROOT exists so the tests can point the scan at a fixture tree.
+code_root="${FUNK_CODE_ROOT:-$HOME/code}"
+
+if [ ! -d "$code_root" ]; then
+    [ "$check_only" -eq 1 ] || printf 'Funk code skills installer: no checkout root at %s; skipping.\n' \
+        "$code_root"
+    exit 0
+fi
+
+if [ "$check_only" -eq 0 ]; then
+    [ "$(uname -s)" = Darwin ] || die "macOS is required"
+    [ "$(id -u)" -ne 0 ] || die "run as the target user, not root"
+
+    if [ -n "${FUNK_NPX_BIN:-}" ] && [ -x "$FUNK_NPX_BIN" ]; then
+        npx_bin="$FUNK_NPX_BIN"
+    elif command -v npx >/dev/null 2>&1; then
+        npx_bin=$(command -v npx)
+    else
+        # The scheduled updater runs from a LaunchAgent whose PATH never
+        # sourced nvm, so npx is missing there even on a machine that has
+        # Node. install-orca resolves the same gap the same way; Homebrew
+        # matters only as the place nvm.sh lives.
+        brew_bin=$(find_brew) \
+            || die "npx is required to synchronize project agent skills"
+        nvm_script="$("$brew_bin" --prefix)/opt/nvm/nvm.sh"
+        if [ -s "$nvm_script" ]; then
+            export NVM_DIR="$HOME/.nvm"
+            # shellcheck disable=SC1090
+            source "$nvm_script" --no-use
+            if nvm version default >/dev/null 2>&1; then
+                nvm use --silent default
+            fi
+        fi
+        npx_bin=$(command -v npx) \
+            || die "npx is required to synchronize project agent skills"
+    fi
+fi
+
+synchronized=0
+for project in "$code_root"/agent*/; do
+    project=${project%/}
+    [ -d "$project" ] || continue
+    project_name=${project##*/}
+
+    # AgentVoice owns its own skill installation: `bun run skills:install`
+    # links each skill live into the agent skill directories so edits in the
+    # checkout are visible immediately, and libexec/install-agentvoice-skills
+    # invokes that contract from both ./install and the scheduled updater.
+    # Running `skills add` over the same names would replace those symlinks
+    # with copies, and AgentVoice's next run would link them back — the two
+    # mechanisms would fight over the same files forever. AgentVoice's skills
+    # are already synchronized, just by their owner.
+    [ "$project_name" != agentvoice ] || continue
+
+    # A checkout with no skills/<name>/SKILL.md simply is not a participant.
+    # That is the convention working, not a misconfiguration, so it passes
+    # without comment.
+    skill_names=()
+    while IFS= read -r skill_name; do
+        [ -n "$skill_name" ] || continue
+        skill_names+=("$skill_name")
+    done < <(
+        for skill_dir in "$project"/skills/*/; do
+            [ -f "$skill_dir/SKILL.md" ] || continue
+            skill_dir=${skill_dir%/}
+            printf '%s\n' "${skill_dir##*/}"
+        done | LC_ALL=C sort
+    )
+    [ "${#skill_names[@]}" -gt 0 ] || continue
+    synchronized=$((synchronized + 1))
+
+    if [ "$check_only" -eq 1 ]; then
+        printf '  npx --yes skills add "%s" --agent codex claude-code opencode pi --skill %s --global --yes\n' \
+            "$project" "${skill_names[*]}"
+        continue
+    fi
+
+    # One invocation per project rather than one per skill: the skills tool
+    # ships each named skill directory whole — SKILL.md, agents/openai.yaml,
+    # and any reference files beside them — which is exactly what an agent
+    # needs to load the runbook.
+    printf 'Synchronizing the %s agent skills (%s).\n' \
+        "$project_name" "${skill_names[*]}"
+    "$npx_bin" --yes skills add "$project" \
+        --agent codex claude-code opencode pi \
+        --skill "${skill_names[@]}" \
+        --global --yes \
+        || die "synchronizing the $project_name agent skills failed: $project"
+done
+
+if [ "$check_only" -eq 0 ] && [ "$synchronized" -eq 0 ]; then
+    printf 'Funk code skills installer: no agent* checkout under %s exports skills; nothing to synchronize.\n' \
+        "$code_root"
+fi
