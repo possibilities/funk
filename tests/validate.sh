@@ -1247,7 +1247,7 @@ for required_ai_install in \
     'npx --yes skills add https://github.com/vercel/ai-elements --agent codex claude-code pi --skill ai-elements --global --yes' \
     'npx --yes skills add https://github.com/shadcn/ui --agent codex claude-code pi --skill shadcn --global --yes' \
     'npx --yes skills add https://github.com/vercel-labs/native --agent codex claude-code pi --skill native-sdk --global --yes' \
-    "npx --yes skills add \"\$HOME/code/arthack\" --agent codex claude-code pi --skill hack resource-create resource-update story --global --yes" \
+    "npx --yes skills add \"\$HOME/code/arthack\" --agent codex claude-code pi --skill collab build resource-create resource-update story --global --yes" \
     "npx --yes skills add \"$code_skills_root/agentdemo\" --agent codex claude-code pi --skill demo second --global --yes" \
     "\"\$HOME/code/arthack/scripts/render\""; do
     printf '%s\n' "$ai_install_plan" | grep -F "$required_ai_install" >/dev/null \
@@ -1298,13 +1298,13 @@ ai_arthack_render_line=$(
 grep -F "art_hack_root=\"\$HOME/code/arthack\"" libexec/install-ai-tools >/dev/null \
     || fail "AI installer does not own the Art Hack skill source"
 grep -F "npx --yes skills add \"\$art_hack_root\"" libexec/install-ai-tools >/dev/null \
-    || fail "AI installer does not synchronize the Hack skill"
+    || fail "AI installer does not synchronize the Art Hack skills"
 grep -F "\"\$art_hack_root/scripts/render\"" libexec/install-ai-tools >/dev/null \
     || fail "AI installer does not render the Art Hack skills"
-grep -F "\$art_hack_root/hack/SKILL.md" libexec/install-ai-tools >/dev/null \
-    || fail "AI installer does not validate the Hack skill source"
-grep -F "\$art_hack_root/hack/agents/openai.yaml" libexec/install-ai-tools >/dev/null \
-    || fail "AI installer does not validate the Hack skill manifest"
+grep -F "for art_hack_skill in collab build; do" libexec/install-ai-tools >/dev/null \
+    || fail "AI installer does not validate the collab and build skill sources"
+grep -F "\$art_hack_root/\$art_hack_skill/agents/openai.yaml" libexec/install-ai-tools >/dev/null \
+    || fail "AI installer does not validate the Art Hack skill manifests"
 grep -F 'link_agent_guidance' libexec/install-ai-tools >/dev/null \
     || fail "AI installer does not link the shared agent guidance"
 # shellcheck disable=SC2016 # Match the literal target paths in the script.
