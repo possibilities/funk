@@ -8,6 +8,14 @@
 # is differentiated by doctrine (ORCHESTRATOR.md), not by capability
 # stripping. Reference: ~/code/agentvoice/docs/field-guide.md.
 
+accounts:
+  # Every app-server spawn asks the balancer (agentusage balance codex,
+  # falling back to codex-swap select) which ChatGPT account to run on, and
+  # an idle child rotates off an account that crosses the threshold. Needs
+  # profiles: `agentvoice accounts add <slug>` once per account. Any refusal
+  # falls back loudly to the canonical ~/.codex.
+  balance: true
+
 orchestrator:
   # The worker-dispatch tools (dispatch_worker / check_workers /
   # cancel_worker) on the orchestrator's thread, with pushed
