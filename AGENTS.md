@@ -116,11 +116,11 @@ the same skills this one does. Their recognized names — `SYSTEM.md`,
 renders to nothing.
 
 The voice orchestrator's doctrine is Funk's the same way: the `agentvoice`
-package owns the AgentVoice prompt files and `server.yaml` in
+package owns the AgentVoice prompt files and `server.json` in
 `~/.config/agentvoice/`. Edit `agentvoice/.config/agentvoice/` here and run
 `funk stow`; the AgentVoice server reads them once at boot, so changes
 apply on its next start. The filenames — `ORCHESTRATOR.md`,
-`ORCHESTRATOR_SESSION_START.md`, `server.yaml` — are AgentVoice's
+`ORCHESTRATOR_SESSION_START.md`, `server.json` — are AgentVoice's
 discovery contract (`~/code/agentvoice/docs/field-guide.md` documents
 every lever); a file it does not recognize primes nothing.
 

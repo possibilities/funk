@@ -175,9 +175,10 @@ server configuration: `ORCHESTRATOR.md` (developer instructions — how the
 orchestrator agent conducts a voice session: classify, dispatch
 asynchronous work to app-server threads, speak in `[FINAL]` lines, run its
 bearings commands), `ORCHESTRATOR_SESSION_START.md` (the short voice-mode
-briefing codex restates after every compaction), and `server.yaml` (effort,
+briefing codex restates after every compaction), and `server.json` (effort,
 the guardian approvals recipe, early compaction, subagents disabled in
-favor of app-server threads, and the bemTags handoff). The AgentVoice
+favor of app-server threads, and the bemTags handoff; `server.schema.json`
+ships beside it for editor validation). The AgentVoice
 server reads all three once at boot, so edits apply on its next start; the
 lever semantics are documented in
 `~/code/agentvoice/docs/field-guide.md`. It does not fold because the
