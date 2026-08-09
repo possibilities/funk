@@ -104,10 +104,8 @@ discovers those checkouts and synchronizes every skill it finds into all
 configured global agent skill locations, from both `./install` (through
 `libexec/install-ai-tools`) and the scheduled updater. Adding, renaming, or
 removing a skill in one of those repositories therefore needs no change in
-Funk. `agentvoice` is the deliberate exception: its own installer links its
-skills live from the checkout, so the scanner skips it by name rather than
-overwriting those links with copies. `TOOLS.md` advertises one line per tool
-and the name of its skill; the runbooks themselves live in the skills.
+Funk. `TOOLS.md` advertises one line per tool and the name of its skill; the
+runbooks themselves live in the skills.
 
 The extension prompts those skills render against are Funk's, not Art Hack's:
 the `arthack` package owns `~/.config/arthack/`. Edit

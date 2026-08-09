@@ -3,7 +3,7 @@
 set -euo pipefail
 
 die() {
-    printf 'Funk AgentVoiceNext CLI installer: %s\n' "$*" >&2
+    printf 'Funk AgentVoice CLI installer: %s\n' "$*" >&2
     exit 1
 }
 
@@ -26,28 +26,28 @@ find_bun() {
 }
 
 [ "$#" -eq 0 ] || {
-    printf 'Usage: install-agentvoicenext-cli\n' >&2
+    printf 'Usage: install-agentvoice-cli\n' >&2
     exit 64
 }
 
 [ "$(uname -s)" = Darwin ] || die "macOS is required"
 [ "$(id -u)" -ne 0 ] || die "run as the target user, not root"
 
-# AgentVoiceNext remains its own repository and owns its editable install:
+# AgentVoice remains its own repository and owns its editable install:
 # dependencies, environment checks (codex, sox), and linking a global
-# `agentvoicenext` back into the checkout with bun link. Funk only invokes
+# `agentvoice` back into the checkout with bun link. Funk only invokes
 # that contract. A machine that has not cloned the checkout is a skip, not a
 # failure; a present checkout that fails to install is a real error and
 # propagates. Rerunning is safe: every step is fix-forward and relinking
 # repoints the same global command.
-agentvoicenext_root="$HOME/code/agentvoicenext"
-if [ ! -f "$agentvoicenext_root/package.json" ]; then
-    printf 'Funk AgentVoiceNext CLI installer: no checkout at %s; skipping.\n' \
-        "$agentvoicenext_root"
+agentvoice_root="$HOME/code/agentvoice"
+if [ ! -f "$agentvoice_root/package.json" ]; then
+    printf 'Funk AgentVoice CLI installer: no checkout at %s; skipping.\n' \
+        "$agentvoice_root"
     exit 0
 fi
 
 bun_bin=$(find_bun) || die "bun is not installed"
 
-printf 'Installing the AgentVoiceNext voice CLI from %s.\n' "$agentvoicenext_root"
-"$bun_bin" run --cwd "$agentvoicenext_root" cli:install
+printf 'Installing the AgentVoice voice CLI from %s.\n' "$agentvoice_root"
+"$bun_bin" run --cwd "$agentvoice_root" cli:install

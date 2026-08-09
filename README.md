@@ -13,10 +13,8 @@ installers:
 - ChatGPT, Claude Desktop, Orca, Obsidian, Raycast
 - GitHub CLI, Native SDK CLI (pinned to 0.7), Zig, Claude Code,
   Codex CLI, and Pi
-- The AgentVoice desktop application, installed by AgentVoice's own
-  `app:install` contract from `~/code/agentvoice`
-- The AgentVoiceNext voice CLI (`agentvoicenext`), linked editable by its own
-  `cli:install` contract from `~/code/agentvoicenext` when that checkout
+- The AgentVoice voice CLI (`agentvoice`), linked editable by its own
+  `cli:install` contract from `~/code/agentvoice` when that checkout
   exists
 - cass, the coding-agent session search CLI, installed and index-prepared by
   the Agentchats checkout's own contract from `~/code/agentchats` when that
@@ -38,36 +36,14 @@ uses the cask documented by the [Orca project](https://github.com/stablyai/orca)
 Run `libexec/install-ai-tools --check` to inspect the exact plan without making
 changes.
 
-### AgentVoice desktop application
+### AgentVoice voice CLI
 
-`libexec/install-ai-tools` finishes by installing the AgentVoice desktop
-application. Funk owns only the prerequisites and the call: it converges Zig
-from the Brewfile, pins the Native SDK CLI to the `0.7` line AgentVoice
-requires, verifies the installed Zig is 0.16 or newer, and then runs
-`libexec/install-agentvoice-app`, which invokes `bun run --cwd
-"$HOME/code/agentvoice" app:install`. AgentVoice owns packaging, transactional
-bundle replacement into `~/Applications`, launching in production mode, and
-readiness verification; Funk never reproduces that logic.
-
-The step needs a local AgentVoice checkout at `~/code/agentvoice`. If it fails,
-`./install` stops with the AgentVoice exit status and the setup is not reported
-as successful. To recover, fix what the message names — a missing checkout
-(`git clone` it), a missing or stale toolchain (`brew install zig` or
-`brew upgrade zig`), a running application (see below), or an AgentVoice-side
-build failure — then rerun either `./install` or
-`libexec/install-agentvoice-app` alone.
-
-Repeating the interactive setup is not a no-op on Funk's side: every run
-delegates to AgentVoice again, and AgentVoice decides what happens. When the
-installed application is not running it is safely replaced and relaunched. When
-the installed copy **is** running, AgentVoice deliberately refuses rather than
-swapping a live bundle, and its quit-and-rerun instruction and exit status
-propagate straight through Funk, so the interactive run fails. Quit
-AgentVoice.app and rerun.
-
-The scheduled updater deliberately does not do this. `funk update` stays
-skills-only through `libexec/install-agentvoice-skills`, so a background
-LaunchAgent never rebuilds, replaces, or relaunches a running desktop app.
+`libexec/install-agentvoice-cli` invokes AgentVoice's own `cli:install`
+contract from `~/code/agentvoice`, which installs dependencies, checks the
+environment it needs (codex, sox), and links a global `agentvoice` back into
+the checkout. Funk only makes the call. A machine that has not cloned the
+checkout skips the step; a checkout that is present and fails to install is a
+real error and stops `./install`.
 
 Homebrew formula and cask calls are install-or-upgrade operations. The
 dedicated `libexec/install-orca` helper installs or greedily upgrades the Orca
@@ -598,10 +574,7 @@ application updaters, account-sensitive MCP setup, and local Art Hack skill
 sources are not all suitable for a background LaunchAgent. Re-running `./install`
 reapplies their supported installation methods; Homebrew-backed Claude,
 ChatGPT, GitHub CLI, Zig, and Orca are explicitly installed or
-upgraded, and the Native SDK CLI is pinned to the `0.7` line. Re-running
-`./install` is also what reinstalls the AgentVoice desktop application, which
-requires AgentVoice.app to be quit if it is running; the scheduled path stays
-skills-only precisely so a background job never has to make that call.
+upgraded, and the Native SDK CLI is pinned to the `0.7` line.
 
 Funk never performs bundle cleanup, uninstalls, HEAD refreshes, or privileged
 post-update hooks.

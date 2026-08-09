@@ -187,13 +187,10 @@ Command-line tools:
   curl -fsSL https://claude.ai/install.sh | bash
   curl -fsSL https://chatgpt.com/codex/install.sh | CODEX_NON_INTERACTIVE=1 sh
   curl -fsSL https://pi.dev/install.sh | sh  # in its own session, no controlling terminal
-  brew install or upgrade zig  # AgentVoice native packaging needs 0.16 or newer
-  npm install --global @native-sdk/cli@0.7  # AgentVoice refuses other lines
+  brew install or upgrade zig  # AgentVoice's native duplex audio path builds against it
+  npm install --global @native-sdk/cli@0.7  # the line the native-sdk skill documents
   npm install --global agent-browser@0.33.2  # Agentweb's config.json digest-locks this exact build
   ln -sfn "$(command -v agent-browser)" ~/.local/bin/agent-browser  # the candidate Agentscrape resolves before PATH
-
-Desktop applications from local checkouts:
-  bun run --cwd "$HOME/code/agentvoice" app:install  # AgentVoice owns packaging and launch
 
 Agent documentation:
   codex mcp add shadcn -- npx shadcn@latest mcp
@@ -307,16 +304,17 @@ printf 'Installing Pi with its official installer.\n'
 /usr/bin/curl -fsSL https://pi.dev/install.sh \
     | run_without_controlling_terminal /bin/sh
 
-# AgentVoice's native packaging refuses to build against a Zig older than 0.16,
-# and the Brewfile alone cannot guarantee the toolchain is present in a session
-# that only runs this script (intentional duplicate of the Brewfile, like gh).
+# Zig builds Native SDK applications and AgentVoice's opt-in native duplex
+# audio device, and the Brewfile alone cannot guarantee the toolchain is
+# present in a session that only runs this script (intentional duplicate of
+# the Brewfile, like gh).
 printf 'Installing or upgrading Zig for Native SDK packaging (intentional duplicate of the Brewfile).\n'
 install_or_upgrade_formula zig
 
 command -v npm >/dev/null 2>&1 || die "npm is required to install the Native SDK CLI"
 
-# AgentVoice's native packaging refuses any Native SDK CLI outside the 0.7 line,
-# so pin the compatible line here instead of tracking latest.
+# The native-sdk skill documents the 0.7 line and its agent helpers are
+# version-matched to it, so pin that line here instead of tracking latest.
 native_sdk_version=0.7
 printf 'Installing the Native SDK CLI %s and its version-matched agent helpers.\n' \
     "$native_sdk_version"
@@ -424,16 +422,16 @@ command -v bun >/dev/null 2>&1 \
 printf 'Verifying the installed Native SDK agent documentation helpers.\n'
 native skills list >/dev/null
 
-# The AgentVoiceNext voice CLI is linked editable from its own checkout by its
+# The AgentVoice voice CLI is linked editable from its own checkout by its
 # cli:install contract (dependencies, sox, a global bun link). Funk only
 # invokes it; a machine without the checkout skips inside the script, so only
 # a present-but-broken checkout fails here.
-agentvoicenext_cli_status=0
-"$script_dir/install-agentvoicenext-cli" || agentvoicenext_cli_status=$?
-if [ "$agentvoicenext_cli_status" -ne 0 ]; then
-    printf 'Funk AI tools installer: AgentVoiceNext CLI install failed (exit %s). Fix the reported problem, then rerun ./install or libexec/install-agentvoicenext-cli.\n' \
-        "$agentvoicenext_cli_status" >&2
-    exit "$agentvoicenext_cli_status"
+agentvoice_cli_status=0
+"$script_dir/install-agentvoice-cli" || agentvoice_cli_status=$?
+if [ "$agentvoice_cli_status" -ne 0 ]; then
+    printf 'Funk AI tools installer: AgentVoice CLI install failed (exit %s). Fix the reported problem, then rerun ./install or libexec/install-agentvoice-cli.\n' \
+        "$agentvoice_cli_status" >&2
+    exit "$agentvoice_cli_status"
 fi
 
 # The agentwiki and agentboard CLIs install by their own hardened contract
@@ -476,18 +474,3 @@ fi
 # Hack keeps root-level skill directories and must be rendered against the
 # operator's extension prompts afterwards.
 "$script_dir/install-code-skills"
-
-# The pinned Native SDK CLI and Zig above are AgentVoice's packaging
-# prerequisites, so the desktop application is installed last. AgentVoice owns
-# packaging, bundle replacement, launch, and readiness verification; Funk only
-# invokes that contract. Every run delegates again: AgentVoice replaces and
-# relaunches an inactive installed app, and refuses when the installed copy is
-# running, which fails this install with its quit-and-rerun instruction. The
-# scheduled updater deliberately stays skills-only for exactly that reason.
-agentvoice_app_status=0
-"$script_dir/install-agentvoice-app" || agentvoice_app_status=$?
-if [ "$agentvoice_app_status" -ne 0 ]; then
-    printf 'Funk AI tools installer: AgentVoice desktop application install failed (exit %s). Fix the reported problem — quit a running AgentVoice.app if that is what it reported — then rerun ./install or libexec/install-agentvoice-app.\n' \
-        "$agentvoice_app_status" >&2
-    exit "$agentvoice_app_status"
-fi

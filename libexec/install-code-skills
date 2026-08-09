@@ -105,16 +105,6 @@ for project in "$code_root"/agent*/; do
     [ -d "$project" ] || continue
     project_name=${project##*/}
 
-    # AgentVoice owns its own skill installation: `bun run skills:install`
-    # links each skill live into the agent skill directories so edits in the
-    # checkout are visible immediately, and libexec/install-agentvoice-skills
-    # invokes that contract from both ./install and the scheduled updater.
-    # Running `skills add` over the same names would replace those symlinks
-    # with copies, and AgentVoice's next run would link them back — the two
-    # mechanisms would fight over the same files forever. AgentVoice's skills
-    # are already synchronized, just by their owner.
-    [ "$project_name" != agentvoice ] || continue
-
     # A checkout with no skills/<name>/SKILL.md simply is not a participant.
     # That is the convention working, not a misconfiguration, so it passes
     # without comment.

@@ -22,9 +22,8 @@ libexec/repair-cask-user-dirs
 libexec/reclaim-app-ownership
 libexec/list-unattendable-casks
 libexec/install-orca
-libexec/install-agentvoice-skills
 libexec/install-code-skills
-libexec/install-agentvoice-app
+libexec/install-agentvoice-cli
 libexec/stow-config
 libexec/initialize-configs
 libexec/configure-orca
@@ -442,17 +441,6 @@ cat >"$update_home/.agents/.skill-lock.json" <<'EOF'
   }
 }
 EOF
-update_agentvoice_root="$update_home/code/agentvoice"
-mkdir -p "$update_agentvoice_root"
-cat >"$update_agentvoice_root/package.json" <<'EOF'
-{
-  "name": "agentvoice",
-  "scripts": {
-    "skills:install": "bun run src/agentvoice.ts tools skills install"
-  }
-}
-EOF
-
 set +e
 update_output=$(
     HOME="$update_home" \
@@ -474,7 +462,7 @@ grep -F "brew-stub <bundle> <install> <--upgrade> <--file=$root/Brewfile>" \
 printf '%s\n' "$update_output" | grep -F 'FAILED with exit status 23' >/dev/null \
     || fail "funk update did not log failure"
 [ ! -s "$update_bun_log" ] \
-    || fail "funk update ran the AgentVoice installer after a Brewfile failure"
+    || fail "funk update ran a checkout installer after a Brewfile failure"
 
 HOME="$update_home" \
     PATH="$root/tests/fixtures:/usr/bin:/bin:/usr/sbin:/sbin" \
@@ -510,16 +498,6 @@ grep -F 'brew-stub <list> <--cask> <--versions> <orca>' "$update_brew_log" >/dev
 grep -F 'npx-stub <--yes> <skills> <add> <https://github.com/stablyai/orca>' \
     "$update_npx_log" >/dev/null \
     || fail "scheduled update did not synchronize Orca skills"
-grep -F "bun-stub <run> <--cwd> <$update_agentvoice_root> <skills:install>" \
-    "$update_bun_log" >/dev/null \
-    || fail "scheduled update did not invoke the AgentVoice skill installer"
-# The six-hour background path must never rebuild or relaunch the desktop app.
-if grep -F 'app:install' "$update_bun_log" >/dev/null; then
-    fail "scheduled update installed the AgentVoice desktop application"
-fi
-if grep -F 'install-agentvoice-app' libexec/funk-update >/dev/null; then
-    fail "scheduled updater references the interactive AgentVoice app installer"
-fi
 # Select by title rather than by position: an upgrade of a running Orca sends a
 # second, separate notification, and reading whichever happened to be last would
 # make these assertions depend on that.
@@ -578,7 +556,7 @@ update_output=$(
         FUNK_TEST_BREW_LOG="$update_brew_log" \
         FUNK_TEST_NPX_LOG="$update_npx_log" \
         FUNK_TEST_BUN_LOG="$update_bun_log" \
-        FUNK_TEST_BUN_EXIT=17 \
+        FUNK_TEST_NPX_EXIT=17 \
         FUNK_TEST_NOTIFIER_LOG="$update_notifier_log" \
         FUNK_NPX_BIN="$root/tests/fixtures/npx" \
         FUNK_ORCA_INFO_PLIST="$update_orca_plist" \
@@ -588,47 +566,49 @@ update_output=$(
 update_status=$?
 set -e
 [ "$update_status" -eq 17 ] \
-    || fail "funk update did not propagate an AgentVoice installer failure"
+    || fail "funk update did not propagate an installer failure"
 printf '%s\n' "$update_output" | grep -F 'FAILED with exit status 17' >/dev/null \
-    || fail "funk update did not log the AgentVoice installer failure"
+    || fail "funk update did not log the installer failure"
 grep -F 'brew-stub <list> <--cask> <--versions> <orca>' "$update_brew_log" >/dev/null \
-    || fail "AgentVoice installer failure test did not converge Orca before failing"
-grep -F "bun-stub <run> <--cwd> <$update_agentvoice_root> <skills:install>" \
-    "$update_bun_log" >/dev/null \
-    || fail "AgentVoice installer failure test did not invoke the installer"
+    || fail "installer failure test did not converge Orca before failing"
+grep -F 'npx-stub <--yes> <skills> <add>' "$update_npx_log" >/dev/null \
+    || fail "installer failure test did not reach a skill installer"
 failure_notification=$(tail -n 1 "$update_notifier_log")
 printf '%s\n' "$failure_notification" | grep -F '<-title> <Funk Update Failed>' >/dev/null \
-    || fail "AgentVoice installer failure did not send the failure notification"
+    || fail "installer failure did not send the failure notification"
 printf '%s\n' "$failure_notification" \
     | grep -F '<-message> <Installer failed; no updates completed. See update.log.>' \
         >/dev/null \
-    || fail "AgentVoice installer failure notification omitted the log pointer"
+    || fail "installer failure notification omitted the log pointer"
 
+# A machine that has not cloned AgentVoice is a skip, not a failure: the CLI is
+# one of several optional checkout-backed tools and ./install must not stop for
+# a machine that simply does not have it.
 agentvoice_missing_home="$update_test_dir/agentvoice-missing-home"
 mkdir -p "$agentvoice_missing_home"
 set +e
 agentvoice_missing_output=$(
     HOME="$agentvoice_missing_home" \
         PATH="/usr/bin:/bin:/usr/sbin:/sbin" \
-        "$root/libexec/install-agentvoice-skills" 2>&1
+        "$root/libexec/install-agentvoice-cli" 2>&1
 )
 agentvoice_missing_status=$?
 set -e
-[ "$agentvoice_missing_status" -eq 1 ] \
-    || fail "AgentVoice skill installer did not fail without a local checkout"
+[ "$agentvoice_missing_status" -eq 0 ] \
+    || fail "AgentVoice CLI installer did not skip a machine without a checkout"
 printf '%s\n' "$agentvoice_missing_output" \
     | grep -F \
-        "AgentVoice checkout not found: $agentvoice_missing_home/code/agentvoice/package.json is missing" \
+        "no checkout at $agentvoice_missing_home/code/agentvoice; skipping." \
         >/dev/null \
-    || fail "AgentVoice skill installer did not report the missing checkout clearly"
+    || fail "AgentVoice CLI installer did not report the skipped checkout clearly"
 
 # Each agent CLI ships its own runbook as a skill, and Funk finds those skills
 # by convention instead of by list: an agent* checkout that exports
 # skills/<name>/SKILL.md is a participant, and everything else under the root
 # is not. The scan must batch one invocation per project naming every skill it
-# found, and it must leave AgentVoice alone -- AgentVoice's own installer links
-# its skills live from the checkout, so a `skills add` over the same names
-# would replace those links with copies on every single run.
+# found. No participant is exempt: AgentVoice used to be, back when its own
+# installer linked its skills live from the checkout and a `skills add` over
+# the same names would have replaced those links with copies on every run.
 # Its own directory rather than a corner of the update fixture: the installation
 # plan asserted much further down embeds this same scan, and the update fixture
 # is removed long before that.
@@ -661,7 +641,11 @@ printf '%s\n' "$code_skills_plan" \
     | grep -F "npx --yes skills add \"$code_skills_root/agentdemo\" --agent codex claude-code pi --skill demo second --global --yes" \
         >/dev/null \
     || fail "project skill plan omits the skills discovered in a participating checkout"
-if printf '%s\n' "$code_skills_plan" | grep -Eq 'agentvoice|agentquiet|notagent'; then
+printf '%s\n' "$code_skills_plan" \
+    | grep -F "npx --yes skills add \"$code_skills_root/agentvoice\" --agent codex claude-code pi --skill story --global --yes" \
+        >/dev/null \
+    || fail "project skill plan exempts AgentVoice instead of scanning it like any other participant"
+if printf '%s\n' "$code_skills_plan" | grep -Eq 'agentquiet|notagent'; then
     fail "project skill plan includes a checkout that is not a participant"
 fi
 
@@ -672,10 +656,13 @@ FUNK_CODE_ROOT="$code_skills_root" \
 grep -F "npx-stub <--yes> <skills> <add> <$code_skills_root/agentdemo> <--agent> <codex> <claude-code> <pi> <--skill> <demo> <second> <--global> <--yes>" \
     "$code_skills_log" >/dev/null \
     || fail "project skill scan did not ship both discovered skills in one invocation"
-if grep -E 'agentvoice|agentquiet|notagent' "$code_skills_log" >/dev/null; then
+grep -F "npx-stub <--yes> <skills> <add> <$code_skills_root/agentvoice> <--agent> <codex> <claude-code> <pi> <--skill> <story> <--global> <--yes>" \
+    "$code_skills_log" >/dev/null \
+    || fail "project skill scan skipped AgentVoice instead of synchronizing it"
+if grep -E 'agentquiet|notagent' "$code_skills_log" >/dev/null; then
     fail "project skill scan synchronized a checkout that is not a participant"
 fi
-[ "$(grep -c 'npx-stub' "$code_skills_log")" -eq 1 ] \
+[ "$(grep -c 'npx-stub' "$code_skills_log")" -eq 2 ] \
     || fail "project skill scan did not invoke the skills tool exactly once per participant"
 
 # A checkout without skills is silently not a participant, but a participant
@@ -695,10 +682,11 @@ set -e
 printf '%s\n' "$code_skills_failure" | grep -F 'agentdemo' >/dev/null \
     || fail "project skill scan failure does not name the project to fix"
 
-# shellcheck disable=SC2016 # Match the literal exclusion guard in the script.
-grep -F '[ "$project_name" != agentvoice ] || continue' \
-    libexec/install-code-skills >/dev/null \
-    || fail "project skill scan lost the AgentVoice exclusion"
+# shellcheck disable=SC2016 # Match the exclusion guard this scan no longer has.
+if grep -F '[ "$project_name" != agentvoice ] || continue' \
+    libexec/install-code-skills >/dev/null; then
+    fail "project skill scan still exempts AgentVoice by name"
+fi
 # shellcheck disable=SC2016 # Match the literal installer declaration.
 grep -F 'code_skills_installer="$funk_root/libexec/install-code-skills"' \
     libexec/funk-update >/dev/null \
@@ -706,120 +694,6 @@ grep -F 'code_skills_installer="$funk_root/libexec/install-code-skills"' \
 # shellcheck disable=SC2016 # Match the literal helper invocation in the script.
 grep -F '"$code_skills_installer" || status=$?' libexec/funk-update >/dev/null \
     || fail "scheduled updater does not synchronize the per-project agent skills"
-
-# The desktop application bridge: Funk provisions Zig and the pinned Native SDK
-# CLI, then calls AgentVoice's own app:install contract. These cases use stubs
-# only; nothing is installed globally, no bundle is written, no app is launched.
-app_installer="$root/libexec/install-agentvoice-app"
-app_bun_log="$update_test_dir/app-bun.log"
-app_home="$update_test_dir/agentvoice-app-home"
-app_agentvoice_root="$app_home/code/agentvoice"
-mkdir -p "$app_agentvoice_root"
-cat >"$app_agentvoice_root/package.json" <<'EOF'
-{
-  "name": "agentvoice",
-  "scripts": {
-    "app:install": "bun run src/agentvoice.ts ui app --install"
-  }
-}
-EOF
-
-run_app_installer() {
-    set +e
-    app_output=$(
-        HOME="$app_home" \
-            PATH="$root/tests/fixtures:/usr/bin:/bin:/usr/sbin:/sbin" \
-            FUNK_BUN_BIN="$root/tests/fixtures/bun" \
-            FUNK_TEST_BUN_LOG="$app_bun_log" \
-            /usr/bin/env "$@" "$app_installer" 2>&1
-    )
-    app_status=$?
-    set -e
-}
-
-app_missing_home="$update_test_dir/agentvoice-app-missing-home"
-mkdir -p "$app_missing_home"
-set +e
-app_missing_output=$(
-    HOME="$app_missing_home" \
-        PATH="$root/tests/fixtures:/usr/bin:/bin:/usr/sbin:/sbin" \
-        FUNK_BUN_BIN="$root/tests/fixtures/bun" \
-        "$app_installer" 2>&1
-)
-app_missing_status=$?
-set -e
-[ "$app_missing_status" -eq 1 ] \
-    || fail "AgentVoice app installer did not fail without a local checkout"
-printf '%s\n' "$app_missing_output" \
-    | grep -F \
-        "AgentVoice checkout not found: $app_missing_home/code/agentvoice/package.json is missing" \
-        >/dev/null \
-    || fail "AgentVoice app installer did not report the missing checkout clearly"
-
-: >"$app_bun_log"
-set +e
-app_no_zig_output=$(
-    HOME="$app_home" \
-        PATH="/usr/bin:/bin:/usr/sbin:/sbin" \
-        FUNK_BUN_BIN="$root/tests/fixtures/bun" \
-        FUNK_TEST_BUN_LOG="$app_bun_log" \
-        "$app_installer" 2>&1
-)
-app_no_zig_status=$?
-set -e
-[ "$app_no_zig_status" -eq 1 ] \
-    || fail "AgentVoice app installer did not fail without Zig"
-printf '%s\n' "$app_no_zig_output" | grep -F 'zig is not installed' >/dev/null \
-    || fail "AgentVoice app installer did not report a missing Zig toolchain"
-[ ! -s "$app_bun_log" ] \
-    || fail "AgentVoice app installer called AgentVoice without Zig"
-
-: >"$app_bun_log"
-run_app_installer FUNK_TEST_ZIG_VERSION=0.15.1
-[ "$app_status" -eq 1 ] \
-    || fail "AgentVoice app installer accepted a Zig older than 0.16"
-printf '%s\n' "$app_output" \
-    | grep -F 'requires Zig 0.16 or newer, found 0.15.1' >/dev/null \
-    || fail "AgentVoice app installer did not name the incompatible Zig version"
-[ ! -s "$app_bun_log" ] \
-    || fail "AgentVoice app installer called AgentVoice with an incompatible Zig"
-
-: >"$app_bun_log"
-run_app_installer FUNK_TEST_ZIG_VERSION=0.16.0-dev.512+abcdef
-[ "$app_status" -eq 0 ] \
-    || fail "AgentVoice app installer rejected a compatible Zig development build"
-grep -F "bun-stub <run> <--cwd> <$app_agentvoice_root> <app:install>" \
-    "$app_bun_log" >/dev/null \
-    || fail "AgentVoice app installer did not invoke the AgentVoice app:install contract"
-
-# Repeat interactive setup is not a Funk-side no-op: every run delegates to
-# AgentVoice again, and AgentVoice decides whether it can replace the bundle.
-: >"$app_bun_log"
-run_app_installer FUNK_TEST_ZIG_VERSION=0.16.1
-[ "$app_status" -eq 0 ] || fail "first AgentVoice app install run failed"
-run_app_installer FUNK_TEST_ZIG_VERSION=0.16.1
-[ "$app_status" -eq 0 ] \
-    || fail "repeat AgentVoice app install failed against an inactive installed app"
-[ "$(grep -c -F "<app:install>" "$app_bun_log")" -eq 2 ] \
-    || fail "AgentVoice app installer did not delegate both runs to AgentVoice"
-
-# An installed copy that is currently running makes AgentVoice refuse, and that
-# refusal must reach the user with its quit-and-rerun instruction and status.
-: >"$app_bun_log"
-run_app_installer FUNK_TEST_ZIG_VERSION=0.16.1 FUNK_TEST_AGENTVOICE_APP_RUNNING=1
-[ "$app_status" -eq 3 ] \
-    || fail "AgentVoice app installer did not propagate the running-app refusal status"
-printf '%s\n' "$app_output" \
-    | grep -F 'quit it and rerun this installer' >/dev/null \
-    || fail "AgentVoice app installer swallowed the running-app diagnostic"
-grep -F "bun-stub <run> <--cwd> <$app_agentvoice_root> <app:install>" \
-    "$app_bun_log" >/dev/null \
-    || fail "running-app refusal test did not reach the AgentVoice contract"
-
-: >"$app_bun_log"
-run_app_installer FUNK_TEST_ZIG_VERSION=0.16.1 FUNK_TEST_BUN_EXIT=19
-[ "$app_status" -eq 19 ] \
-    || fail "AgentVoice app installer did not propagate the AgentVoice failure status"
 
 quarantine_home="$update_test_dir/quarantine-home"
 quarantine_app="$quarantine_home/Applications/Funk Test.app"
@@ -1357,9 +1231,8 @@ for required_ai_install in \
     'curl -fsSL https://claude.ai/install.sh | bash' \
     'curl -fsSL https://chatgpt.com/codex/install.sh | CODEX_NON_INTERACTIVE=1 sh' \
     'curl -fsSL https://pi.dev/install.sh | sh  # in its own session, no controlling terminal' \
-    'brew install or upgrade zig  # AgentVoice native packaging needs 0.16 or newer' \
-    'npm install --global @native-sdk/cli@0.7  # AgentVoice refuses other lines' \
-    "bun run --cwd \"\$HOME/code/agentvoice\" app:install  # AgentVoice owns packaging and launch" \
+    'brew install or upgrade zig  # AgentVoice'"'"'s native duplex audio path builds against it' \
+    'npm install --global @native-sdk/cli@0.7  # the line the native-sdk skill documents' \
     'codex mcp add shadcn -- npx shadcn@latest mcp' \
     'claude mcp add --scope user shadcn -- npx shadcn@latest mcp' \
     'native skills list' \
@@ -1386,12 +1259,11 @@ fi
 if printf '%s\n' "$ai_install_plan" | grep -qi 'livekit'; then
     fail "AI installation plan still includes LiveKit setup"
 fi
-# AgentVoice exports skills/ like the other agent tools, so the scan must be
-# the thing that leaves it alone -- its own installer links those skills live.
-if printf '%s\n' "$ai_install_plan" \
-    | grep -F "skills add \"$code_skills_root/agentvoice\"" >/dev/null; then
-    fail "AI installation plan synchronizes the skills AgentVoice installs itself"
-fi
+# AgentVoice exports skills/ like the other agent tools and is scanned like
+# them; nothing about it is special to this plan any more.
+printf '%s\n' "$ai_install_plan" \
+    | grep -F "skills add \"$code_skills_root/agentvoice\"" >/dev/null \
+    || fail "AI installation plan omits the skills AgentVoice exports by convention"
 # The agentchats checkout moved its skill to skills/chats/, so the scan ships
 # it and an explicit line would be the second synchronization path the
 # agentchats guidance forbids.
@@ -1408,9 +1280,7 @@ for code_skills_invocation in \
     grep -F "$code_skills_invocation" libexec/install-ai-tools >/dev/null \
         || fail "AI installer does not run the per-project skill scan: $code_skills_invocation"
 done
-# The scan must follow the explicit lines it deliberately does not replace. It
-# must also precede the desktop application install, which is asserted with the
-# rest of the AgentVoice ordering below.
+# The scan must follow the explicit lines it deliberately does not replace.
 ai_code_skills_line=$(
     # shellcheck disable=SC2016 # Match the literal helper invocation.
     grep -n -F '"$script_dir/install-code-skills"' libexec/install-ai-tools \
@@ -1445,9 +1315,9 @@ grep -F 'refusing to replace independent guidance' libexec/install-ai-tools >/de
 grep -F 'install_or_upgrade_formula gh' libexec/install-ai-tools >/dev/null \
     || fail "AI installer does not deliberately converge the GitHub CLI"
 
-# AgentVoice's native packaging refuses a Native SDK CLI outside 0.7 and a Zig
-# older than 0.16, so both prerequisites must be converged before Funk calls the
-# AgentVoice-owned desktop application installer.
+# The native-sdk skill documents the 0.7 line and Zig builds both Native SDK
+# applications and AgentVoice's opt-in native duplex audio device, so both stay
+# pinned rather than tracking latest.
 grep -F 'native_sdk_version=0.7' libexec/install-ai-tools >/dev/null \
     || fail "AI installer does not pin the Native SDK CLI to the compatible 0.7 line"
 if grep -F '@native-sdk/cli@latest' libexec/install-ai-tools >/dev/null; then
@@ -1455,27 +1325,17 @@ if grep -F '@native-sdk/cli@latest' libexec/install-ai-tools >/dev/null; then
 fi
 grep -F 'install_or_upgrade_formula zig' libexec/install-ai-tools >/dev/null \
     || fail "AI installer does not converge the Zig toolchain"
+# The AgentVoice desktop application retired with the repository that owned it;
+# nothing here may reach for its installer again.
+if grep -F 'install-agentvoice-app' libexec/install-ai-tools >/dev/null; then
+    fail "AI installer still references the retired AgentVoice app installer"
+fi
 # shellcheck disable=SC2016 # Match the literal helper invocation in the script.
-grep -F '"$script_dir/install-agentvoice-app"' libexec/install-ai-tools >/dev/null \
-    || fail "AI installer does not install the AgentVoice desktop application"
-ai_zig_line=$(grep -n -F 'install_or_upgrade_formula zig' libexec/install-ai-tools | cut -d: -f1)
-ai_native_sdk_line=$(grep -n -F 'native_sdk_version=0.7' libexec/install-ai-tools | cut -d: -f1)
-ai_agentvoice_app_line=$(
-    # shellcheck disable=SC2016 # Match the literal helper invocation in the script.
-    grep -n -F '"$script_dir/install-agentvoice-app"' libexec/install-ai-tools | cut -d: -f1
-)
-[ "$ai_zig_line" -lt "$ai_agentvoice_app_line" ] \
-    && [ "$ai_native_sdk_line" -lt "$ai_agentvoice_app_line" ] \
-    || fail "AI installer installs the AgentVoice app before its native prerequisites"
-# Skills are cheap and local; the desktop application install can refuse and end
-# the run. Synchronizing the runbooks first means a refusal never costs them.
-[ "$ai_code_skills_line" -lt "$ai_agentvoice_app_line" ] \
-    || fail "AI installer runs the project skill scan after the AgentVoice app install"
+grep -F '"$script_dir/install-agentvoice-cli"' libexec/install-ai-tools >/dev/null \
+    || fail "AI installer does not install the AgentVoice voice CLI"
 # shellcheck disable=SC2016 # Match the literal status variable in the script.
-grep -F 'exit "$agentvoice_app_status"' libexec/install-ai-tools >/dev/null \
-    || fail "AI installer does not propagate an AgentVoice app installation failure"
-grep -F 'quit a running AgentVoice.app' libexec/install-ai-tools >/dev/null \
-    || fail "AI installer failure guidance omits quitting a running AgentVoice.app"
+grep -F 'exit "$agentvoice_cli_status"' libexec/install-ai-tools >/dev/null \
+    || fail "AI installer does not propagate an AgentVoice CLI installation failure"
 
 # Pi reads its prompts from /dev/tty, so only removing the controlling terminal
 # keeps ./install unattended and stops it editing Funk's Stow-managed profile.
@@ -1629,7 +1489,7 @@ fi
 if grep -Eqi 'bundle cleanup|uninstall|fetch-head|telegram|sudo' \
     bin/funk libexec/funk-update libexec/install-update-agent \
     libexec/install-orca libexec/converge-brewfile libexec/converge-brew-casks \
-    libexec/repair-cask-artifacts libexec/install-agentvoice-skills \
+    libexec/repair-cask-artifacts \
     libexec/install-code-skills \
     launchd/com.arthack.funk.update.plist.in; then
     fail "scheduled updater contains a prohibited operation"

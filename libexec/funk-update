@@ -45,7 +45,6 @@ orca_installer="$funk_root/libexec/install-orca"
 brewfile_installer="$funk_root/libexec/converge-brewfile"
 unattendable_lister="$funk_root/libexec/list-unattendable-casks"
 cask_dir_lister="$funk_root/libexec/repair-cask-user-dirs"
-agentvoice_installer="$funk_root/libexec/install-agentvoice-skills"
 code_skills_installer="$funk_root/libexec/install-code-skills"
 
 if [ ! -f "$brewfile" ]; then
@@ -66,10 +65,6 @@ fi
 }
 [ -x "$cask_dir_lister" ] || {
     log "FAILED: cask user-dir helper not found at $cask_dir_lister" >&2
-    exit 66
-}
-[ -x "$agentvoice_installer" ] || {
-    log "FAILED: AgentVoice skill installer not found at $agentvoice_installer" >&2
     exit 66
 }
 [ -x "$code_skills_installer" ] || {
@@ -290,9 +285,6 @@ log "starting: $brew_bin bundle install --upgrade --file=$brewfile"
 "$brewfile_installer" || status=$?
 if [ "$status" -eq 0 ]; then
     "$orca_installer" || status=$?
-fi
-if [ "$status" -eq 0 ]; then
-    "$agentvoice_installer" || status=$?
 fi
 # Each agent CLI's runbook now ships as a skill inside its own checkout, and a
 # stale runbook misleads a session as badly as a stale binary does. Refreshing
