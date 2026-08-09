@@ -49,6 +49,7 @@ Commands:
   harden <action>    Show status or reapply the travel firewall posture
   install-hardening  Install the root-owned hardening service
   yabai <action>     Show or maintain the Yabai scripting-addition layer
+  reload-karabiner   Restart Karabiner so it re-reads the Stow-linked config
   install-windows    Install the window stack and converge Yabai Spaces 1-9
   help               Show this help
 EOF
@@ -131,6 +132,10 @@ case "$command_name" in
     yabai)
         shift
         exec "$FUNK_ROOT/libexec/funk-yabai" "$@"
+        ;;
+    reload-karabiner)
+        shift
+        exec "$FUNK_ROOT/libexec/reload-karabiner" "$@"
         ;;
     install-windows)
         shift

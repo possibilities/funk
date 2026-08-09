@@ -1,0 +1,96 @@
+#!/bin/bash
+
+set -euo pipefail
+
+die() {
+    printf 'funk reload-karabiner: %s\n' "$*" >&2
+    exit 1
+}
+
+usage() {
+    cat <<'EOF'
+Usage: funk reload-karabiner [--check]
+
+Restart Karabiner-Elements' per-user session service so it re-reads the
+Stow-managed karabiner.json.
+
+Karabiner watches ~/.config/karabiner for changes, but Stow links
+karabiner.json to a file inside the Funk checkout. Editing that file leaves
+the symlink itself untouched, no event reaches the watcher, and Karabiner
+keeps applying whatever it parsed at launch. Nothing reports the drift: the
+config on disk is correct, the running remaps are stale, and the keys stay
+wrong until something restarts the service.
+
+Options:
+  --check  Report whether the running service predates the config file
+EOF
+}
+
+service_label=org.pqrs.service.agent.karabiner_console_user_server
+config_file="$HOME/.config/karabiner/karabiner.json"
+
+# The service parses the config once at launch, so any start that predates the
+# file's last write is running stale rules. Comparing those two timestamps is
+# the whole convergence test; there is no way to ask Karabiner what it holds.
+service_started_at() {
+    local pid started
+    pid=$(/usr/bin/pgrep -x karabiner_console_user_server | /usr/bin/head -1) || return 1
+    [ -n "$pid" ] || return 1
+    started=$(/bin/ps -p "$pid" -o lstart=) || return 1
+    # ps pads lstart to a fixed width; date rejects the trailing spaces.
+    started=${started%"${started##*[![:space:]]}"}
+    [ -n "$started" ] || return 1
+    /bin/date -j -f '%a %b %e %H:%M:%S %Y' "$started" +%s 2>/dev/null
+}
+
+check_only=0
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --check) check_only=1 ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        *)
+            usage >&2
+            exit 64
+            ;;
+    esac
+    shift
+done
+
+[ "$(id -u)" -ne 0 ] || die "run as the target user, not root"
+[ -n "${HOME:-}" ] && [ -d "$HOME" ] || die "HOME is not an existing directory"
+[ -e "$config_file" ] || die "karabiner config is missing; run funk stow karabiner"
+
+# -L so the mtime is the linked file's, not the symlink's. The symlink is only
+# rewritten by Stow, while the file behind it changes on every config edit.
+config_mtime=$(/usr/bin/stat -L -f '%m' "$config_file") \
+    || die "cannot read karabiner config timestamp: $config_file"
+
+if ! started_at=$(service_started_at); then
+    # A first install has not granted input monitoring yet, so the session
+    # services are not running and there is nothing to reload. install-windows
+    # opens the app for that approval; this is not a failure.
+    printf 'Karabiner session service is not running; nothing to reload.\n'
+    exit 0
+fi
+
+if [ "$started_at" -ge "$config_mtime" ]; then
+    if [ "$check_only" -eq 1 ]; then
+        printf 'Karabiner is running the current config.\n'
+    else
+        printf 'Karabiner already reloaded since the last config change.\n'
+    fi
+    exit 0
+fi
+
+if [ "$check_only" -eq 1 ]; then
+    printf 'Karabiner would be reloaded; it started before the last config change.\n'
+    exit 0
+fi
+
+launchctl kickstart -k "gui/$(id -u)/$service_label" \
+    || die "could not restart $service_label; approve Karabiner's input monitoring, then retry"
+
+printf 'Reloaded Karabiner: %s\n' "$config_file"

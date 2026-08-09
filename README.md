@@ -118,6 +118,14 @@ adopt an old `/Users/mike/.config/gh/hosts.yml` only when no current host config
 exists and the old file contains a portable token. Keyring-backed credentials
 cannot be transferred by copying that file.
 
+Karabiner reads its config once at launch and watches `~/.config/karabiner`
+for changes, but Stow links `karabiner.json` to a file inside the checkout, so
+editing it leaves the symlink untouched and no event reaches the watcher.
+Karabiner keeps applying the rules it parsed at startup, and nothing reports
+the drift — the config on disk is right while the keys stay wrong. `funk
+reload-karabiner` restarts the session service when it started before the
+config was last written; `funk install-windows` runs it after stowing.
+
 Karabiner owns Funk's low-level keyboard layer: global Cmd+1…8 becomes
 F13…F20 and Cmd+9 becomes F12 for Yabai Space focus; Ctrl+1…9 becomes the
 normal Cmd+number tab shortcut in Chrome, Chrome Canary, Brave, and Firefox;

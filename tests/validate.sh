@@ -41,6 +41,7 @@ libexec/configure-system
 libexec/funk-harden-client
 libexec/install-hardening
 libexec/funk-yabai
+libexec/reload-karabiner
 libexec/install-window-manager
 system/funk-harden
 system/install-hardening-root

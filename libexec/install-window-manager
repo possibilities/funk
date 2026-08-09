@@ -110,6 +110,13 @@ else
         || printf 'Open Karabiner-Elements manually to approve its requested permissions.\n' >&2
 fi
 
+# The stow above may have relinked or rewritten karabiner.json. Karabiner
+# watches ~/.config/karabiner and never sees a write to the file the symlink
+# points at, so without this the installer reports success while the running
+# remaps stay stale.
+"$funk_root/libexec/reload-karabiner" \
+    || printf 'Karabiner reload failed; run funk reload-karabiner after granting its permissions.\n' >&2
+
 if [ "$converged" -eq 0 ]; then
     printf 'Loading Yabai scripting addition and converging Spaces 1-9.\n'
     if ! "$funk_root/bin/funk" yabai maintain; then
