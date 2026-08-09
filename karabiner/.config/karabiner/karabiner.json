@@ -341,7 +341,7 @@
             ]
           },
           {
-            "description": "Option+,/./U/I sends Orca's tab and worktree navigation chords",
+            "description": "Option+M/,/U/I sends Orca's tab and worktree navigation chords",
             "manipulators": [
               {
                 "type": "basic",
@@ -352,7 +352,7 @@
                   }
                 ],
                 "from": {
-                  "key_code": "comma",
+                  "key_code": "m",
                   "modifiers": { "mandatory": ["option"] }
                 },
                 "to": [{ "key_code": "open_bracket", "modifiers": ["command", "shift"] }]
@@ -366,7 +366,7 @@
                   }
                 ],
                 "from": {
-                  "key_code": "period",
+                  "key_code": "comma",
                   "modifiers": { "mandatory": ["option"] }
                 },
                 "to": [{ "key_code": "close_bracket", "modifiers": ["command", "shift"] }]
@@ -383,7 +383,7 @@
                   "key_code": "u",
                   "modifiers": { "mandatory": ["option"] }
                 },
-                "to": [{ "key_code": "up_arrow", "modifiers": ["command", "shift"] }]
+                "to": [{ "key_code": "down_arrow", "modifiers": ["command", "shift"] }]
               },
               {
                 "type": "basic",
@@ -397,7 +397,7 @@
                   "key_code": "i",
                   "modifiers": { "mandatory": ["option"] }
                 },
-                "to": [{ "key_code": "down_arrow", "modifiers": ["command", "shift"] }]
+                "to": [{ "key_code": "up_arrow", "modifiers": ["command", "shift"] }]
               }
             ]
           },

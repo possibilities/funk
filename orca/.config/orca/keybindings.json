@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "keybindings": {},
+  "platforms": {
+    "darwin": {
+      "sidebar.right.toggle": ["Mod+Shift+S"]
+    }
+  }
+}

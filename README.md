@@ -122,7 +122,7 @@ Karabiner owns Funk's low-level keyboard layer: global Cmd+1…8 becomes
 F13…F20 and Cmd+9 becomes F12 for Yabai Space focus; Ctrl+1…9 becomes the
 normal Cmd+number tab shortcut in Chrome, Chrome Canary, Brave, and Firefox;
 Right Option+H/J/K/L becomes the arrow keys while preserving Shift;
-Option+comma, period, U, and I become Orca's own tab and worktree navigation
+Option+M, comma, U, and I become Orca's own tab and worktree navigation
 chords while Orca is frontmost; Caps Lock becomes Escape; and left Command and
 left Option are swapped only on the built-in keyboard.
 
@@ -135,12 +135,30 @@ confirms it stays `¡` even with Command held, so no `Alt+…` or `Cmd+Alt+…`
 binding can ever fire. Karabiner therefore translates the Option chords into
 the chords Orca already ships — Cmd+Shift+bracket for the previous and next tab
 of any type, Cmd+Shift+Up and Cmd+Shift+Down for the previous and next worktree
-— which keeps Orca's own configuration untouched and binds no new chord inside
-it. Orca has no action for reordering tabs, so there is no chord for moving the
-active tab left or right.
+— which binds no new chord inside Orca. Orca has no action for reordering tabs,
+so there is no chord for moving the active tab left or right.
+
+The four sources sit in two QWERTY columns so the hand finds them without
+looking: U and M share J's column, I and comma share K's. U and I take their
+direction from vim, where J is down and K is up, so Option+U is the next
+worktree and Option+I the previous one — the opposite of what the arrow keys
+they send are called. Tab navigation keeps physical order instead, with the
+left key going to the previous tab.
+
+Funk also ships an Orca keybindings overlay, because Orca's own defaults
+collide with the layers above it. `Mod+L` for Toggle Right Sidebar never
+reaches Orca — skhd claims Cmd+L for Yabai focus-east — so the overlay moves it
+to Cmd+Shift+S, which is free in every layer and reachable by the left hand
+alone. `funk configure-orca` merges `~/.config/orca/keybindings.json` into
+`~/.orca/keybindings.json`, deep-merging so shortcuts set in Orca's own UI for
+unmanaged actions survive. Orca rewrites that file in place when a shortcut is
+edited, so it is merged rather than symlinked.
 
 skhd restores Ctrl+L as the address-bar shortcut in Funk's four browsers and
-Cmd+Shift+V as a direct Raycast Clipboard History shortcut.
+Cmd+Shift+V as a direct Raycast Clipboard History shortcut. These still shadow
+Orca defaults that Funk does not remap: Cmd+J (switch worktree), Cmd+K (clear
+pane), Cmd+Shift+F (show search), Cmd+Shift+V (markdown preview), and Cmd+1…8
+(select workspace) are unreachable inside Orca.
 
 The default install also applies the personal macOS preferences retained from
 the old dotfiles: dark mode, an empty auto-hidden Dock and menu bar, quiet UI,

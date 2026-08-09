@@ -64,6 +64,83 @@ jq_bin=$(find_jq) || die "jq is not installed; run ./install or brew install jq"
 settings_file="$HOME/.config/orca/settings.json"
 [ -f "$settings_file" ] || die "settings overlay is missing; run funk stow orca"
 
+# Keybindings live in their own file that Orca reads and hot-reloads, so they
+# converge independently of the settings overlay and without waiting for Orca
+# to quit. Orca rewrites the file with temp-file + rename whenever a shortcut
+# is edited in its UI, which would replace a Stow symlink with a regular file,
+# so the overlay is merged in rather than linked.
+keybindings_overlay="$HOME/.config/orca/keybindings.json"
+keybindings_file="$HOME/.orca/keybindings.json"
+[ -f "$keybindings_overlay" ] || die "keybindings overlay is missing; run funk stow orca"
+
+# shellcheck disable=SC2016 # $schema is a JSON key name, not a shell expansion.
+"$jq_bin" -e '
+  type == "object" and
+  ((keys - ["$schema", "version", "keybindings", "platforms"]) | length == 0) and
+  (.version == 1) and
+  (.keybindings | type == "object") and
+  (.platforms | type == "object" and ((keys - ["darwin", "linux", "win32"]) | length == 0)) and
+  ([.keybindings, (.platforms | .[])] | all(
+    type == "object" and (to_entries | all(
+      .value | type == "array" and length > 0 and all(.[]; type == "string" and length > 0)
+    ))
+  ))
+' "$keybindings_overlay" >/dev/null || die "keybindings overlay is invalid: $keybindings_overlay"
+
+keybindings_desired=$("$jq_bin" -c '{version: 1, keybindings: .keybindings, platforms: .platforms}' "$keybindings_overlay")
+
+keybindings_converged=0
+if [ -f "$keybindings_file" ]; then
+    [ ! -L "$keybindings_file" ] \
+        || die "Orca rewrites this file in place; it must not be a Stow symlink: $keybindings_file"
+    "$jq_bin" -e 'type == "object"' "$keybindings_file" >/dev/null \
+        || die "Orca keybindings are not a JSON object: $keybindings_file"
+    # Same leaf-by-leaf comparison the settings block uses, and for the same
+    # reason: `contains` would match a shortcut string against a substring of
+    # a longer one and report a stale binding as converged.
+    # shellcheck disable=SC2016 # $desired is a jq variable, not a shell expansion.
+    if "$jq_bin" -e --argjson desired "$keybindings_desired" '
+      . as $current |
+      [$desired | paths(scalars)] as $leaves |
+      all($leaves[]; . as $leaf | ($current | getpath($leaf)) == ($desired | getpath($leaf)))
+    ' "$keybindings_file" >/dev/null; then
+        keybindings_converged=1
+    fi
+fi
+
+if [ "$keybindings_converged" -eq 1 ]; then
+    if [ "$check_only" -eq 1 ]; then
+        printf 'Orca keybindings are converged: %s\n' "$keybindings_file"
+    else
+        printf 'Orca keybindings already converged: %s\n' "$keybindings_file"
+    fi
+elif [ "$check_only" -eq 1 ]; then
+    printf 'Orca keybindings would be updated: %s\n' "$keybindings_file"
+else
+    keybindings_dir=$(dirname "$keybindings_file")
+    mkdir -p "$keybindings_dir"
+    keybindings_tmp=$(mktemp "$keybindings_dir/.funk-keybindings.XXXXXX")
+    cleanup_keybindings() {
+        rm -f "$keybindings_tmp"
+    }
+    trap cleanup_keybindings EXIT
+
+    # Deep-merge so shortcuts the user set in Orca's UI for actions Funk does
+    # not manage survive, while every action Funk names is reset to Funk's value.
+    if [ -f "$keybindings_file" ]; then
+        # shellcheck disable=SC2016 # $desired is a jq variable, not a shell expansion.
+        "$jq_bin" --argjson desired "$keybindings_desired" '. * $desired' \
+            "$keybindings_file" >"$keybindings_tmp"
+    else
+        printf '%s\n' "$keybindings_desired" | "$jq_bin" '.' >"$keybindings_tmp"
+    fi
+    chmod 0600 "$keybindings_tmp"
+    mv -f "$keybindings_tmp" "$keybindings_file"
+    trap - EXIT
+
+    printf 'Applied Orca keybindings: %s\n' "$keybindings_file"
+fi
+
 "$jq_bin" -e '
   type == "object" and
   ((keys - [

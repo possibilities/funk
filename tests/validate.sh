@@ -310,12 +310,18 @@ if command -v ruby >/dev/null 2>&1; then
       # KeyboardEvent.key, and Option+, arrives as a composed character whether
       # or not Command is held. Karabiner therefore sends the stock chords Orca
       # already ships, so nothing has to be bound inside Orca at all.
+      #
+      # The four sources sit in two QWERTY columns so the hand finds them
+      # without looking: U and M share the J column, I and comma share the K
+      # column. U and I take their direction from vim, where J is down and K is
+      # up, so Option+U is the next worktree and Option+I the previous one. Tab
+      # navigation keeps physical order instead, left key previous.
       orca_rules = rules.fetch(4).fetch("manipulators")
       abort "unexpected Orca navigation sources" unless orca_rules.map { |m|
         [m.dig("from", "key_code"), m.dig("from", "modifiers")]
-      } == %w[comma period u i].map { |key| [key, { "mandatory" => ["option"] }] }
+      } == %w[m comma u i].map { |key| [key, { "mandatory" => ["option"] }] }
       abort "unexpected Orca navigation targets" unless orca_rules.map { |m| m.fetch("to") } ==
-        %w[open_bracket close_bracket up_arrow down_arrow].map { |key|
+        %w[open_bracket close_bracket down_arrow up_arrow].map { |key|
           [{ "key_code" => key, "modifiers" => ["command", "shift"] }]
         }
       abort "Orca navigation is not scoped to Orca" unless orca_rules.all? { |m|
