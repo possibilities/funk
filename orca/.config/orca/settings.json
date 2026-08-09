@@ -1,7 +1,9 @@
 {
   "agentDefaultArgs": {
     "claude": "",
+    "claude-agent-teams": "",
     "codex": "",
+    "openclaude": "",
     "pi": ""
   },
   "defaultTuiAgent": "codex",

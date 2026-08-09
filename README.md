@@ -365,13 +365,14 @@ Orca does not expose a standalone global preferences file: its settings share
 other generated state, and Orca atomically replaces that file when saving.
 Funk therefore stows a credential-free settings overlay at
 `~/.config/orca/settings.json` and `funk configure-orca` reconciles only those
-keys into the active profile. Those keys include `agentDefaultArgs` for
-`claude`, `codex`, and `pi`, held empty: agentsurface owns permission posture
-for the three shimmed harnesses, so Orca must not append permission flags of
-its own. The reconciliation is a per-key merge, so every other agent's
-arguments — `gemini`, `aider`, `openclaude`, `claude-agent-teams`, and the
-rest, none of which launch a shimmed bare command — are left as Orca wrote
-them. If Orca is open and the profile differs, the command stops instead of
+keys into the active profile. Those keys include `agentDefaultArgs`, held
+empty for every agent this machine still launches: `claude`, `codex`, and
+`pi`, because agentsurface owns permission posture for the three shimmed
+harnesses and Orca must not append permission flags of its own; plus
+`claude-agent-teams` and `openclaude`, which are no longer used here and
+should carry no permission arguments at all. The reconciliation is a per-key
+merge, so every other agent's arguments — `gemini`, `aider`, and the rest —
+are left as Orca wrote them. If Orca is open and the profile differs, the command stops instead of
 racing Orca's writer; quit Orca and rerun it. It exits
 `75` (`EX_TEMPFAIL`) in that case, which marks a step to repeat rather than a
 broken installation. The default installer runs this reconciliation after

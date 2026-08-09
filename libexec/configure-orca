@@ -85,7 +85,13 @@ settings_file="$HOME/.config/orca/settings.json"
   ]) | length == 0) and
   (.agentDefaultArgs | . == null or (
     type == "object" and
-    (keys - ["claude", "codex", "pi"] | length == 0) and
+    (keys - [
+      "claude",
+      "claude-agent-teams",
+      "codex",
+      "openclaude",
+      "pi"
+    ] | length == 0) and
     (to_entries | all(.value | type == "string"))
   )) and
   (.defaultTuiAgent | . == null or . == "blank" or
