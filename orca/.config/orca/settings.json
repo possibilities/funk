@@ -1,12 +1,10 @@
 {
   "agentDefaultArgs": {
     "claude": "",
-    "claude-agent-teams": "",
     "codex": "",
-    "openclaude": "",
     "pi": ""
   },
-  "defaultTuiAgent": "codex",
+  "defaultTuiAgent": "claude",
   "mobilePairingConnectionMode": "local-only",
   "notifications": {
     "terminalBell": true
