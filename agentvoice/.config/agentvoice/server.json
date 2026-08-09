@@ -1,5 +1,4 @@
 {
-  "$schema": "./server.schema.json",
   "accounts": {
     "balance": true
   },
