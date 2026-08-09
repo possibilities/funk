@@ -12,8 +12,10 @@ accounts:
   # Every app-server spawn asks the balancer (agentusage balance codex,
   # falling back to codex-swap select) which ChatGPT account to run on, and
   # an idle child rotates off an account that crosses the threshold. Needs
-  # profiles: `agentvoice accounts add <slug>` once per account. Any refusal
-  # falls back loudly to the canonical ~/.codex.
+  # profiles: `agentvoice accounts add <slug>` once per account — with
+  # codex-swap installed and none logged in, boot exits with the exact
+  # commands. Without the CLIs (other machines) this quietly runs canonical;
+  # transient refusals mid-run fall back loudly.
   balance: true
 
 orchestrator:
