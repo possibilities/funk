@@ -9,6 +9,11 @@
 # stripping. Reference: ~/code/agentvoice/docs/field-guide.md.
 
 orchestrator:
+  # The worker-dispatch tools (dispatch_worker / check_workers /
+  # cancel_worker) on the orchestrator's thread; the doctrine's "Keep the
+  # line open" section is written against them.
+  dispatch: true
+
   # Not ultra: ultra additionally switches on codex's proactive multi-agent
   # mode, and dispatch policy belongs to the doctrine, not the model tier.
   effort: high
