@@ -78,9 +78,10 @@ The shadcn skill provides Pi with its CLI workflow; Codex and Claude Code
 additionally get the official shadcn registry MCP server.
 
 Finally, the installer synchronizes the locally authored Art Hack skills —
-`hack`, `resource-create`, and `resource-update` — from `~/code/arthack` into the
-shared `~/.agents/skills` directory discovered by Codex Desktop and the other
-agent skill locations, then invokes Art Hack's `scripts/render`, which replaces
+`collab`, `build`, `resource-create`, and `resource-update` — from
+`~/code/arthack` into the shared `~/.agents/skills` directory discovered by
+Codex Desktop and the other agent skill locations, then invokes Art Hack's
+`scripts/render`, which replaces
 each installed `SKILL.md` with its rendered artifact: the template composed with
 the operator's extension prompts from `~/.config/arthack/`, which the `arthack`
 Stow package supplies. The skills installer ships raw templates, so rendering
@@ -104,8 +105,9 @@ The installer also links each CLI's global guidance location at the shared
 file: `~/.claude/CLAUDE.md` and `~/.codex/AGENTS.md` become symlinks to the
 Stow-managed `~/AGENTS.md` (source: `agents/AGENTS.md`). That file stays
 deliberately empty — global advice belongs in the Art Hack extension prompts,
-rendered into the `hack` skill — but the links remain so future guidance has a
-delivery path, with Claude Code reading only `CLAUDE.md` and Codex skipping
+rendered into the `collab` and `build` skills — but the links remain so future
+guidance has a delivery path, with Claude Code reading only `CLAUDE.md` and
+Codex skipping
 empty guidance files. The installer refuses to replace an independent
 non-symlink file at either location and verifies that each link resolves to
 the shared file's content.

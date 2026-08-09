@@ -213,7 +213,7 @@ EOF
   npx --yes skills add https://github.com/vercel/ai-elements --agent codex claude-code pi --skill ai-elements --global --yes
   npx --yes skills add https://github.com/shadcn/ui --agent codex claude-code pi --skill shadcn --global --yes
   npx --yes skills add https://github.com/vercel-labs/native --agent codex claude-code pi --skill native-sdk --global --yes
-  npx --yes skills add "$HOME/code/arthack" --agent codex claude-code pi --skill hack resource-create resource-update story --global --yes
+  npx --yes skills add "$HOME/code/arthack" --agent codex claude-code pi --skill collab build resource-create resource-update story --global --yes
   "$HOME/code/arthack/scripts/render"
 EOF
     "$script_dir/install-code-skills" --check
@@ -227,10 +227,12 @@ fi
 [ "$(id -u)" -ne 0 ] || die "run as the target user, not root"
 
 art_hack_root="$HOME/code/arthack"
-[ -f "$art_hack_root/hack/SKILL.md" ] \
-    || die "Art Hack skill source is missing: $art_hack_root/hack/SKILL.md"
-[ -f "$art_hack_root/hack/agents/openai.yaml" ] \
-    || die "Art Hack skill manifest is missing: $art_hack_root/hack/agents/openai.yaml"
+for art_hack_skill in collab build; do
+    [ -f "$art_hack_root/$art_hack_skill/SKILL.md" ] \
+        || die "Art Hack skill source is missing: $art_hack_root/$art_hack_skill/SKILL.md"
+    [ -f "$art_hack_root/$art_hack_skill/agents/openai.yaml" ] \
+        || die "Art Hack skill manifest is missing: $art_hack_root/$art_hack_skill/agents/openai.yaml"
+done
 for art_hack_skill in resource-create resource-update story; do
     [ -f "$art_hack_root/$art_hack_skill/SKILL.md" ] \
         || die "Art Hack skill source is missing: $art_hack_root/$art_hack_skill/SKILL.md"
@@ -407,7 +409,7 @@ npx --yes skills add https://github.com/vercel-labs/native \
 printf 'Synchronizing the personal Art Hack agent skills.\n'
 npx --yes skills add "$art_hack_root" \
     --agent codex claude-code pi \
-    --skill hack resource-create resource-update story \
+    --skill collab build resource-create resource-update story \
     --global --yes
 
 # The skills installer ships the raw templates, so rendering must always

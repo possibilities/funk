@@ -83,17 +83,17 @@ synchronization path in `~/code/arthack`.
 
 The Stow-linked home guidance (`agents/AGENTS.md`, at `~/AGENTS.md`) stays
 deliberately empty: global advice belongs in the Art Hack extension prompts,
-rendered into the `hack` skill, not in a file loaded into every session.
-`libexec/install-ai-tools` still links `~/.claude/CLAUDE.md` and
+rendered into the `collab` and `build` skills, not in a file loaded into every
+session. `libexec/install-ai-tools` still links `~/.claude/CLAUDE.md` and
 `~/.codex/AGENTS.md` at that file so future guidance has a delivery path, and
 refuses to replace an independent non-symlink file at either location.
 
 Funk's repository guidance lives in this `AGENTS.md`, not in a priming skill.
 Do not install or synchronize a separate `funk` skill. `~/code/arthack`
-remains the source of truth for the personal `hack`, `resource-create`, and
-`resource-update` skills, each of which the Funk installer must refresh
-completely, including `agents/openai.yaml`, in all configured global agent skill
-locations. `~/code/agentchats` is likewise the source of truth for the
+remains the source of truth for the personal `collab`, `build`,
+`resource-create`, and `resource-update` skills, each of which the Funk
+installer must refresh completely, including `agents/openai.yaml`, in all
+configured global agent skill locations. `~/code/agentchats` is likewise the source of truth for the
 `chats` skill and for the cass session-search CLI's installation contract
 (`scripts/install.sh --install`); Funk invokes both from
 `libexec/install-ai-tools` and skips them on a machine without the checkout.
@@ -141,5 +141,5 @@ After changing AI tooling or skill installation, run:
 libexec/install-ai-tools
 ```
 
-Then compare the installed `hack` manifest with its Art Hack source manifest.
+Then compare the installed `collab` manifest with its Art Hack source manifest.
 Do not substitute a manual copy or a second helper for this convergence check.
