@@ -1032,7 +1032,7 @@ jq -e '
   .repos == [{"id":"preserve-me"}] and
   .settings.showMenuBarIcon == false and
   .settings.notifications.enabled == false and
-  .settings.defaultTuiAgent == "codex" and
+  .settings.defaultTuiAgent == "claude" and
   .settings.mobilePairingConnectionMode == "local-only" and
   .settings.openLinksInApp == true and
   .settings.openLinksInAppPreferencePrompted == true and
@@ -1071,7 +1071,7 @@ jq -e '.settings.theme == "dark"' "$orca_state" >/dev/null \
 mv "$orca_state" "$orca_state.merged-test"
 HOME="$stow_home" FUNK_TEST_ORCA_RUNNING=0 "$root/bin/funk" configure-orca >/dev/null
 jq -e '
-  .settings.defaultTuiAgent == "codex" and
+  .settings.defaultTuiAgent == "claude" and
   .settings.mobilePairingConnectionMode == "local-only" and
   .settings.openLinksInApp == true and
   .settings.openLinksInAppPreferencePrompted == true and
