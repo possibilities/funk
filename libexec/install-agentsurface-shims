@@ -16,12 +16,14 @@ die() {
 [ "$(id -u)" -ne 0 ] || die "run as the target user, not root"
 
 # Bare `claude`, `codex`, and `pi` become balanced launches: each shim execs
-# `agentsurface open <harness> -- "$@"`, which asks agentusage for the
-# account and wraps the real binary in the swap tool (agentsurface ADR
-# 0003/0004). Managed launches carry AGENTSURFACE_LAUNCH=1 and fall through
-# to the real binary, found by scanning PATH past the shim directory —
-# that sentinel is what makes the composition non-recursive. The shim dir
-# is prepended to PATH by Funk's .zshrc, guarded on its existence.
+# `agentsurface <harness> "$@"` — the harness name is the command (ADR
+# 0008), and every non---x-* token forwards verbatim — which asks
+# agentusage for the account and wraps the real binary in the swap tool
+# (agentsurface ADR 0003/0004). Managed launches carry AGENTSURFACE_LAUNCH=1
+# and fall through to the real binary, found by scanning PATH past the shim
+# directory — that sentinel is what makes the composition non-recursive.
+# The shim dir is prepended to PATH by Funk's .zshrc, guarded on its
+# existence.
 shim_dir="$HOME/.local/share/agentsurface/shims"
 
 command -v agentsurface >/dev/null 2>&1 ||
@@ -55,7 +57,7 @@ if [ -n "\${AGENTSURFACE_LAUNCH:-}" ] || [ -n "\${AGENTSURFACE_SHIM_BYPASS:-}" ]
     real=\$(find_real) || { printf 'agentsurface shim: no real $harness on PATH\n' >&2; exit 127; }
     exec "\$real" "\$@"
 fi
-exec agentsurface open $harness -- "\$@"
+exec agentsurface $harness "\$@"
 EOF
     chmod 0755 "$shim"
     printf 'Installed shim: %s\n' "$shim"

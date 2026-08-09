@@ -200,7 +200,6 @@ target account. Funk owns the union of the useful packages from both projects:
 | `agents` | `~/AGENTS.md` | no |
 | `arthack` | `~/.config/arthack/` | no |
 | `agentvoice` | `~/.config/agentvoice/` | yes |
-| `agentsurface` | `~/.config/agentsurface/` | yes |
 
 The `agentvoice` package carries the voice orchestrator's doctrine and
 server configuration: `ORCHESTRATOR.md` (developer instructions — how the
@@ -216,15 +215,14 @@ lever semantics are documented in
 `~/code/agentvoice/docs/field-guide.md`. It does not fold because the
 target directory also holds files Funk does not own.
 
-The `agentsurface` package carries the launcher's personal configuration:
-yolo enabled for `claude`, `codex`, and `pi`, so every launch that goes
-through agentsurface drops that harness's permission gates —
-`--dangerously-skip-permissions`, `--dangerously-bypass-approvals-and-sandbox`,
-and `--approve` respectively. Because the bare commands are agentsurface
-shims (`funk install-agentsurface-shims`), this one file is where permission
-posture for all three harnesses now lives, and callers stop passing
-permission flags of their own. It folds: nothing but agentsurface's own
-configuration belongs in that directory.
+There is no `agentsurface` package anymore: the launcher's yolo mode
+defaults on (its ADR 0009), so the stowed `{"yolo": true}` config it used
+to carry said nothing the launcher does not already do. Permission posture
+for `claude`, `codex`, and `pi` still lives in agentsurface — the bare
+commands are agentsurface shims (`funk install-agentsurface-shims`) and
+callers pass no permission flags of their own — and an operator who wants
+gates back writes a *disabling* `~/.config/agentsurface/config.json` by
+hand or passes `--x-no-yolo`.
 
 The `arthack` package carries the Art Hack extension prompts that
 `libexec/install-ai-tools` renders into every installed skill. Before it
