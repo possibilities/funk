@@ -25,7 +25,6 @@ libexec/install-orca
 libexec/migrate-gh-credentials
 libexec/stow-config
 libexec/initialize-configs
-libexec/configure-orca
 libexec/install-update-agent
 libexec/install-tailscale-agent
 libexec/install-home-awake
@@ -94,7 +93,7 @@ for file in $shell_files; do
     /bin/bash -n "$file"
 done
 
-/bin/zsh -n zsh/.zshrc zsh/.zsh/aliases/agents.zsh
+/bin/zsh -n zsh/.zshrc
 if grep -R -Eqi 'keeper|KEEPER_ZSH_DROPINS' zsh; then
     fail "removed Keeper shell integration is still present"
 fi
@@ -403,7 +402,6 @@ brew "stow"
 brew "pnpm"
 brew "oven-sh/bun/bun", trusted: true
 brew "zig"
-brew "llm"
 brew "scrcpy"
 brew "asmvik/formulae/yabai", trusted: true
 brew "asmvik/formulae/skhd", trusted: true
@@ -920,80 +918,29 @@ HOME="$stow_home" "$root/bin/funk" stow
     || fail "Raycast scrcpy command was not stowed"
 [ -L "$stow_home/.local/bin/raycast/localhost-8789-kiosk.sh" ] \
     || fail "Raycast kiosk command was not stowed"
-[ -L "$stow_home/Library/Application Support/io.datasette.llm/extra-openai-models.yaml" ] \
-    || fail "LLM package was not stowed"
-[ -L "$stow_home/.config/orca" ] && [ -f "$stow_home/.config/orca/settings.json" ] \
-    || fail "Orca settings overlay was not stowed with normal directory folding"
-# Operator guidance is Agentdots', linked by its installer: the home
-# AGENTS.md, the extension prompts, and the AgentVoice doctrine. Funk
-# stowing any of them again would be a second writer for the same paths.
+# Operator guidance and AI-tool configuration are Agentdots', linked by its
+# installer: the home AGENTS.md, the extension prompts, the AgentVoice
+# doctrine, the llm model configuration, and the Orca overlay (which its
+# configure-orca reads straight from that checkout — no ~/.config/orca
+# staging copy exists anymore). Funk stowing any of them again would be a
+# second writer for the same paths.
 [ ! -e "$stow_home/AGENTS.md" ] \
     || fail "the home guidance is Agentdots'; nothing in Funk may stow ~/AGENTS.md"
 [ ! -e "$stow_home/.config/arthack" ] \
     || fail "the extension prompts are Agentdots'; nothing in Funk may stow ~/.config/arthack"
 [ ! -e "$stow_home/.config/agentvoice" ] \
     || fail "the AgentVoice doctrine is Agentdots'; nothing in Funk may stow ~/.config/agentvoice"
+[ ! -e "$stow_home/Library/Application Support/io.datasette.llm" ] \
+    || fail "the llm configuration is Agentdots'; nothing in Funk may stow into io.datasette.llm"
+[ ! -e "$stow_home/.config/orca" ] \
+    || fail "the Orca overlay is Agentdots'; nothing in Funk may stow ~/.config/orca"
 HOME="$stow_home" "$root/bin/funk" stow --check >/dev/null 2>&1
-orca_state="$stow_home/Library/Application Support/orca/orca-data.json"
-mkdir -p "$(dirname "$orca_state")"
-printf '%s\n' \
-    '{"repos":[{"id":"preserve-me"}],"settings":{"showMenuBarIcon":false,"notifications":{"enabled":false}}}' \
-    >"$orca_state"
-HOME="$stow_home" FUNK_TEST_ORCA_RUNNING=0 "$root/bin/funk" configure-orca >/dev/null
-jq -e '
-  .repos == [{"id":"preserve-me"}] and
-  .settings.showMenuBarIcon == false and
-  .settings.notifications.enabled == false and
-  .settings.defaultTuiAgent == "claude" and
-  .settings.mobilePairingConnectionMode == "local-only" and
-  .settings.openLinksInApp == true and
-  .settings.openLinksInAppPreferencePrompted == true and
-  .settings.refreshLocalBaseRefOnWorktreeCreate == true and
-  .settings.showMobileButton == false and
-  .settings.tabAutoGenerateTitle == true and
-  .settings.terminalFontFamily == "0xProto Nerd Font" and
-  .settings.terminalFontSize == 20 and
-  .settings.terminalMacOptionAsAlt == "true" and
-  .settings.terminalMacOptionAsAltMigrated == true and
-  .settings.notifications.terminalBell == true and
-  .settings.theme == "dark"
-' "$orca_state" >/dev/null || fail "Orca settings overlay did not preserve unrelated state"
-HOME="$stow_home" FUNK_TEST_ORCA_RUNNING=1 "$root/bin/funk" configure-orca >/dev/null
-orca_state_tmp="$orca_state.tmp"
-jq '.settings.theme = "system"' "$orca_state" >"$orca_state_tmp"
-mv "$orca_state_tmp" "$orca_state"
-set +e
-orca_running_output=$(
-    HOME="$stow_home" FUNK_TEST_ORCA_RUNNING=1 \
-        "$root/bin/funk" configure-orca 2>&1
-)
-orca_running_status=$?
-set -e
-[ "$orca_running_status" -ne 0 ] \
-    || fail "Orca settings reconciliation raced a running divergent profile"
-# EX_TEMPFAIL distinguishes "repeat this after quitting Orca" from a broken
-# installation, so ./install can report it instead of failing the whole run.
-[ "$orca_running_status" -eq 75 ] \
-    || fail "running-Orca guard did not exit EX_TEMPFAIL: $orca_running_status"
-printf '%s\n' "$orca_running_output" | grep -F 'quit Orca' >/dev/null \
-    || fail "Orca running-profile guard did not explain how to reconcile"
-HOME="$stow_home" FUNK_TEST_ORCA_RUNNING=0 "$root/bin/funk" configure-orca >/dev/null
-jq -e '.settings.theme == "dark"' "$orca_state" >/dev/null \
-    || fail "Orca settings did not reconcile after the running-profile guard cleared"
-mv "$orca_state" "$orca_state.merged-test"
-HOME="$stow_home" FUNK_TEST_ORCA_RUNNING=0 "$root/bin/funk" configure-orca >/dev/null
-jq -e '
-  .settings.defaultTuiAgent == "claude" and
-  .settings.mobilePairingConnectionMode == "local-only" and
-  .settings.openLinksInApp == true and
-  .settings.openLinksInAppPreferencePrompted == true and
-  .settings.refreshLocalBaseRefOnWorktreeCreate == true and
-  .settings.showMobileButton == false and
-  .settings.tabAutoGenerateTitle == true and
-  .settings.terminalMacOptionAsAltMigrated == true and
-  .settings.notifications == {"terminalBell":true}
-' "$orca_state" >/dev/null || fail "Orca settings did not seed a fresh profile"
-HOME="$stow_home" "$root/bin/funk" configure-orca --check >/dev/null
+# The overlay's merge behavior is asserted by Agentdots' own suite; Funk
+# asserts only its wiring: the subcommand must delegate to that checkout.
+# shellcheck disable=SC2016 # Match the literal delegation path in bin/funk.
+grep -F 'agentdots_configure="$HOME/code/agentdots/scripts/configure-orca"' \
+    bin/funk >/dev/null \
+    || fail "funk configure-orca does not delegate to the Agentdots overlay tooling"
 
 mcd_path="$stow_home/mcd parent/mcd child"
 cmkdir_path="$stow_home/cmkdir parent/cmkdir child"

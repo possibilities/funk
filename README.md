@@ -105,14 +105,16 @@ worktree and Option+I the previous one — the opposite of what the arrow keys
 they send are called. Tab navigation keeps physical order instead, with the
 left key going to the previous tab.
 
-Funk also ships an Orca keybindings overlay, because Orca's own defaults
-collide with the layers above it. `Mod+L` for Toggle Right Sidebar never
-reaches Orca — skhd claims Cmd+L for Yabai focus-east — so the overlay moves it
-to Cmd+Shift+S, which is free in every layer and reachable by the left hand
-alone. `funk configure-orca` merges `~/.config/orca/keybindings.json` into
-`~/.orca/keybindings.json`, deep-merging so shortcuts set in Orca's own UI for
-unmanaged actions survive. Orca rewrites that file in place when a shortcut is
-edited, so it is merged rather than symlinked.
+An Orca keybindings overlay exists because Orca's own defaults collide with
+the layers above it. `Mod+L` for Toggle Right Sidebar never reaches Orca —
+skhd claims Cmd+L for Yabai focus-east — so the overlay moves it to
+Cmd+Shift+S, which is free in every layer and reachable by the left hand
+alone. The overlay itself is Agentdots'
+(`~/code/agentdots/config/orca/keybindings.json`); `funk configure-orca`
+delegates there and merges it into `~/.orca/keybindings.json`, deep-merging
+so shortcuts set in Orca's own UI for unmanaged actions survive. Orca
+rewrites that file in place when a shortcut is edited, so it is merged
+rather than symlinked.
 
 skhd restores Ctrl+L as the address-bar shortcut in Funk's four browsers and
 Cmd+Shift+V as a direct Raycast Clipboard History shortcut. These still shadow
@@ -155,8 +157,6 @@ target account. Funk owns the union of the useful packages from both projects:
 | `bin` | `~/.local/bin/` | yes |
 | `starship` | `~/.config/starship.toml` | no |
 | `btop` | `~/.config/btop/` | no |
-| `llm` | `~/Library/Application Support/io.datasette.llm/` | yes |
-| `orca` | `~/.config/orca/settings.json` | no |
 
 There is no `agentvoice` package anymore either: the voice orchestrator's
 doctrine (`ORCHESTRATOR.md`, `ORCHESTRATOR_SESSION_START.md`,
@@ -345,8 +345,9 @@ The Screen Copy path respects the same opt-out.
 Orca does not expose a standalone global preferences file: its settings share
 `orca-data.json` with projects, worktrees, sessions, account metadata, and
 other generated state, and Orca atomically replaces that file when saving.
-Funk therefore stows a credential-free settings overlay at
-`~/.config/orca/settings.json` and `funk configure-orca` reconciles only those
+A credential-free settings overlay therefore lives in Agentdots
+(`~/code/agentdots/config/orca/settings.json`), and `funk configure-orca` —
+a delegation to Agentdots' `scripts/configure-orca` — reconciles only those
 keys into the active profile. Those keys include `agentDefaultArgs`, held
 empty for the three harnesses this machine launches — `claude`, `codex`,
 and `pi` — because agentsurface owns their permission posture and Orca must

@@ -33,10 +33,10 @@ converge by running `./install`; do not rely on one-off live configuration.
   possible: source tmux's config and restart Yabai/skhd services. Karabiner
   reloads its configuration automatically.
 
-The `ssh`, `ghostty`, `tmux`, `zsh`, `karabiner`, `tmuxctl`, `bin`, and
-`llm` packages use `--no-folding` so their target directories remain
-available for generated or unmanaged files. Other packages may use normal
-Stow folding.
+The `ssh`, `ghostty`, `tmux`, `zsh`, `karabiner`, `tmuxctl`, and `bin`
+packages use `--no-folding` so their target directories remain available
+for generated or unmanaged files. Other packages may use normal Stow
+folding.
 
 Never Stow credentials, secrets, generated application state, remote-device
 configuration, root-owned helpers, LaunchDaemons, or rendered LaunchAgents.
@@ -98,17 +98,20 @@ is Agentdots', linked by its installer rather than stowed here: the
 deliberately empty `~/AGENTS.md` (with `~/.claude/CLAUDE.md` and
 `~/.codex/AGENTS.md` linked at it), the extension prompts at
 `~/.config/arthack/`, and the AgentVoice doctrine at
-`~/.config/agentvoice/`. The `agents`, `arthack`, and `agentvoice` Stow
-packages are gone; do not recreate one — edit
-`~/code/agentdots/prompts/` instead.
+`~/.config/agentvoice/`. The `agents`, `arthack`, `agentvoice`, `llm`, and
+`orca` Stow packages are all gone; do not recreate one — edit
+`~/code/agentdots/prompts/` or `~/code/agentdots/config/` instead.
 
 Funk's repository guidance lives in this `AGENTS.md`, not in a priming skill.
 Do not install or synchronize a separate `funk` skill.
 
 Configuration another program writes is overlaid, never adopted. Orca rewrites
-every agent CLI's hook configuration on launch, so those files stay out of Stow
-and `funk configure-orca` reconciles only the keys Funk owns. Adopt a file only
-when Funk is its sole writer.
+every agent CLI's hook configuration on launch, so those files stay out of
+Stow entirely; `funk configure-orca` — now a delegation to Agentdots'
+`scripts/configure-orca`, which owns the overlay at `config/orca/` — merges
+only the keys the overlay names. The llm CLI and its model configuration are
+likewise Agentdots' (`config/llm/`, and the formula left the Brewfile with
+them). Adopt a file only when Funk is its sole writer.
 
 Prove a configuration file is read before adopting it. A directory under
 `~/.config` named for a program is not evidence that the program loads it —
