@@ -10,9 +10,12 @@
 
 orchestrator:
   # The worker-dispatch tools (dispatch_worker / check_workers /
-  # cancel_worker) on the orchestrator's thread; the doctrine's "Keep the
-  # line open" section is written against them.
+  # cancel_worker) on the orchestrator's thread, with pushed
+  # <worker_report> turns — the evented mode is off by default upstream,
+  # and on here because the doctrine's "Keep the line open" section makes
+  # the fire-and-forget promise against it.
   dispatch: true
+  dispatch-reports: true
 
   # Not ultra: ultra additionally switches on codex's proactive multi-agent
   # mode, and dispatch policy belongs to the doctrine, not the model tier.
