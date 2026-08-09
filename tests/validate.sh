@@ -270,8 +270,8 @@ if command -v ruby >/dev/null 2>&1; then
       data = JSON.parse(File.read(ARGV.fetch(0)))
       rules = data.fetch("profiles").fetch(0)
                   .fetch("complex_modifications").fetch("rules")
-      abort "unexpected Karabiner rule count" unless rules.length == 5
-      abort "unexpected Karabiner manipulator counts" unless rules.map { |r| r.fetch("manipulators").length } == [9, 9, 4, 2, 1]
+      abort "unexpected Karabiner rule count" unless rules.length == 6
+      abort "unexpected Karabiner manipulator counts" unless rules.map { |r| r.fetch("manipulators").length } == [9, 9, 4, 2, 4, 1]
 
       browser_ids = [
         "^com\\.google\\.Chrome$",
@@ -306,7 +306,24 @@ if command -v ruby >/dev/null 2>&1; then
           m.dig("conditions", 0, "identifiers") == [{ "is_built_in_keyboard" => true }]
       }
 
-      caps_rule = rules.fetch(4).fetch("manipulators").fetch(0)
+      # Orca cannot match any Option chord on macOS: its matcher reads
+      # KeyboardEvent.key, and Option+, arrives as a composed character whether
+      # or not Command is held. Karabiner therefore sends the stock chords Orca
+      # already ships, so nothing has to be bound inside Orca at all.
+      orca_rules = rules.fetch(4).fetch("manipulators")
+      abort "unexpected Orca navigation sources" unless orca_rules.map { |m|
+        [m.dig("from", "key_code"), m.dig("from", "modifiers")]
+      } == %w[comma period u i].map { |key| [key, { "mandatory" => ["option"] }] }
+      abort "unexpected Orca navigation targets" unless orca_rules.map { |m| m.fetch("to") } ==
+        %w[open_bracket close_bracket up_arrow down_arrow].map { |key|
+          [{ "key_code" => key, "modifiers" => ["command", "shift"] }]
+        }
+      abort "Orca navigation is not scoped to Orca" unless orca_rules.all? { |m|
+        m.dig("conditions", 0, "type") == "frontmost_application_if" &&
+          m.dig("conditions", 0, "bundle_identifiers") == ["^com\\.stablyai\\.orca$"]
+      }
+
+      caps_rule = rules.fetch(5).fetch("manipulators").fetch(0)
       abort "Caps Lock does not send Escape" unless
         caps_rule.dig("from", "key_code") == "caps_lock" &&
         caps_rule.dig("to", 0, "key_code") == "escape"
@@ -314,8 +331,8 @@ if command -v ruby >/dev/null 2>&1; then
         karabiner/.config/karabiner/karabiner.json
 elif command -v jq >/dev/null 2>&1; then
     jq -e '
-      (.profiles[0].complex_modifications.rules | length) == 5 and
-      ([.profiles[0].complex_modifications.rules[].manipulators | length] == [9, 9, 4, 2, 1]) and
+      (.profiles[0].complex_modifications.rules | length) == 6 and
+      ([.profiles[0].complex_modifications.rules[].manipulators | length] == [9, 9, 4, 2, 4, 1]) and
       (all(.profiles[0].complex_modifications.rules[0].manipulators[];
         .conditions[0].bundle_identifiers ==
           ["^com\\.google\\.Chrome$", "^com\\.google\\.Chrome\\.canary$",
@@ -334,9 +351,22 @@ elif command -v jq >/dev/null 2>&1; then
       (all(.profiles[0].complex_modifications.rules[3].manipulators[];
         .conditions[0] ==
           {"type": "device_if", "identifiers": [{"is_built_in_keyboard": true}]})) and
-      (.profiles[0].complex_modifications.rules[4].manipulators[0].from.key_code ==
+      ([.profiles[0].complex_modifications.rules[4].manipulators[] |
+        [.from.key_code, .from.modifiers]] ==
+        [["comma", {"mandatory": ["option"]}], ["period", {"mandatory": ["option"]}],
+         ["u", {"mandatory": ["option"]}], ["i", {"mandatory": ["option"]}]]) and
+      ([.profiles[0].complex_modifications.rules[4].manipulators[].to] ==
+        [[{"key_code": "open_bracket", "modifiers": ["command", "shift"]}],
+         [{"key_code": "close_bracket", "modifiers": ["command", "shift"]}],
+         [{"key_code": "up_arrow", "modifiers": ["command", "shift"]}],
+         [{"key_code": "down_arrow", "modifiers": ["command", "shift"]}]]) and
+      (all(.profiles[0].complex_modifications.rules[4].manipulators[];
+        .conditions[0] ==
+          {"type": "frontmost_application_if",
+           "bundle_identifiers": ["^com\\.stablyai\\.orca$"]})) and
+      (.profiles[0].complex_modifications.rules[5].manipulators[0].from.key_code ==
         "caps_lock") and
-      (.profiles[0].complex_modifications.rules[4].manipulators[0].to[0].key_code ==
+      (.profiles[0].complex_modifications.rules[5].manipulators[0].to[0].key_code ==
         "escape")
     ' karabiner/.config/karabiner/karabiner.json >/dev/null
 else

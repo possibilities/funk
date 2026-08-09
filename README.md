@@ -121,9 +121,23 @@ cannot be transferred by copying that file.
 Karabiner owns Funk's low-level keyboard layer: global Cmd+1…8 becomes
 F13…F20 and Cmd+9 becomes F12 for Yabai Space focus; Ctrl+1…9 becomes the
 normal Cmd+number tab shortcut in Chrome, Chrome Canary, Brave, and Firefox;
-Right Option+H/J/K/L becomes the arrow keys while preserving Shift; Caps Lock
-becomes Escape; and left Command and left Option are swapped only on the
-built-in keyboard.
+Right Option+H/J/K/L becomes the arrow keys while preserving Shift;
+Option+comma, period, U, and I become Orca's own tab and worktree navigation
+chords while Orca is frontmost; Caps Lock becomes Escape; and left Command and
+left Option are swapped only on the built-in keyboard.
+
+Orca is the reason one of those rules exists rather than a setting inside the
+app. Orca cannot match an Option chord on macOS at all: its shortcut matcher
+reads `KeyboardEvent.key` and falls back to the physical key code only when the
+key is empty, dead, or unidentified, a fallback its own code disables on
+darwin. macOS composes Option+1 into `¡`, and measurement on this machine
+confirms it stays `¡` even with Command held, so no `Alt+…` or `Cmd+Alt+…`
+binding can ever fire. Karabiner therefore translates the Option chords into
+the chords Orca already ships — Cmd+Shift+bracket for the previous and next tab
+of any type, Cmd+Shift+Up and Cmd+Shift+Down for the previous and next worktree
+— which keeps Orca's own configuration untouched and binds no new chord inside
+it. Orca has no action for reordering tabs, so there is no chord for moving the
+active tab left or right.
 
 skhd restores Ctrl+L as the address-bar shortcut in Funk's four browsers and
 Cmd+Shift+V as a direct Raycast Clipboard History shortcut.
