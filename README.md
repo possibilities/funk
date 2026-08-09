@@ -57,14 +57,12 @@ and targets in any other directory. It does not clear other extended
 attributes, alter Gatekeeper policy, disable assessment, or touch arbitrary
 downloads.
 
-The one guidance file Funk still stows is `~/AGENTS.md` (source:
-`agents/AGENTS.md`), and it stays deliberately empty — global advice belongs
-in the operator extension prompts, rendered into the `collab` and `build`
-skills. The Agentdots installer links `~/.claude/CLAUDE.md` and
-`~/.codex/AGENTS.md` at that file so future guidance has a delivery path,
-refuses to replace an independent non-symlink file at either location, and
-owns the extension prompts themselves at
-`~/code/agentdots/prompts/arthack/`, linked into `~/.config/arthack/`.
+Funk stows no agent guidance at all: `~/AGENTS.md` (deliberately empty,
+with `~/.claude/CLAUDE.md` and `~/.codex/AGENTS.md` linked at it), the
+operator extension prompts at `~/.config/arthack/`, and the AgentVoice
+doctrine at `~/.config/agentvoice/` are all Agentdots'
+(`~/code/agentdots/prompts/`), linked by its installer, which refuses to
+replace an independent non-symlink file at any of those locations.
 
 GitHub CLI installs through the Brewfile, and
 `libexec/migrate-gh-credentials` preserves an existing login: it can adopt an
@@ -159,22 +157,15 @@ target account. Funk owns the union of the useful packages from both projects:
 | `btop` | `~/.config/btop/` | no |
 | `llm` | `~/Library/Application Support/io.datasette.llm/` | yes |
 | `orca` | `~/.config/orca/settings.json` | no |
-| `agents` | `~/AGENTS.md` | no |
-| `agentvoice` | `~/.config/agentvoice/` | yes |
 
-The `agentvoice` package carries the voice orchestrator's doctrine and
-server configuration: `ORCHESTRATOR.md` (developer instructions — how the
-orchestrator agent conducts a voice session: classify, dispatch
-asynchronous work to app-server threads, speak in `[FINAL]` lines, run its
-bearings commands), `ORCHESTRATOR_SESSION_START.md` (the short voice-mode
-briefing codex restates after every compaction), and `server.json` (effort,
-the guardian approvals recipe, early compaction, subagents disabled in
-favor of app-server threads, and the bemTags handoff; `server.schema.json`
-ships beside it for editor validation). The AgentVoice
-server reads all three once at boot, so edits apply on its next start; the
-lever semantics are documented in
-`~/code/agentvoice/docs/field-guide.md`. It does not fold because the
-target directory also holds files Funk does not own.
+There is no `agentvoice` package anymore either: the voice orchestrator's
+doctrine (`ORCHESTRATOR.md`, `ORCHESTRATOR_SESSION_START.md`,
+`server.json`) is fleet guidance, so it lives in Agentdots
+(`~/code/agentdots/prompts/agentvoice/`), whose installer links the three
+files into `~/.config/agentvoice/` — per file, because that directory also
+holds files neither repository owns. The AgentVoice server reads them once
+at boot; the lever semantics are documented in
+`~/code/agentvoice/docs/field-guide.md`.
 
 There is no `agentsurface` package anymore: the launcher's yolo mode
 defaults on (its ADR 0009), so the stowed `{"yolo": true}` config it used

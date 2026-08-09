@@ -33,10 +33,10 @@ converge by running `./install`; do not rely on one-off live configuration.
   possible: source tmux's config and restart Yabai/skhd services. Karabiner
   reloads its configuration automatically.
 
-The `ssh`, `ghostty`, `tmux`, `zsh`, `karabiner`, `tmuxctl`, `bin`, `llm`,
-and `agentvoice` packages use `--no-folding` so their target directories
-remain available for generated or unmanaged files. Other packages may use
-normal Stow folding.
+The `ssh`, `ghostty`, `tmux`, `zsh`, `karabiner`, `tmuxctl`, `bin`, and
+`llm` packages use `--no-folding` so their target directories remain
+available for generated or unmanaged files. Other packages may use normal
+Stow folding.
 
 Never Stow credentials, secrets, generated application state, remote-device
 configuration, root-owned helpers, LaunchDaemons, or rendered LaunchAgents.
@@ -93,27 +93,17 @@ checkout is missing; the scheduled updater calls
 installer or skill-synchronization path in this repository — a new AI tool,
 skill, or harness configuration belongs in Agentdots.
 
-The Stow-linked home guidance (`agents/AGENTS.md`, at `~/AGENTS.md`) stays
-deliberately empty: global advice belongs in the operator extension prompts,
-rendered into the `collab` and `build` skills, not in a file loaded into every
-session. The Agentdots installer links `~/.claude/CLAUDE.md` and
-`~/.codex/AGENTS.md` at that file so future guidance has a delivery path, and
-refuses to replace an independent non-symlink file at either location. The
-extension prompts themselves — `~/.config/arthack/{SYSTEM,GUIDELINES,TOOLS}.md`
-— are Agentdots' (`prompts/arthack/`), linked by its installer; the `arthack`
-Stow package is gone.
+Every operator guidance file the harnesses and the voice orchestrator read
+is Agentdots', linked by its installer rather than stowed here: the
+deliberately empty `~/AGENTS.md` (with `~/.claude/CLAUDE.md` and
+`~/.codex/AGENTS.md` linked at it), the extension prompts at
+`~/.config/arthack/`, and the AgentVoice doctrine at
+`~/.config/agentvoice/`. The `agents`, `arthack`, and `agentvoice` Stow
+packages are gone; do not recreate one — edit
+`~/code/agentdots/prompts/` instead.
 
 Funk's repository guidance lives in this `AGENTS.md`, not in a priming skill.
 Do not install or synchronize a separate `funk` skill.
-
-The voice orchestrator's doctrine is Funk's the same way: the `agentvoice`
-package owns the AgentVoice prompt files and `server.json` in
-`~/.config/agentvoice/`. Edit `agentvoice/.config/agentvoice/` here and run
-`funk stow`; the AgentVoice server reads them once at boot, so changes
-apply on its next start. The filenames — `ORCHESTRATOR.md`,
-`ORCHESTRATOR_SESSION_START.md`, `server.json` — are AgentVoice's
-discovery contract (`~/code/agentvoice/docs/field-guide.md` documents
-every lever); a file it does not recognize primes nothing.
 
 Configuration another program writes is overlaid, never adopted. Orca rewrites
 every agent CLI's hook configuration on launch, so those files stay out of Stow

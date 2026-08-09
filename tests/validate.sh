@@ -924,18 +924,15 @@ HOME="$stow_home" "$root/bin/funk" stow
     || fail "LLM package was not stowed"
 [ -L "$stow_home/.config/orca" ] && [ -f "$stow_home/.config/orca/settings.json" ] \
     || fail "Orca settings overlay was not stowed with normal directory folding"
-[ -L "$stow_home/AGENTS.md" ] \
-    || fail "home-level agent guidance was not stowed"
-# The operator extension prompts moved to Agentdots (prompts/arthack/, linked
-# into ~/.config/arthack by its installer). Funk stowing them again would be a
-# second writer for the same paths.
+# Operator guidance is Agentdots', linked by its installer: the home
+# AGENTS.md, the extension prompts, and the AgentVoice doctrine. Funk
+# stowing any of them again would be a second writer for the same paths.
+[ ! -e "$stow_home/AGENTS.md" ] \
+    || fail "the home guidance is Agentdots'; nothing in Funk may stow ~/AGENTS.md"
 [ ! -e "$stow_home/.config/arthack" ] \
     || fail "the extension prompts are Agentdots'; nothing in Funk may stow ~/.config/arthack"
-# Global advice belongs in the operator extension prompts, so the stowed home
-# guidance stays deliberately empty; the tripwire keeps advice from accreting
-# back into every session.
-[ ! -s "$stow_home/AGENTS.md" ] \
-    || fail "home-level agent guidance should stay empty — global advice belongs in the operator extension prompts"
+[ ! -e "$stow_home/.config/agentvoice" ] \
+    || fail "the AgentVoice doctrine is Agentdots'; nothing in Funk may stow ~/.config/agentvoice"
 HOME="$stow_home" "$root/bin/funk" stow --check >/dev/null 2>&1
 orca_state="$stow_home/Library/Application Support/orca/orca-data.json"
 mkdir -p "$(dirname "$orca_state")"
