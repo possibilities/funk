@@ -76,44 +76,35 @@ upgrade.
 
 ## AI tooling and skills
 
-Funk is the sole owner of AI-stack installation. Keep desktop applications,
-command-line agents, and globally managed skills on the single
-`libexec/install-ai-tools` path; do not create another installer or
-synchronization path in `~/code/arthack`.
+Funk no longer owns AI-toolchain installation; `~/code/agentdots` does. The
+boundary rubric lives in that repository (`guidance/funk-boundary.md`):
+anything depended on by or deeply related to the agent* fleet — harness CLIs,
+pinned npm globals, MCP registration, guidance links, extension prompts, and
+every globally managed skill — belongs in Agentdots, and the machine itself —
+Homebrew, Stow, launchd, macOS settings, account migration — stays here.
+
+Concretely, Funk keeps the AI *desktop applications* (the claude and chatgpt
+casks, converged from `./install`, and the Orca cask, installed once by
+`libexec/install-orca` and then left to its own updater) plus the `gh`
+credential migration. `./install` then calls
+`~/code/agentdots/scripts/install.sh --install` and refuses to finish if that
+checkout is missing; the scheduled updater calls
+`~/code/agentdots/scripts/sync-skills` the same way. Do not grow a second
+installer or skill-synchronization path in this repository — a new AI tool,
+skill, or harness configuration belongs in Agentdots.
 
 The Stow-linked home guidance (`agents/AGENTS.md`, at `~/AGENTS.md`) stays
-deliberately empty: global advice belongs in the Art Hack extension prompts,
+deliberately empty: global advice belongs in the operator extension prompts,
 rendered into the `collab` and `build` skills, not in a file loaded into every
-session. `libexec/install-ai-tools` still links `~/.claude/CLAUDE.md` and
+session. The Agentdots installer links `~/.claude/CLAUDE.md` and
 `~/.codex/AGENTS.md` at that file so future guidance has a delivery path, and
-refuses to replace an independent non-symlink file at either location.
+refuses to replace an independent non-symlink file at either location. The
+extension prompts themselves — `~/.config/arthack/{SYSTEM,GUIDELINES,TOOLS}.md`
+— are Agentdots' (`prompts/arthack/`), linked by its installer; the `arthack`
+Stow package is gone.
 
 Funk's repository guidance lives in this `AGENTS.md`, not in a priming skill.
-Do not install or synchronize a separate `funk` skill. `~/code/arthack`
-remains the source of truth for the personal `collab`, `build`,
-`resource-create`, and `resource-update` skills, each of which the Funk
-installer must refresh completely, including `agents/openai.yaml`, in all
-configured global agent skill locations. `~/code/agentchats` is likewise the source of truth for the
-`chats` skill and for the cass session-search CLI's installation contract
-(`scripts/install.sh --install`); Funk invokes both from
-`libexec/install-ai-tools` and skips them on a machine without the checkout.
-
-Every other agent tool exports its skills by convention rather than by a line
-here: a checkout under `~/code` whose name matches `agent*` publishes each
-global skill at `skills/<name>/SKILL.md`. `libexec/install-code-skills`
-discovers those checkouts and synchronizes every skill it finds into all
-configured global agent skill locations, from both `./install` (through
-`libexec/install-ai-tools`) and the scheduled updater. Adding, renaming, or
-removing a skill in one of those repositories therefore needs no change in
-Funk. `TOOLS.md` advertises one line per tool and the name of its skill; the
-runbooks themselves live in the skills.
-
-The extension prompts those skills render against are Funk's, not Art Hack's:
-the `arthack` package owns `~/.config/arthack/`. Edit
-`arthack/.config/arthack/` here and run `funk stow`, so a fresh account renders
-the same skills this one does. Their recognized names — `SYSTEM.md`,
-`GUIDELINES.md`, `TOOLS.md` — are Art Hack's contract; an unrecognized file
-renders to nothing.
+Do not install or synchronize a separate `funk` skill.
 
 The voice orchestrator's doctrine is Funk's the same way: the `agentvoice`
 package owns the AgentVoice prompt files and `server.json` in
@@ -135,10 +126,11 @@ programs move their configuration into the checkout and leave the old files
 behind. Find the code path that reads the file, or leave it where it is;
 adopting a retired file publishes dead configuration as live.
 
-After changing AI tooling or skill installation, run:
+After changing the AI application or migration steps here, or anything in the
+Agentdots-owned toolchain, run:
 
 ```sh
-libexec/install-ai-tools
+~/code/agentdots/scripts/install.sh --install
 ```
 
 Then compare the installed `collab` manifest with its Art Hack source manifest.

@@ -13,7 +13,9 @@ Usage: ./install [--with-hardening] [--without-windows] [--with-system-settings]
 Default installation:
   - installs Homebrew when missing
   - applies Funk's Brewfile
-  - installs AI desktop applications and command-line tools
+  - installs the AI desktop applications and migrates GitHub CLI credentials
+  - runs the Agentdots installer, which owns the AI command-line toolchain,
+    harness configuration, and every globally managed agent skill
   - stows all user configuration packages into the target user's home
   - installs the window stack and converges Yabai Spaces 1-9
   - links the funk command into the active Homebrew bin directory
@@ -140,7 +142,23 @@ fi
 FUNK_ROOT="$funk_root" "$funk_root/libexec/converge-brewfile"
 "$funk_command" stow
 "$funk_root/libexec/initialize-configs"
-"$funk_root/libexec/install-ai-tools"
+"$funk_root/libexec/migrate-gh-credentials"
+
+# The AI desktop applications are Funk's: Homebrew casks, installed here and
+# converged greedily because they carry no updater conflict — except Orca,
+# which ships its own updater and is installed once, then left alone.
+"$funk_root/libexec/converge-brew-casks" claude chatgpt
+"$funk_root/libexec/install-orca"
+
+# Everything the agent fleet depends on — harness CLIs, pinned npm globals,
+# MCP registration, guidance links, and every globally managed skill — is
+# owned by the Agentdots checkout, and this machine is not converged without
+# it. A missing checkout is a hard stop, like a missing Art Hack checkout
+# inside that installer, not an optional skip.
+agentdots_root="$HOME/code/agentdots"
+[ -x "$agentdots_root/scripts/install.sh" ] \
+    || die "Agentdots owns the AI toolchain and is missing; clone it first: git clone <your agentdots remote> $agentdots_root"
+"$agentdots_root/scripts/install.sh" --install
 # Orca owns its own settings file while it runs, so configure-orca refuses to
 # race it and exits EX_TEMPFAIL. That is a step to repeat after quitting Orca,
 # not a failed installation, so record it and finish everything else.

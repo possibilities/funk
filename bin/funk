@@ -91,7 +91,15 @@ case "$command_name" in
         ;;
     install-agentsurface-shims)
         shift
-        exec "$FUNK_ROOT/libexec/install-agentsurface-shims" "$@"
+        # Agentdots owns the fleet-facing installers; this stays a funk
+        # subcommand for muscle memory and delegates.
+        agentdots_shims="$HOME/code/agentdots/scripts/install-agentsurface-shims"
+        if [ ! -x "$agentdots_shims" ]; then
+            printf 'funk: Agentdots owns the agentsurface shims and is missing: %s\n' \
+                "$agentdots_shims" >&2
+            exit 66
+        fi
+        exec "$agentdots_shims" "$@"
         ;;
     verify-local-services)
         shift

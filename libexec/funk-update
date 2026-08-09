@@ -45,7 +45,13 @@ orca_installer="$funk_root/libexec/install-orca"
 brewfile_installer="$funk_root/libexec/converge-brewfile"
 unattendable_lister="$funk_root/libexec/list-unattendable-casks"
 cask_dir_lister="$funk_root/libexec/repair-cask-user-dirs"
-code_skills_installer="$funk_root/libexec/install-code-skills"
+# Agentdots owns the globally managed agent skills; its sync-skills is the
+# no-download convergence path this scheduled run is allowed to take. The
+# checkout is required the same way ./install requires it: a machine whose
+# updater is installed has run ./install, which refuses to finish without
+# Agentdots, so a missing checkout here is damage worth failing over.
+agentdots_root="${FUNK_AGENTDOTS_ROOT:-$HOME/code/agentdots}"
+skill_sync="$agentdots_root/scripts/sync-skills"
 
 if [ ! -f "$brewfile" ]; then
     log "FAILED: Brewfile not found at $brewfile" >&2
@@ -67,8 +73,8 @@ fi
     log "FAILED: cask user-dir helper not found at $cask_dir_lister" >&2
     exit 66
 }
-[ -x "$code_skills_installer" ] || {
-    log "FAILED: project skill installer not found at $code_skills_installer" >&2
+[ -x "$skill_sync" ] || {
+    log "FAILED: Agentdots skill sync not found at $skill_sync" >&2
     exit 66
 }
 
@@ -286,14 +292,15 @@ log "starting: $brew_bin bundle install --upgrade --file=$brewfile"
 if [ "$status" -eq 0 ]; then
     "$orca_installer" || status=$?
 fi
-# Each agent CLI's runbook now ships as a skill inside its own checkout, and a
+# Each agent CLI's runbook ships as a skill inside its own checkout, and a
 # stale runbook misleads a session as badly as a stale binary does. Refreshing
 # them reads local directories and rewrites skill files: no downloads, no
 # elevation, no application restarts. That is exactly the kind of work this
-# six-hour path is for, so the runbooks track the checkouts without waiting for
-# the next ./install.
+# six-hour path is for, so the runbooks track the checkouts without waiting
+# for the next ./install. Agentdots' sync-skills also refreshes the Orca
+# harness skills that used to ride along with the Orca installer above.
 if [ "$status" -eq 0 ]; then
-    "$code_skills_installer" || status=$?
+    "$skill_sync" || status=$?
 fi
 
 snapshot_versions "$after"

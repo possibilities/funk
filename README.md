@@ -6,51 +6,46 @@ forward the old repository's Stow-based, fix-forward configuration workflow.
 
 ## What it installs
 
-The default installer applies the Brewfile plus the vendor-supported AI tool
-installers:
+The default installer applies the Brewfile, converges the AI desktop
+applications, and then hands the rest of the AI stack to the Agentdots
+checkout:
 
 - Tailscale, AltTab, Ghostty, Google Chrome, Chrome Canary, Brave, Firefox
 - ChatGPT, Claude Desktop, Orca, Obsidian, Raycast
-- GitHub CLI, Native SDK CLI (pinned to 0.7), Zig, Claude Code,
-  Codex CLI, and Pi
-- The AgentVoice voice CLI (`agentvoice`), linked editable by its own
-  `cli:install` contract from `~/code/agentvoice` when that checkout
-  exists
-- cass, the coding-agent session search CLI, installed and index-prepared by
-  the Agentchats checkout's own contract from `~/code/agentchats` when that
-  checkout exists, together with its `agentchats` state CLI and `chats`
-  skill
-- Orca CLI, orchestration, computer-use, skill-discovery, frontend design,
-  web-design review, React engineering, Vercel AI SDK, AI Elements, shadcn,
-  Native SDK discovery, and the Art Hack agent skills
 - Yabai, skhd, and the narrowly justified Karabiner-Elements layer
 - Git Delta, Neovim, tmux, Starship, btop, GNU Stow, and supporting
   shell/development tools, including `terminal-notifier` and `restic`
+- Everything the agent fleet depends on — Claude Code, Codex CLI, Pi, the
+  pinned Native SDK CLI and agent-browser, the fleet CLIs (AgentVoice, cass,
+  agentwiki, agentboard, agentsearch), and every globally managed agent
+  skill — by calling `~/code/agentdots/scripts/install.sh --install`, which
+  owns that toolchain
 
-`libexec/install-ai-tools` uses the official shell installers for
+### The Agentdots seam
+
+Funk itself installs the AI desktop applications, because they are Homebrew
+casks and Homebrew is Funk's: the `claude` and `chatgpt` casks are converged
+greedily from `./install` (their normal personal macOS downloads do not
+provide unattended installer commands), and `libexec/install-orca` installs
+the cask documented by the [Orca project](https://github.com/stablyai/orca)
+once, then leaves the app to its own updater and verifies only the cask
+receipt. Homebrew formula and cask calls are install-or-upgrade operations.
+
+Everything else AI belongs to the Agentdots checkout at `~/code/agentdots`:
+the official shell installers for
 [Claude Code](https://code.claude.com/docs/en/terminal-guide),
 [Codex CLI](https://github.com/openai/codex#installing-and-running-codex-cli),
-and [Pi](https://pi.dev/docs/latest).
-ChatGPT and Claude Desktop use their Homebrew casks because their normal
-personal macOS downloads do not provide unattended installer commands. Orca
-uses the cask documented by the [Orca project](https://github.com/stablyai/orca).
-Run `libexec/install-ai-tools --check` to inspect the exact plan without making
-changes.
-
-### AgentVoice voice CLI
-
-`libexec/install-agentvoice-cli` invokes AgentVoice's own `cli:install`
-contract from `~/code/agentvoice`, which installs dependencies, checks the
-environment it needs (codex, sox), and links a global `agentvoice` back into
-the checkout. Funk only makes the call. A machine that has not cloned the
-checkout skips the step; a checkout that is present and fails to install is a
-real error and stops `./install`.
-
-Homebrew formula and cask calls are install-or-upgrade operations. The
-dedicated `libexec/install-orca` helper installs or greedily upgrades the Orca
-cask, synchronizes `orca-cli`, `orchestration`, and `computer-use` globally for
-Codex, Claude Code, and Pi, then verifies both the cask receipt and
-the global skill records. Hermes is not part of this harness set.
+and [Pi](https://pi.dev/docs/latest); the pinned Native SDK CLI and
+agent-browser npm globals; the shadcn MCP registration; the harness guidance
+links; the operator extension prompts; the fleet checkout installers — the
+AgentVoice voice CLI, the agentwiki/agentboard/agentsearch CLIs, and cass
+from `~/code/agentchats` — and every globally managed agent skill, including
+the Orca harness skills (`orca-cli`, `orchestration`, `computer-use`) and the
+agent* checkout skill scan. `./install` calls
+`~/code/agentdots/scripts/install.sh --install` and refuses to finish if that
+checkout is missing. Run `~/code/agentdots/scripts/install.sh --check` to
+inspect the toolchain plan without making changes; the ownership rubric is
+recorded in `~/code/agentdots/guidance/funk-boundary.md`.
 
 After any Funk-managed cask pass, Funk reads Homebrew's cask metadata, requires
 Gatekeeper's policy assessment to accept each app, and then removes only
@@ -61,60 +56,18 @@ and targets in any other directory. It does not clear other extended
 attributes, alter Gatekeeper policy, disable assessment, or touch arbitrary
 downloads.
 
-The AI installer also reproduces the globally managed agent skills with the
-same `npx skills add` mechanism used by Orca's setup UI. For Codex, Claude Code,
-and Pi, it installs:
+The one guidance file Funk still stows is `~/AGENTS.md` (source:
+`agents/AGENTS.md`), and it stays deliberately empty — global advice belongs
+in the operator extension prompts, rendered into the `collab` and `build`
+skills. The Agentdots installer links `~/.claude/CLAUDE.md` and
+`~/.codex/AGENTS.md` at that file so future guidance has a delivery path,
+refuses to replace an independent non-symlink file at either location, and
+owns the extension prompts themselves at
+`~/code/agentdots/prompts/arthack/`, linked into `~/.config/arthack/`.
 
-- `orca-cli`, `orchestration`, and `computer-use` from Orca.
-- `find-skills` from Vercel.
-- `frontend-design` from Anthropic and `web-design-guidelines` from Vercel.
-- `vercel-react-best-practices`, `ai-sdk`, and `ai-elements` from Vercel.
-- The official `shadcn` skill, paired with shadcn's registry MCP server for
-  Codex and Claude Code.
-- The `native-sdk` discovery skill from Vercel Labs Native. The globally
-  installed Native CLI supplies its deeper, version-matched skills.
-
-The shadcn skill provides Pi with its CLI workflow; Codex and Claude Code
-additionally get the official shadcn registry MCP server.
-
-Finally, the installer synchronizes the locally authored Art Hack skills —
-`collab`, `build`, `resource-create`, and `resource-update` — from
-`~/code/arthack` into the shared `~/.agents/skills` directory discovered by
-Codex Desktop and the other agent skill locations, then invokes Art Hack's
-`scripts/render`, which replaces
-each installed `SKILL.md` with its rendered artifact: the template composed with
-the operator's extension prompts from `~/.config/arthack/`, which the `arthack`
-Stow package supplies. The skills installer ships raw templates, so rendering
-always follows it; skipping it would strip the extensions until the next render.
-The rendered copies are read-only and marked do-not-edit — the templates and
-extension prompts are the places to change them.
-Funk's own agent guidance lives in this repository's `AGENTS.md` instead of a
-priming skill. Funk remains the sole owner of AI-stack installation; Art Hack
-owns its templates and their rendering and does not provide a second installer.
-
-The installer then converges the searchable session archive from the
-Agentchats checkout at `~/code/agentchats`. Its `scripts/install.sh --install`
-owns cass — the coding-agent session search CLI — installing the upstream
-checksummed release into `~/.local/bin` and building or refreshing the index
-over the local Claude Code, Codex, and Pi session stores, and the same pass
-synchronizes the locally authored `chats` skill, cass's agent runbook, for
-Codex, Claude Code, and Pi. A machine without the checkout skips
-both; a present checkout that fails to install fails the run.
-
-The installer also links each CLI's global guidance location at the shared
-file: `~/.claude/CLAUDE.md` and `~/.codex/AGENTS.md` become symlinks to the
-Stow-managed `~/AGENTS.md` (source: `agents/AGENTS.md`). That file stays
-deliberately empty — global advice belongs in the Art Hack extension prompts,
-rendered into the `collab` and `build` skills — but the links remain so future
-guidance has a delivery path, with Claude Code reading only `CLAUDE.md` and
-Codex skipping
-empty guidance files. The installer refuses to replace an independent
-non-symlink file at either location and verifies that each link resolves to
-the shared file's content.
-
-GitHub CLI is intentionally installed twice: once through the main Brewfile and
-again by the AI tool installer. The latter preserves an existing login and can
-adopt an old `/Users/mike/.config/gh/hosts.yml` only when no current host config
+GitHub CLI installs through the Brewfile, and
+`libexec/migrate-gh-credentials` preserves an existing login: it can adopt an
+old `/Users/mike/.config/gh/hosts.yml` only when no current host config
 exists and the old file contains a portable token. Keyring-backed credentials
 cannot be transferred by copying that file.
 
@@ -206,7 +159,6 @@ target account. Funk owns the union of the useful packages from both projects:
 | `llm` | `~/Library/Application Support/io.datasette.llm/` | yes |
 | `orca` | `~/.config/orca/settings.json` | no |
 | `agents` | `~/AGENTS.md` | no |
-| `arthack` | `~/.config/arthack/` | no |
 | `agentvoice` | `~/.config/agentvoice/` | yes |
 
 The `agentvoice` package carries the voice orchestrator's doctrine and
@@ -232,13 +184,12 @@ callers pass no permission flags of their own — and an operator who wants
 gates back writes a *disabling* `~/.config/agentsurface/config.json` by
 hand or passes `--x-no-yolo`.
 
-The `arthack` package carries the Art Hack extension prompts that
-`libexec/install-ai-tools` renders into every installed skill. Before it
-existed, a default `./install` rendered against three hand-written files that
-lived only on the machine that happened to have them, so a fresh account
-produced skills with the extensions silently missing. It folds: nothing but an
-extension prompt belongs in that directory, and a new one should land in this
-repository rather than beside it.
+There is no `arthack` package anymore: the Art Hack extension prompts are
+cross-project agent guidance, so they live in Agentdots
+(`~/code/agentdots/prompts/arthack/`), whose installer links them into
+`~/.config/arthack/`. The lesson the package encoded still stands — a fresh
+account must render the same skills this one does — and the Agentdots
+installer preserves it by refusing to run without the prompt sources.
 
 Funk's current Yabai, skhd, and reviewed Karabiner configurations take
 precedence where the two repositories overlapped. Privileged helpers,
@@ -451,8 +402,11 @@ Run from the checked-out repository as the new account, never with `sudo`:
 
 This installs Homebrew when absent, explicitly upgrades every eligible
 Brewfile dependency, stows every user configuration package, initializes
-tmux-fzf, the pinned Node runtime, and shell-gpt, installs or upgrades the AI
-tools listed above, links `funk` into the active Homebrew `bin` directory,
+tmux-fzf, the pinned Node runtime, and shell-gpt, migrates GitHub CLI
+credentials, converges the AI desktop applications, runs the Agentdots
+installer for everything else AI (the checkout at `~/code/agentdots` is
+required — `./install` stops without it), links `funk` into the active
+Homebrew `bin` directory,
 installs the scheduled updater, Tailscale recovery, and home-network
 `home-awake` agents, starts the Yabai/skhd/Karabiner stack, and converges Yabai
 Spaces 1–9. The `home-awake` step prompts for `sudo` once on a fresh machine to
@@ -565,8 +519,18 @@ copy is the only one left, so it is reported and left for Homebrew.
 # skip the casks that cannot converge without administrator authentication
 brew bundle install --upgrade --file=/resolved/path/to/Funk/Brewfile
 # release quarantine only from Brewfile casks' declared .app targets
-# install or greedily upgrade Orca, release its app quarantine, and sync its skills
+# install a missing Orca (never upgrade one) and release its app quarantine
+# refresh the globally managed skills: ~/code/agentdots/scripts/sync-skills
 ```
+
+The skill refresh is Agentdots': `sync-skills` re-synchronizes the Orca
+harness skills and rescans every agent* checkout's exported skills, because a
+stale runbook misleads a session as badly as a stale binary. It reads local
+directories and rewrites skill files — no downloads beyond the skills tool
+itself, no elevation, no application restarts — which is exactly what this
+unattended path is allowed to do. The updater fails its preflight if the
+Agentdots checkout is missing, the same way `./install` refuses to finish
+without it.
 
 The LaunchAgent has no terminal, so a cask that needs administrator
 authentication would fail the entire run rather than only itself. Before
@@ -640,12 +604,11 @@ on its next launch. The check compares the executable path exactly, because
 `pgrep -x` does not match this bundle on macOS and the name alone would also
 match the `Orca Helper` processes.
 
-Other AI tools remain outside the scheduled path: their vendor installers,
-application updaters, account-sensitive MCP setup, and local Art Hack skill
-sources are not all suitable for a background LaunchAgent. Re-running `./install`
-reapplies their supported installation methods; Homebrew-backed Claude,
-ChatGPT, GitHub CLI, Zig, and Orca are explicitly installed or
-upgraded, and the Native SDK CLI is pinned to the `0.7` line.
+Other AI tools remain outside the scheduled path: vendor installers,
+application updaters, and account-sensitive MCP setup are not suitable for a
+background LaunchAgent. Re-running `./install` reapplies them through the
+Agentdots installer; Homebrew-backed Claude, ChatGPT, GitHub CLI, and Orca
+are explicitly installed or upgraded by Funk itself.
 
 Funk never performs bundle cleanup, uninstalls, HEAD refreshes, or privileged
 post-update hooks.

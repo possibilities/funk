@@ -38,8 +38,7 @@ Orca:
   brew install --cask --yes stablyai/orca/orca  # when missing
   leave an installed Orca to its own updater  # never brew upgrade
   remove com.apple.quarantine only from Homebrew's declared Orca.app target
-  npx --yes skills add https://github.com/stablyai/orca --agent codex claude-code pi --skill orca-cli orchestration computer-use --global --yes
-  verify the cask receipt and the three global skill records
+  verify the cask receipt  # the Orca harness skills are Agentdots' sync-skills
 EOF
         exit 0
         ;;
@@ -71,57 +70,13 @@ export PATH="$HOME/.local/bin:$brew_prefix/bin:/usr/bin:/bin:/usr/sbin:/sbin:$or
 # the one it started from -- the app breaks mid-session, most visibly on the
 # first lazily loaded pane. Orca's own updater stages the download and applies
 # it on quit, when nothing is left to break.
+#
+# Only the application: the Orca harness skills (orca-cli, orchestration,
+# computer-use) are harness configuration, which Agentdots owns and both
+# installs and verifies in its scripts/sync-skills.
 "$script_dir/converge-brew-casks" --install-only stablyai/orca/orca
-
-if [ -n "${FUNK_NPX_BIN:-}" ] && [ -x "$FUNK_NPX_BIN" ]; then
-    npx_bin="$FUNK_NPX_BIN"
-elif ! command -v npx >/dev/null 2>&1; then
-    nvm_script="$brew_prefix/opt/nvm/nvm.sh"
-    if [ -s "$nvm_script" ]; then
-        export NVM_DIR="$HOME/.nvm"
-        # shellcheck disable=SC1090
-        source "$nvm_script" --no-use
-        if nvm version default >/dev/null 2>&1; then
-            nvm use --silent default
-        fi
-    fi
-    npx_bin=$(command -v npx) || die "npx is required to synchronize Orca skills"
-else
-    npx_bin=$(command -v npx)
-fi
-
-printf 'Synchronizing the globally managed Orca agent skills.\n'
-"$npx_bin" --yes skills add https://github.com/stablyai/orca \
-    --agent codex claude-code pi \
-    --skill orca-cli orchestration computer-use \
-    --global --yes
 
 installed=$("$brew_bin" list --cask --versions orca 2>/dev/null || true)
 [ -n "$installed" ] || die "Orca cask verification failed"
 
-tmpdir=$(mktemp -d "${TMPDIR:-/tmp}/funk-orca-install.XXXXXX")
-trap 'rm -rf "$tmpdir"' EXIT
-skills_json="$tmpdir/skills.json"
-"$npx_bin" --yes skills list --global --json >"$skills_json"
-
-/usr/bin/jq -e '
-  def has_agent($name): .agents | index($name) != null;
-  [
-    .[]
-    | select(
-        (.name == "orca-cli" or
-         .name == "orchestration" or
-         .name == "computer-use") and
-        .scope == "global" and
-        .source == "stablyai/orca" and
-        has_agent("Codex") and
-        has_agent("Claude Code") and
-        has_agent("Pi")
-      )
-    | .name
-  ]
-  | unique
-  | sort == ["computer-use", "orca-cli", "orchestration"]
-' "$skills_json" >/dev/null || die "Orca global skill verification failed"
-
-printf 'Verified Orca cask and global skills for Codex, Claude Code, and Pi.\n'
+printf 'Verified the Orca cask.\n'

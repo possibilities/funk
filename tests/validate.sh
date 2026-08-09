@@ -22,12 +22,10 @@ libexec/repair-cask-user-dirs
 libexec/reclaim-app-ownership
 libexec/list-unattendable-casks
 libexec/install-orca
-libexec/install-code-skills
-libexec/install-agentvoice-cli
+libexec/migrate-gh-credentials
 libexec/stow-config
 libexec/initialize-configs
 libexec/configure-orca
-libexec/install-ai-tools
 libexec/install-update-agent
 libexec/install-tailscale-agent
 libexec/install-home-awake
@@ -434,6 +432,13 @@ if command -v brew >/dev/null 2>&1; then
 fi
 
 update_test_dir=$(mktemp -d "${TMPDIR:-/tmp}/funk-update-test.XXXXXX")
+# The scheduled updater delegates skill synchronization to the Agentdots
+# checkout, so these tests exercise the real sibling scripts against the
+# fixture stubs. Resolve it from the real HOME before any test overrides it;
+# a machine without the checkout cannot validate Funk, by design.
+update_agentdots_root="${FUNK_AGENTDOTS_ROOT:-$HOME/code/agentdots}"
+[ -x "$update_agentdots_root/scripts/sync-skills" ] \
+    || fail "Funk requires the Agentdots checkout to validate: $update_agentdots_root"
 update_home="$update_test_dir/home"
 update_state="$update_test_dir/brew-state"
 update_brew_log="$update_test_dir/brew.log"
@@ -481,6 +486,7 @@ EOF
 set +e
 update_output=$(
     HOME="$update_home" \
+        FUNK_AGENTDOTS_ROOT="$update_agentdots_root" \
         PATH="$root/tests/fixtures:/usr/bin:/bin:/usr/sbin:/sbin" \
         FUNK_TEST_BREW_EXIT=23 \
         FUNK_TEST_BREW_PREFIX="$update_test_dir/prefix" \
@@ -502,6 +508,7 @@ printf '%s\n' "$update_output" | grep -F 'FAILED with exit status 23' >/dev/null
     || fail "funk update ran a checkout installer after a Brewfile failure"
 
 HOME="$update_home" \
+    FUNK_AGENTDOTS_ROOT="$update_agentdots_root" \
     PATH="$root/tests/fixtures:/usr/bin:/bin:/usr/sbin:/sbin" \
     FUNK_TEST_BREW_EXIT=0 \
     FUNK_TEST_BREW_PREFIX="$update_test_dir/prefix" \
@@ -565,6 +572,7 @@ printf '%s\n' "$restart_notification" \
 
 : >"$update_notifier_log"
 HOME="$update_home" \
+    FUNK_AGENTDOTS_ROOT="$update_agentdots_root" \
     PATH="$root/tests/fixtures:/usr/bin:/bin:/usr/sbin:/sbin" \
     FUNK_TEST_BREW_EXIT=0 \
     FUNK_TEST_BREW_PREFIX="$update_test_dir/prefix" \
@@ -586,6 +594,7 @@ grep -F '<-message> <Installer ran; no updates.>' "$update_notifier_log" >/dev/n
 set +e
 update_output=$(
     HOME="$update_home" \
+        FUNK_AGENTDOTS_ROOT="$update_agentdots_root" \
         PATH="$root/tests/fixtures:/usr/bin:/bin:/usr/sbin:/sbin" \
         FUNK_TEST_BREW_EXIT=0 \
         FUNK_TEST_BREW_PREFIX="$update_test_dir/prefix" \
@@ -595,6 +604,7 @@ update_output=$(
         FUNK_TEST_BUN_LOG="$update_bun_log" \
         FUNK_TEST_NPX_EXIT=17 \
         FUNK_TEST_NOTIFIER_LOG="$update_notifier_log" \
+        AGENTDOTS_NPX_BIN="$root/tests/fixtures/npx" \
         FUNK_NPX_BIN="$root/tests/fixtures/npx" \
         FUNK_ORCA_INFO_PLIST="$update_orca_plist" \
         FUNK_TERMINAL_NOTIFIER_BIN="$root/tests/fixtures/terminal-notifier" \
@@ -618,119 +628,21 @@ printf '%s\n' "$failure_notification" \
         >/dev/null \
     || fail "installer failure notification omitted the log pointer"
 
-# A machine that has not cloned AgentVoice is a skip, not a failure: the CLI is
-# one of several optional checkout-backed tools and ./install must not stop for
-# a machine that simply does not have it.
-agentvoice_missing_home="$update_test_dir/agentvoice-missing-home"
-mkdir -p "$agentvoice_missing_home"
-set +e
-agentvoice_missing_output=$(
-    HOME="$agentvoice_missing_home" \
-        PATH="/usr/bin:/bin:/usr/sbin:/sbin" \
-        "$root/libexec/install-agentvoice-cli" 2>&1
-)
-agentvoice_missing_status=$?
-set -e
-[ "$agentvoice_missing_status" -eq 0 ] \
-    || fail "AgentVoice CLI installer did not skip a machine without a checkout"
-printf '%s\n' "$agentvoice_missing_output" \
-    | grep -F \
-        "no checkout at $agentvoice_missing_home/code/agentvoice; skipping." \
-        >/dev/null \
-    || fail "AgentVoice CLI installer did not report the skipped checkout clearly"
-
-# Each agent CLI ships its own runbook as a skill, and Funk finds those skills
-# by convention instead of by list: an agent* checkout that exports
-# skills/<name>/SKILL.md is a participant, and everything else under the root
-# is not. The scan must batch one invocation per project naming every skill it
-# found. No participant is exempt: AgentVoice used to be, back when its own
-# installer linked its skills live from the checkout and a `skills add` over
-# the same names would have replaced those links with copies on every run.
-# Its own directory rather than a corner of the update fixture: the installation
-# plan asserted much further down embeds this same scan, and the update fixture
-# is removed long before that.
-code_skills_dir=$(mktemp -d "${TMPDIR:-/tmp}/funk-code-skills-test.XXXXXX")
-code_skills_root="$code_skills_dir/code-root"
-code_skills_log="$code_skills_dir/npx.log"
-mkdir -p \
-    "$code_skills_root/agentdemo/skills/demo" \
-    "$code_skills_root/agentdemo/skills/second" \
-    "$code_skills_root/agentquiet/src" \
-    "$code_skills_root/agentvoice/skills/story" \
-    "$code_skills_root/notagent/skills/x"
-for code_skills_fixture in \
-    agentdemo/skills/demo \
-    agentdemo/skills/second \
-    agentvoice/skills/story \
-    notagent/skills/x; do
-    printf '# fixture skill\n' >"$code_skills_root/$code_skills_fixture/SKILL.md"
-done
-
-code_skills_plan=$(
-    FUNK_CODE_ROOT="$code_skills_root" \
-        FUNK_NPX_BIN="$root/tests/fixtures/npx" \
-        FUNK_TEST_NPX_LOG="$code_skills_log" \
-        "$root/libexec/install-code-skills" --check
-)
-[ ! -s "$code_skills_log" ] \
-    || fail "project skill plan invoked the skills tool instead of only printing"
-printf '%s\n' "$code_skills_plan" \
-    | grep -F "npx --yes skills add \"$code_skills_root/agentdemo\" --agent codex claude-code pi --skill demo second --global --yes" \
-        >/dev/null \
-    || fail "project skill plan omits the skills discovered in a participating checkout"
-printf '%s\n' "$code_skills_plan" \
-    | grep -F "npx --yes skills add \"$code_skills_root/agentvoice\" --agent codex claude-code pi --skill story --global --yes" \
-        >/dev/null \
-    || fail "project skill plan exempts AgentVoice instead of scanning it like any other participant"
-if printf '%s\n' "$code_skills_plan" | grep -Eq 'agentquiet|notagent'; then
-    fail "project skill plan includes a checkout that is not a participant"
-fi
-
-FUNK_CODE_ROOT="$code_skills_root" \
-    FUNK_NPX_BIN="$root/tests/fixtures/npx" \
-    FUNK_TEST_NPX_LOG="$code_skills_log" \
-    "$root/libexec/install-code-skills" >/dev/null
-grep -F "npx-stub <--yes> <skills> <add> <$code_skills_root/agentdemo> <--agent> <codex> <claude-code> <pi> <--skill> <demo> <second> <--global> <--yes>" \
-    "$code_skills_log" >/dev/null \
-    || fail "project skill scan did not ship both discovered skills in one invocation"
-grep -F "npx-stub <--yes> <skills> <add> <$code_skills_root/agentvoice> <--agent> <codex> <claude-code> <pi> <--skill> <story> <--global> <--yes>" \
-    "$code_skills_log" >/dev/null \
-    || fail "project skill scan skipped AgentVoice instead of synchronizing it"
-if grep -E 'agentquiet|notagent' "$code_skills_log" >/dev/null; then
-    fail "project skill scan synchronized a checkout that is not a participant"
-fi
-[ "$(grep -c 'npx-stub' "$code_skills_log")" -eq 2 ] \
-    || fail "project skill scan did not invoke the skills tool exactly once per participant"
-
-# A checkout without skills is silently not a participant, but a participant
-# whose synchronization fails is a real error, and the message has to name the
-# project: the operator is being asked to go fix that repository.
-set +e
-code_skills_failure=$(
-    FUNK_CODE_ROOT="$code_skills_root" \
-        FUNK_NPX_BIN="$root/tests/fixtures/npx" \
-        FUNK_TEST_NPX_EXIT=9 \
-        "$root/libexec/install-code-skills" 2>&1
-)
-code_skills_failure_status=$?
-set -e
-[ "$code_skills_failure_status" -ne 0 ] \
-    || fail "project skill scan ignored a failing skills tool"
-printf '%s\n' "$code_skills_failure" | grep -F 'agentdemo' >/dev/null \
-    || fail "project skill scan failure does not name the project to fix"
-
-# shellcheck disable=SC2016 # Match the exclusion guard this scan no longer has.
-if grep -F '[ "$project_name" != agentvoice ] || continue' \
-    libexec/install-code-skills >/dev/null; then
-    fail "project skill scan still exempts AgentVoice by name"
-fi
-# shellcheck disable=SC2016 # Match the literal installer declaration.
-grep -F 'code_skills_installer="$funk_root/libexec/install-code-skills"' \
+# The skill synchronization behavior itself — the agent* scan, the AgentVoice
+# skip, the Orca skill verification — is Agentdots' and is asserted by
+# ~/code/agentdots/tests/validate.sh. Funk asserts only its own wiring: the
+# scheduled updater must preflight and invoke the Agentdots sync path.
+# shellcheck disable=SC2016 # Match the literal declaration in the script.
+grep -F 'skill_sync="$agentdots_root/scripts/sync-skills"' \
     libexec/funk-update >/dev/null \
-    || fail "scheduled updater does not preflight the project skill installer"
+    || fail "scheduled updater does not preflight the Agentdots skill sync"
+# shellcheck disable=SC2016 # Match the literal default checkout resolution.
+grep -F 'agentdots_root="${FUNK_AGENTDOTS_ROOT:-$HOME/code/agentdots}"' \
+    libexec/funk-update >/dev/null \
+    || fail "scheduled updater does not resolve the Agentdots checkout"
 # shellcheck disable=SC2016 # Match the literal helper invocation in the script.
-grep -F '"$code_skills_installer" || status=$?' libexec/funk-update >/dev/null \
-    || fail "scheduled updater does not synchronize the per-project agent skills"
+grep -F '"$skill_sync" || status=$?' libexec/funk-update >/dev/null \
+    || fail "scheduled updater does not synchronize the globally managed skills"
 
 quarantine_home="$update_test_dir/quarantine-home"
 quarantine_app="$quarantine_home/Applications/Funk Test.app"
@@ -1014,20 +926,16 @@ HOME="$stow_home" "$root/bin/funk" stow
     || fail "Orca settings overlay was not stowed with normal directory folding"
 [ -L "$stow_home/AGENTS.md" ] \
     || fail "home-level agent guidance was not stowed"
-# install-ai-tools renders every skill against these three files, so a fresh
-# account that lacks them installs skills with the extensions silently missing.
-[ -L "$stow_home/.config/arthack" ] \
-    && [ -f "$stow_home/.config/arthack/SYSTEM.md" ] \
-    && [ -f "$stow_home/.config/arthack/GUIDELINES.md" ] \
-    && [ -f "$stow_home/.config/arthack/TOOLS.md" ] \
-    || fail "Art Hack extension prompts were not stowed with normal directory folding"
-[ -s "$stow_home/.config/arthack/TOOLS.md" ] \
-    || fail "Art Hack extension prompts must not be empty — install-ai-tools renders every skill against them"
-# Global advice belongs in the Art Hack extension prompts, so the stowed home
+# The operator extension prompts moved to Agentdots (prompts/arthack/, linked
+# into ~/.config/arthack by its installer). Funk stowing them again would be a
+# second writer for the same paths.
+[ ! -e "$stow_home/.config/arthack" ] \
+    || fail "the extension prompts are Agentdots'; nothing in Funk may stow ~/.config/arthack"
+# Global advice belongs in the operator extension prompts, so the stowed home
 # guidance stays deliberately empty; the tripwire keeps advice from accreting
 # back into every session.
 [ ! -s "$stow_home/AGENTS.md" ] \
-    || fail "home-level agent guidance should stay empty — global advice belongs in the Art Hack extension prompts"
+    || fail "home-level agent guidance should stay empty — global advice belongs in the operator extension prompts"
 HOME="$stow_home" "$root/bin/funk" stow --check >/dev/null 2>&1
 orca_state="$stow_home/Library/Application Support/orca/orca-data.json"
 mkdir -p "$(dirname "$orca_state")"
@@ -1152,8 +1060,20 @@ grep -F '"$funk_root/libexec/converge-brewfile"' install >/dev/null \
     || fail "default install does not converge Brewfile upgrades before Node setup"
 grep -F "\"\$funk_root/libexec/initialize-configs\"" install >/dev/null \
     || fail "default install does not initialize config dependencies"
-grep -F "\"\$funk_root/libexec/install-ai-tools\"" install >/dev/null \
-    || fail "default install does not install AI tools"
+# shellcheck disable=SC2016 # Match the literal helper invocations in ./install.
+grep -F '"$funk_root/libexec/migrate-gh-credentials"' install >/dev/null \
+    || fail "default install does not migrate GitHub CLI credentials"
+# shellcheck disable=SC2016 # Match the literal cask converge in ./install.
+grep -F '"$funk_root/libexec/converge-brew-casks" claude chatgpt' install >/dev/null \
+    || fail "default install does not converge the AI desktop applications"
+# shellcheck disable=SC2016 # Match the literal Orca installer call in ./install.
+grep -F '"$funk_root/libexec/install-orca"' install >/dev/null \
+    || fail "default install does not install the Orca cask"
+# shellcheck disable=SC2016 # Match the literal Agentdots invocation in ./install.
+grep -F '"$agentdots_root/scripts/install.sh" --install' install >/dev/null \
+    || fail "default install does not run the Agentdots installer"
+grep -F 'Agentdots owns the AI toolchain and is missing' install >/dev/null \
+    || fail "default install does not stop loudly without the Agentdots checkout"
 grep -F "\"\$funk_command\" configure-orca" install >/dev/null \
     || fail "default install does not reconcile Orca settings"
 grep -F "\"\$funk_command\" install-tailscale-recovery" install >/dev/null \
@@ -1253,136 +1173,31 @@ if grep -F 'app="^browserctl-display$"' \
     fail "Yabai floats browserctl-display even though Funk does not install it"
 fi
 
-# The plan embeds the per-project skill scan, whose output depends on which
-# checkouts exist on this machine. Point it at the fixture tree so the plan
-# asserted here is the same on every machine, and so the discovered line can be
-# matched exactly rather than approximately.
-ai_install_plan=$(FUNK_CODE_ROOT="$code_skills_root" libexec/install-ai-tools --check)
-for required_ai_install in \
-    'brew install or upgrade gh  # intentional duplicate of the Brewfile' \
-    'brew install or upgrade --cask --greedy claude' \
-    'brew install or upgrade --cask --greedy chatgpt' \
+# The AI toolchain plan — vendor CLIs, npm globals, skills, extension prompts
+# — is Agentdots' and is asserted by ~/code/agentdots/tests/validate.sh. Funk
+# asserts only the surface it kept: the Orca cask plan and the GitHub CLI
+# credential migration.
+orca_plan=$(libexec/install-orca --check)
+for required_orca_plan in \
     'brew install --cask --yes stablyai/orca/orca  # when missing' \
     'leave an installed Orca to its own updater  # never brew upgrade' \
     'remove com.apple.quarantine only from Homebrew'\''s declared Orca.app target' \
-    'curl -fsSL https://claude.ai/install.sh | bash' \
-    'curl -fsSL https://chatgpt.com/codex/install.sh | CODEX_NON_INTERACTIVE=1 sh' \
-    'curl -fsSL https://pi.dev/install.sh | sh  # in its own session, no controlling terminal' \
-    'brew install or upgrade zig  # AgentVoice'"'"'s native duplex audio path builds against it' \
-    'npm install --global @native-sdk/cli@0.7  # the line the native-sdk skill documents' \
-    'codex mcp add shadcn -- npx shadcn@latest mcp' \
-    'claude mcp add --scope user shadcn -- npx shadcn@latest mcp' \
-    'native skills list' \
-    'ln -sfn ~/AGENTS.md ~/.claude/CLAUDE.md  # Claude Code reads CLAUDE.md, not AGENTS.md' \
-    'ln -sfn ~/AGENTS.md ~/.codex/AGENTS.md  # Codex skips empty guidance files' \
-    'npx --yes skills add https://github.com/stablyai/orca --agent codex claude-code pi --skill orca-cli orchestration computer-use --global --yes' \
-    'npx --yes skills add https://github.com/vercel-labs/skills --agent codex claude-code pi --skill find-skills --global --yes' \
-    'npx --yes skills add https://github.com/anthropics/skills --agent codex claude-code pi --skill frontend-design --global --yes' \
-    'npx --yes skills add https://github.com/vercel-labs/agent-skills --agent codex claude-code pi --skill web-design-guidelines --global --yes' \
-    'npx --yes skills add https://github.com/vercel-labs/agent-skills --agent codex claude-code pi --skill vercel-react-best-practices --global --yes' \
-    'npx --yes skills add https://github.com/vercel/ai --agent codex claude-code pi --skill ai-sdk --global --yes' \
-    'npx --yes skills add https://github.com/vercel/ai-elements --agent codex claude-code pi --skill ai-elements --global --yes' \
-    'npx --yes skills add https://github.com/shadcn/ui --agent codex claude-code pi --skill shadcn --global --yes' \
-    'npx --yes skills add https://github.com/vercel-labs/native --agent codex claude-code pi --skill native-sdk --global --yes' \
-    "npx --yes skills add \"\$HOME/code/arthack\" --agent codex claude-code pi --skill collab build resource-create resource-update story --global --yes" \
-    "npx --yes skills add \"$code_skills_root/agentdemo\" --agent codex claude-code pi --skill demo second --global --yes" \
-    "\"\$HOME/code/arthack/scripts/render\""; do
-    printf '%s\n' "$ai_install_plan" | grep -F "$required_ai_install" >/dev/null \
-        || fail "AI installation plan is missing: $required_ai_install"
+    'verify the cask receipt'; do
+    printf '%s\n' "$orca_plan" | grep -F "$required_orca_plan" >/dev/null \
+        || fail "Orca installation plan is missing: $required_orca_plan"
 done
-if printf '%s\n' "$ai_install_plan" | grep -Eq -- '--skill ([^[:space:]]+ )*funk([[:space:]]|$)'; then
-    fail "AI installation plan still installs the retired Funk priming skill"
+# The Orca harness skills moved to Agentdots' sync-skills; a skills line here
+# would be the second synchronization path that split exists to prevent.
+if printf '%s\n' "$orca_plan" | grep -Fq 'skills add'; then
+    fail "Orca installation plan still synchronizes skills owned by Agentdots"
 fi
-if printf '%s\n' "$ai_install_plan" | grep -qi 'livekit'; then
-    fail "AI installation plan still includes LiveKit setup"
+if grep -F 'skills add' libexec/install-orca >/dev/null; then
+    fail "the Orca installer still synchronizes skills owned by Agentdots"
 fi
-# AgentVoice exports skills/ like the other agent tools and is scanned like
-# them; nothing about it is special to this plan any more.
-printf '%s\n' "$ai_install_plan" \
-    | grep -F "skills add \"$code_skills_root/agentvoice\"" >/dev/null \
-    || fail "AI installation plan omits the skills AgentVoice exports by convention"
-# The agentchats checkout moved its skill to skills/chats/, so the scan ships
-# it and an explicit line would be the second synchronization path the
-# agentchats guidance forbids.
-if printf '%s\n' "$ai_install_plan" \
-    | grep -F '/code/agentchats"' >/dev/null; then
-    fail "AI installation plan still synchronizes chats explicitly beside the scan"
-fi
-rm -rf "$code_skills_dir"
 
-# shellcheck disable=SC2016 # Match the literal helper invocations in the script.
-for code_skills_invocation in \
-    '"$script_dir/install-code-skills" --check' \
-    '"$script_dir/install-code-skills"'; do
-    grep -F "$code_skills_invocation" libexec/install-ai-tools >/dev/null \
-        || fail "AI installer does not run the per-project skill scan: $code_skills_invocation"
-done
-# The scan must follow the explicit lines it deliberately does not replace.
-ai_code_skills_line=$(
-    # shellcheck disable=SC2016 # Match the literal helper invocation.
-    grep -n -F '"$script_dir/install-code-skills"' libexec/install-ai-tools \
-        | grep -v -F -- '--check' | cut -d: -f1
-)
-ai_arthack_render_line=$(
-    # shellcheck disable=SC2016 # Match the literal render invocation in the
-    # script; the string also appears in its earlier -x precondition, so the
-    # last match is the invocation itself.
-    grep -n -F '"$art_hack_root/scripts/render"' libexec/install-ai-tools \
-        | tail -1 | cut -d: -f1
-)
-[ "$ai_arthack_render_line" -lt "$ai_code_skills_line" ] \
-    || fail "AI installer runs the project skill scan before the explicit Art Hack lines"
-grep -F "art_hack_root=\"\$HOME/code/arthack\"" libexec/install-ai-tools >/dev/null \
-    || fail "AI installer does not own the Art Hack skill source"
-grep -F "npx --yes skills add \"\$art_hack_root\"" libexec/install-ai-tools >/dev/null \
-    || fail "AI installer does not synchronize the Art Hack skills"
-grep -F "\"\$art_hack_root/scripts/render\"" libexec/install-ai-tools >/dev/null \
-    || fail "AI installer does not render the Art Hack skills"
-grep -F "for art_hack_skill in collab build; do" libexec/install-ai-tools >/dev/null \
-    || fail "AI installer does not validate the collab and build skill sources"
-grep -F "\$art_hack_root/\$art_hack_skill/agents/openai.yaml" libexec/install-ai-tools >/dev/null \
-    || fail "AI installer does not validate the Art Hack skill manifests"
-grep -F 'link_agent_guidance' libexec/install-ai-tools >/dev/null \
-    || fail "AI installer does not link the shared agent guidance"
-# shellcheck disable=SC2016 # Match the literal target paths in the script.
-grep -F '"$HOME/.claude/CLAUDE.md" "$HOME/.codex/AGENTS.md"' libexec/install-ai-tools >/dev/null \
-    || fail "AI installer does not target both CLI guidance locations"
-grep -F 'refusing to replace independent guidance' libexec/install-ai-tools >/dev/null \
-    || fail "AI installer would replace independent guidance files"
-grep -F 'install_or_upgrade_formula gh' libexec/install-ai-tools >/dev/null \
-    || fail "AI installer does not deliberately converge the GitHub CLI"
-
-# The native-sdk skill documents the 0.7 line and Zig builds both Native SDK
-# applications and AgentVoice's opt-in native duplex audio device, so both stay
-# pinned rather than tracking latest.
-grep -F 'native_sdk_version=0.7' libexec/install-ai-tools >/dev/null \
-    || fail "AI installer does not pin the Native SDK CLI to the compatible 0.7 line"
-if grep -F '@native-sdk/cli@latest' libexec/install-ai-tools >/dev/null; then
-    fail "AI installer still tracks the latest Native SDK CLI release"
-fi
-grep -F 'install_or_upgrade_formula zig' libexec/install-ai-tools >/dev/null \
-    || fail "AI installer does not converge the Zig toolchain"
-# The AgentVoice desktop application retired with the repository that owned it;
-# nothing here may reach for its installer again.
-if grep -F 'install-agentvoice-app' libexec/install-ai-tools >/dev/null; then
-    fail "AI installer still references the retired AgentVoice app installer"
-fi
-# shellcheck disable=SC2016 # Match the literal helper invocation in the script.
-grep -F '"$script_dir/install-agentvoice-cli"' libexec/install-ai-tools >/dev/null \
-    || fail "AI installer does not install the AgentVoice voice CLI"
-# shellcheck disable=SC2016 # Match the literal status variable in the script.
-grep -F 'exit "$agentvoice_cli_status"' libexec/install-ai-tools >/dev/null \
-    || fail "AI installer does not propagate an AgentVoice CLI installation failure"
-
-# Pi reads its prompts from /dev/tty, so only removing the controlling terminal
-# keeps ./install unattended and stops it editing Funk's Stow-managed profile.
-grep -F 'run_without_controlling_terminal /bin/sh' libexec/install-ai-tools >/dev/null \
-    || fail "Pi installer is not detached from the controlling terminal"
-grep -F 'POSIX::setsid()' libexec/install-ai-tools >/dev/null \
-    || fail "Pi installer detachment does not start a new session"
-grep -F '^[[:space:]]*oauth_token:' libexec/install-ai-tools >/dev/null \
+grep -F '^[[:space:]]*oauth_token:' libexec/migrate-gh-credentials >/dev/null \
     || fail "GitHub CLI migration does not require a portable token"
-grep -F 'Preserving existing GitHub CLI credentials' libexec/install-ai-tools >/dev/null \
+grep -F 'Preserving existing GitHub CLI credentials' libexec/migrate-gh-credentials >/dev/null \
     || fail "GitHub CLI migration does not preserve an existing login"
 if grep -Eq '^cask "(chatgpt|claude)"$|stablyai/orca/orca' Brewfile; then
     fail "AI desktop application leaked back into the bootstrap Brewfile"
@@ -1523,11 +1338,14 @@ if grep -Eq '/usr/bin/xattr -(c|d[^r])|xattr[^[:cntrl:]]+(where_from|provenance)
     libexec/release-cask-quarantine; then
     fail "cask helper weakens extended attributes beyond recursive quarantine removal"
 fi
+# The Agentdots skill sync joined the scheduled path when the updater started
+# delegating to it, so it inherits the same prohibition even though it lives
+# in the sibling checkout.
 if grep -Eqi 'bundle cleanup|uninstall|fetch-head|telegram|sudo' \
     bin/funk libexec/funk-update libexec/install-update-agent \
     libexec/install-orca libexec/converge-brewfile libexec/converge-brew-casks \
     libexec/repair-cask-artifacts \
-    libexec/install-code-skills \
+    "$update_agentdots_root/scripts/sync-skills" \
     launchd/com.arthack.funk.update.plist.in; then
     fail "scheduled updater contains a prohibited operation"
 fi
