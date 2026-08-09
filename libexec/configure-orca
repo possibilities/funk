@@ -67,6 +67,7 @@ settings_file="$HOME/.config/orca/settings.json"
 "$jq_bin" -e '
   type == "object" and
   ((keys - [
+    "agentDefaultArgs",
     "defaultTuiAgent",
     "mobilePairingConnectionMode",
     "notifications",
@@ -82,6 +83,11 @@ settings_file="$HOME/.config/orca/settings.json"
     "terminalPaddingY",
     "theme"
   ]) | length == 0) and
+  (.agentDefaultArgs | . == null or (
+    type == "object" and
+    (keys - ["claude", "codex", "pi"] | length == 0) and
+    (to_entries | all(.value | type == "string"))
+  )) and
   (.defaultTuiAgent | . == null or . == "blank" or
     . == "antigravity" or . == "claude" or . == "codex" or
     . == "command-code" or . == "copilot" or . == "cursor-agent" or
@@ -133,10 +139,14 @@ if [ -f "$data_file" ]; then
     "$jq_bin" -e '
       type == "object" and ((.settings // {}) | type == "object")
     ' "$data_file" >/dev/null || die "Orca state is not a valid settings object: $data_file"
+    # Leaf-by-leaf equality, not `contains`: jq's contains matches substrings
+    # on strings, so an overlay value of "" (how Orca spells "no default
+    # args") would report every value as already converged and never write.
     # shellcheck disable=SC2016 # $desired is a jq variable, not a shell expansion.
     if "$jq_bin" -e --argjson desired "$desired" '
       (.settings // {}) as $current |
-      $current | contains($desired)
+      [$desired | paths(scalars)] as $leaves |
+      all($leaves[]; . as $leaf | ($current | getpath($leaf)) == ($desired | getpath($leaf)))
     ' "$data_file" >/dev/null; then
         converged=1
     fi

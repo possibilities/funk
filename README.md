@@ -168,6 +168,7 @@ target account. Funk owns the union of the useful packages from both projects:
 | `agents` | `~/AGENTS.md` | no |
 | `arthack` | `~/.config/arthack/` | no |
 | `agentvoice` | `~/.config/agentvoice/` | yes |
+| `agentsurface` | `~/.config/agentsurface/` | yes |
 
 The `agentvoice` package carries the voice orchestrator's doctrine and
 server configuration: `ORCHESTRATOR.md` (developer instructions — how the
@@ -181,6 +182,16 @@ server reads all three once at boot, so edits apply on its next start; the
 lever semantics are documented in
 `~/code/agentvoice/docs/field-guide.md`. It does not fold because the
 target directory also holds files Funk does not own.
+
+The `agentsurface` package carries the launcher's personal configuration:
+yolo enabled for `claude`, `codex`, and `pi`, so every launch that goes
+through agentsurface drops that harness's permission gates —
+`--dangerously-skip-permissions`, `--dangerously-bypass-approvals-and-sandbox`,
+and `--approve` respectively. Because the bare commands are agentsurface
+shims (`funk install-agentsurface-shims`), this one file is where permission
+posture for all three harnesses now lives, and callers stop passing
+permission flags of their own. It folds: nothing but agentsurface's own
+configuration belongs in that directory.
 
 The `arthack` package carries the Art Hack extension prompts that
 `libexec/install-ai-tools` renders into every installed skill. Before it
@@ -354,8 +365,14 @@ Orca does not expose a standalone global preferences file: its settings share
 other generated state, and Orca atomically replaces that file when saving.
 Funk therefore stows a credential-free settings overlay at
 `~/.config/orca/settings.json` and `funk configure-orca` reconciles only those
-keys into the active profile. If Orca is open and the profile differs, the
-command stops instead of racing Orca's writer; quit Orca and rerun it. It exits
+keys into the active profile. Those keys include `agentDefaultArgs` for
+`claude`, `codex`, and `pi`, held empty: agentsurface owns permission posture
+for the three shimmed harnesses, so Orca must not append permission flags of
+its own. The reconciliation is a per-key merge, so every other agent's
+arguments — `gemini`, `aider`, `openclaude`, `claude-agent-teams`, and the
+rest, none of which launch a shimmed bare command — are left as Orca wrote
+them. If Orca is open and the profile differs, the command stops instead of
+racing Orca's writer; quit Orca and rerun it. It exits
 `75` (`EX_TEMPFAIL`) in that case, which marks a step to repeat rather than a
 broken installation. The default installer runs this reconciliation after
 installing Orca, and treats `75` as deferred: it finishes every remaining step,

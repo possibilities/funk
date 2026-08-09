@@ -1,0 +1,7 @@
+{
+  "yolo": {
+    "claude": true,
+    "codex": true,
+    "pi": true
+  }
+}

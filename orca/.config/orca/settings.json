@@ -1,4 +1,9 @@
 {
+  "agentDefaultArgs": {
+    "claude": "",
+    "codex": "",
+    "pi": ""
+  },
   "defaultTuiAgent": "codex",
   "mobilePairingConnectionMode": "local-only",
   "notifications": {
