@@ -40,11 +40,11 @@ find_stow() {
     return 1
 }
 
-all_packages='git ssh ghostty nvim skhd tmux zsh yabai karabiner tmuxctl bin starship btop llm orca agents arthack'
+all_packages='git ssh ghostty nvim skhd tmux zsh yabai karabiner tmuxctl bin starship btop llm orca agents arthack agentvoice'
 
 known_package() {
     case "$1" in
-        git|ssh|ghostty|nvim|skhd|tmux|zsh|yabai|karabiner|tmuxctl|bin|starship|btop|llm|orca|agents|arthack)
+        git|ssh|ghostty|nvim|skhd|tmux|zsh|yabai|karabiner|tmuxctl|bin|starship|btop|llm|orca|agents|arthack|agentvoice)
             return 0
             ;;
         *)
@@ -55,7 +55,7 @@ known_package() {
 
 needs_no_folding() {
     case "$1" in
-        ssh|ghostty|tmux|zsh|karabiner|tmuxctl|bin|llm)
+        ssh|ghostty|tmux|zsh|karabiner|tmuxctl|bin|llm|agentvoice)
             return 0
             ;;
         *)

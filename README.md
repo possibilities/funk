@@ -18,7 +18,8 @@ installers:
   exists
 - cass, the coding-agent session search CLI, installed and index-prepared by
   the Agentchats checkout's own contract from `~/code/agentchats` when that
-  checkout exists, together with its `chats` skill
+  checkout exists, together with its `agentchats` state CLI and `chats`
+  skill
 - Orca CLI, orchestration, computer-use, skill-discovery, frontend design,
   web-design review, React engineering, Vercel AI SDK, AI Elements, shadcn,
   Native SDK discovery, and the Art Hack agent skills
@@ -164,6 +165,20 @@ target account. Funk owns the union of the useful packages from both projects:
 | `orca` | `~/.config/orca/settings.json` | no |
 | `agents` | `~/AGENTS.md` | no |
 | `arthack` | `~/.config/arthack/` | no |
+| `agentvoice` | `~/.config/agentvoice/` | yes |
+
+The `agentvoice` package carries the voice orchestrator's doctrine and
+server configuration: `ORCHESTRATOR.md` (developer instructions — how the
+orchestrator agent conducts a voice session: classify, dispatch
+asynchronous work to app-server threads, speak in `[FINAL]` lines, run its
+bearings commands), `ORCHESTRATOR_SESSION_START.md` (the short voice-mode
+briefing codex restates after every compaction), and `server.yaml` (effort,
+the guardian approvals recipe, early compaction, subagents disabled in
+favor of app-server threads, and the bemTags handoff). The AgentVoice
+server reads all three once at boot, so edits apply on its next start; the
+lever semantics are documented in
+`~/code/agentvoice/docs/field-guide.md`. It does not fold because the
+target directory also holds files Funk does not own.
 
 The `arthack` package carries the Art Hack extension prompts that
 `libexec/install-ai-tools` renders into every installed skill. Before it

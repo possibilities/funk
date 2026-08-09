@@ -1,0 +1,36 @@
+# agentvoice server configuration, Funk-owned: edit here (the agentvoice
+# Stow package) and run `funk stow`; the server reads it — and the prompt
+# files beside it — once at boot, so a restart applies changes.
+#
+# Every key left unset is not sent to codex at all and the machine's
+# ~/.codex/config.toml applies. The posture here: the orchestrator runs in
+# the global codex context (skills, MCP servers, AGENTS.md all visible) and
+# is differentiated by doctrine (ORCHESTRATOR.md), not by capability
+# stripping. Reference: ~/code/agentvoice/docs/field-guide.md.
+
+orchestrator:
+  # Not ultra: ultra additionally switches on codex's proactive multi-agent
+  # mode, and dispatch policy belongs to the doctrine, not the model tier.
+  effort: high
+
+  # Guardian recipe: escalations outside the sandbox get an AI review
+  # (~3 s) instead of agentvoice's blanket fail-closed denial.
+  sandbox: workspace-write
+  approval-policy: on-request
+  approvals-reviewer: auto_review
+
+  config:
+    # Compact early and often: cheap summaries, and the doctrine
+    # (developer instructions) re-injects in full after every compaction.
+    model_auto_compact_token_limit: 60000
+
+    # Asynchronous work belongs on app-server threads the system can
+    # watch, not on in-thread subagents; this removes the spawn tools
+    # outright (codex-rs: agents.enabled).
+    agents: { enabled: false }
+
+voice:
+  # The orchestrator's [FINAL] line is the speakable channel; everything
+  # else lands as commentary. Pairs with the doctrine's presentation
+  # contract in ORCHESTRATOR.md.
+  codex-response-handoff-mode: bemTags

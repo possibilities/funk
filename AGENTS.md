@@ -33,9 +33,10 @@ converge by running `./install`; do not rely on one-off live configuration.
   possible: source tmux's config and restart Yabai/skhd services. Karabiner
   reloads its configuration automatically.
 
-The `ssh`, `ghostty`, `tmux`, `zsh`, `karabiner`, `tmuxctl`, `bin`, and `llm`
-packages use `--no-folding` so their target directories remain available for
-generated or unmanaged files. Other packages may use normal Stow folding.
+The `ssh`, `ghostty`, `tmux`, `zsh`, `karabiner`, `tmuxctl`, `bin`, `llm`,
+and `agentvoice` packages use `--no-folding` so their target directories
+remain available for generated or unmanaged files. Other packages may use
+normal Stow folding.
 
 Never Stow credentials, secrets, generated application state, remote-device
 configuration, root-owned helpers, LaunchDaemons, or rendered LaunchAgents.
@@ -113,6 +114,15 @@ the `arthack` package owns `~/.config/arthack/`. Edit
 the same skills this one does. Their recognized names — `SYSTEM.md`,
 `GUIDELINES.md`, `TOOLS.md` — are Art Hack's contract; an unrecognized file
 renders to nothing.
+
+The voice orchestrator's doctrine is Funk's the same way: the `agentvoice`
+package owns the AgentVoice prompt files and `server.yaml` in
+`~/.config/agentvoice/`. Edit `agentvoice/.config/agentvoice/` here and run
+`funk stow`; the AgentVoice server reads them once at boot, so changes
+apply on its next start. The filenames — `ORCHESTRATOR.md`,
+`ORCHESTRATOR_SESSION_START.md`, `server.yaml` — are AgentVoice's
+discovery contract (`~/code/agentvoice/docs/field-guide.md` documents
+every lever); a file it does not recognize primes nothing.
 
 Configuration another program writes is overlaid, never adopted. Orca rewrites
 every agent CLI's hook configuration on launch, so those files stay out of Stow
