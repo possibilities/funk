@@ -46,7 +46,7 @@ agent* checkout skill scan. `./install` calls
 `~/code/agentdots/scripts/install.sh --install` and refuses to finish if that
 checkout is missing. Run `~/code/agentdots/scripts/install.sh --check` to
 inspect the toolchain plan without making changes; the ownership rubric is
-recorded in `~/code/agentdots/guidance/funk-boundary.md`.
+recorded in the wiki (`agentwiki get funk-boundary`).
 
 After any Funk-managed cask pass, Funk reads Homebrew's cask metadata, requires
 Gatekeeper's policy assessment to accept each app, and then removes only

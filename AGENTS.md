@@ -77,7 +77,7 @@ upgrade.
 ## AI tooling and skills
 
 Funk no longer owns AI-toolchain installation; `~/code/agentdots` does. The
-boundary rubric lives in that repository (`guidance/funk-boundary.md`):
+boundary rubric lives in the wiki (`agentwiki get funk-boundary`):
 anything depended on by or deeply related to the agent* fleet — harness CLIs,
 pinned npm globals, MCP registration, guidance links, extension prompts, and
 every globally managed skill — belongs in Agentdots, and the machine itself —
