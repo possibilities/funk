@@ -84,6 +84,11 @@ mkdir -p "$CANON" "$ARCHIVE_ROOT/history"
 if [ "$mode" = backfill ]; then
     command -v cass >/dev/null 2>&1 || { log "backfill: cass missing"; exit 1; }
     [ -d "$CASS_DATA_DIR" ] || { log "backfill: $CASS_DATA_DIR missing"; exit 1; }
+    # Long watch-once cycles over heavy directories trip cass's stall
+    # watchdog, which aborts the run (exit 70) after most of the batch has
+    # already ingested. Keep stall reporting but never abort, and keep
+    # batches small so cycles stay short.
+    export CASS_INDEX_STALL_ABORT_SECS=0
     batch_rc=0
     run_batch() {
         local paths="${1#,}" try rc out
@@ -107,7 +112,7 @@ if [ "$mode" = backfill ]; then
     for d in "$CANON"/*/; do
         list="$list,${d%/}"
         count=$((count + 1))
-        if [ "$count" -eq 100 ]; then
+        if [ "$count" -eq 25 ]; then
             run_batch "$list" || true
             list=""
             count=0
