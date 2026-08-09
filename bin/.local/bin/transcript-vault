@@ -86,8 +86,10 @@ if [ "$mode" = backfill ]; then
     [ -d "$CASS_DATA_DIR" ] || { log "backfill: $CASS_DATA_DIR missing"; exit 1; }
     # Long watch-once cycles over heavy directories trip cass's stall
     # watchdog, which aborts the run (exit 70) after most of the batch has
-    # already ingested. Keep stall reporting but never abort, and keep
-    # batches small so cycles stay short.
+    # already ingested. Keep stall reporting but never abort, and run one
+    # directory per cycle: a 25-directory cycle over heavy regions grew until
+    # the OS OOM-killed it (SIGKILL after hours), and single-directory cycles
+    # bound memory while re-scanned directories cost only seconds.
     export CASS_INDEX_STALL_ABORT_SECS=0
     batch_rc=0
     run_batch() {
@@ -112,7 +114,7 @@ if [ "$mode" = backfill ]; then
     for d in "$CANON"/*/; do
         list="$list,${d%/}"
         count=$((count + 1))
-        if [ "$count" -eq 25 ]; then
+        if [ "$count" -eq 1 ]; then
             run_batch "$list" || true
             list=""
             count=0
