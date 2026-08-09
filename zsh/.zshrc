@@ -8,6 +8,11 @@ ulimit -n 16384 2>/dev/null
 # both together when moving to a new LTS. `nvm` lazy-loads on first use.
 export NVM_DIR="$HOME/.nvm"
 export PATH="$NVM_DIR/versions/node/v24.16.0/bin:$PATH"
+
+# Balanced harness launches: agentsurface shims outrank the real binaries
+# (`funk install-agentsurface-shims`). Guarded so machines without them are
+# untouched; must stay below every other bin-dir prepend to win.
+[ -d "$HOME/.local/share/agentsurface/shims" ] && export PATH="$HOME/.local/share/agentsurface/shims:$PATH"
 nvm() {
   unfunction nvm
   [ -s "$HOMEBREW_PREFIX/opt/nvm/nvm.sh" ] && \. "$HOMEBREW_PREFIX/opt/nvm/nvm.sh"
