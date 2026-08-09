@@ -1247,7 +1247,7 @@ for required_ai_install in \
     'npx --yes skills add https://github.com/vercel/ai-elements --agent codex claude-code pi --skill ai-elements --global --yes' \
     'npx --yes skills add https://github.com/shadcn/ui --agent codex claude-code pi --skill shadcn --global --yes' \
     'npx --yes skills add https://github.com/vercel-labs/native --agent codex claude-code pi --skill native-sdk --global --yes' \
-    "npx --yes skills add \"\$HOME/code/arthack\" --agent codex claude-code pi --skill hack resource-create resource-update --global --yes" \
+    "npx --yes skills add \"\$HOME/code/arthack\" --agent codex claude-code pi --skill hack resource-create resource-update story --global --yes" \
     "npx --yes skills add \"$code_skills_root/agentdemo\" --agent codex claude-code pi --skill demo second --global --yes" \
     "\"\$HOME/code/arthack/scripts/render\""; do
     printf '%s\n' "$ai_install_plan" | grep -F "$required_ai_install" >/dev/null \
