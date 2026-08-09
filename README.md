@@ -17,9 +17,9 @@ checkout:
   shell/development tools, including `terminal-notifier` and `restic`
 - Everything the agent fleet depends on — Claude Code, Codex CLI, Pi, the
   pinned Native SDK CLI and agent-browser, the fleet CLIs (AgentVoice, cass,
-  agentwiki, agentboard, agentsearch), and every globally managed agent
-  skill — by calling `~/code/agentdots/scripts/install.sh --install`, which
-  owns that toolchain
+  agentwiki, agentboard, agentsearch, agentkeys, agentsurface), and every
+  globally managed agent skill — by calling
+  `~/code/agentdots/scripts/install.sh --install`, which owns that toolchain
 
 ### The Agentdots seam
 
@@ -38,8 +38,9 @@ the official shell installers for
 and [Pi](https://pi.dev/docs/latest); the pinned Native SDK CLI and
 agent-browser npm globals; the shadcn MCP registration; the harness guidance
 links; the operator extension prompts; the fleet checkout installers — the
-AgentVoice voice CLI, the agentwiki/agentboard/agentsearch CLIs, and cass
-from `~/code/agentchats` — and every globally managed agent skill, including
+AgentVoice voice CLI, the agentwiki/agentboard/agentsearch/agentkeys/
+agentsurface CLIs, and cass from `~/code/agentchats` — and every globally
+managed agent skill, including
 the Orca harness skills (`orca-cli`, `orchestration`, `computer-use`) and the
 agent* checkout skill scan. `./install` calls
 `~/code/agentdots/scripts/install.sh --install` and refuses to finish if that
