@@ -108,8 +108,15 @@ tests/fixtures/zig
 tests/validate.sh
 "
 
+# Every one of these is exec'd by path rather than passed to an interpreter: CI
+# runs `tests/validate.sh` directly, the operator runs ./install, launchd execs
+# the helpers. A lost executable bit turns all of that into exit 126, and it is
+# invisible in a diff. This is asserted rather than assumed because it already
+# happened once — validate.sh shipped 100644 and no run caught it, since the CI
+# that would have was failing for an unrelated reason at the time.
 for file in $shell_files; do
     /bin/bash -n "$file"
+    [ -x "$file" ] || fail "shell file is not executable: $file"
 done
 
 /bin/zsh -n zsh/.zshrc

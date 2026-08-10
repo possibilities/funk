@@ -5,9 +5,10 @@
 - `/Users/arthack/code/funk` is the canonical Funk repository and
   `/Users/arthack` is the target account's home. In a worktree, treat that
   worktree's root as the repository path.
-- `/Users/mike/code/dotfiles` is the long-lived setup repository from the old
-  account. Use it as reference material and migrate useful ideas selectively;
-  preserve Funk's narrower goals and safety constraints.
+- The pre-migration account's dotfiles repository is reference material where
+  it still exists locally; migrate useful ideas from it selectively and
+  preserve Funk's narrower goals and safety constraints. Its path is not
+  recorded here — it belongs to an account this repository no longer names.
 - Migrate credentials or authenticated CLI configuration only when needed.
   Copy the minimum required files, preserve restrictive permissions, and never
   print, inspect unnecessarily, or commit secret values.

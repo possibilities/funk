@@ -420,8 +420,9 @@ keys into the active profile. Those keys include `agentDefaultArgs`, held
 empty for the three harnesses this machine launches — `claude`, `codex`,
 and `pi` — because agentsurface owns their permission posture and Orca must
 not append permission flags of its own. The reconciliation is a per-key
-merge, so every other agent's arguments are left as Orca wrote them. If Orca is open and the profile differs, the command stops instead of
-racing Orca's writer; quit Orca and rerun it. It exits
+merge, so every other agent's arguments are left as Orca wrote them. If Orca
+is open and the profile differs, the command stops instead of racing Orca's
+writer; quit Orca and rerun it. It exits
 `75` (`EX_TEMPFAIL`) in that case, which marks a step to repeat rather than a
 broken installation. The default installer runs this reconciliation after
 installing Orca, and treats `75` as deferred: it finishes every remaining step,
@@ -855,7 +856,7 @@ which force-ingests archive project directories through
 over heavy regions grows until the OS kills it).
 
 Name the directories a bulk import actually touched —
-`funk transcript-vault backfill -Users-mike-code-keeper …`, as bare names or
+`funk transcript-vault backfill -Users-you-code-someproject …`, as bare names or
 absolute paths under the canonical tree — and the pass is limited to them. A
 bare `backfill` re-ingests all of them, which makes the heavy directories
 re-pay their full lexical cost, hours of work, to rediscover that nothing
@@ -873,8 +874,9 @@ Credentials are deliberately not Stow-managed: the vault reads
 `~/.config/restic/silverbird.env` (mode 0600, migrated from the previous
 account) and skips the repository when the file is missing or the host is
 unreachable. `~/.config/restic/b2.env` remains only for reading the old
-account's historical snapshots, never as a vault target. The cass index location is unified across shells, LaunchAgents, and
-the Agentchats installer by symlinking cass's default data directory
+account's historical snapshots, never as a vault target. The cass index
+location is unified across shells, LaunchAgents, and the Agentchats installer
+by symlinking cass's default data directory
 (`~/Library/Application Support/com.coding-agent-search.coding-agent-search`)
 to `/Volumes/Scratch/cass`; the internal disk cannot hold an index over the
 full transcript archive.

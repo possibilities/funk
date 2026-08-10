@@ -21,8 +21,8 @@ Default installation:
   - links the funk command into the active Homebrew bin directory
   - installs and loads the update and Tailscale recovery LaunchAgents
   - installs the home-network sleep and screen-lock agent
-  - installs the resident services owned by local checkouts: the Agentbrain
-    worker and share ingress, the Agentweb daemon, and the Agentusage daemon
+  - verifies the resident services Agentdots installs: the Agentbrain worker
+    and share ingress, the Agentweb daemon, and the Agentusage daemon
   - applies Funk's user-level macOS preferences
   - writes ~/.ssh/config.d from the tailnet Tailscale is reporting
 
