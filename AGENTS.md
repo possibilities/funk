@@ -24,8 +24,8 @@ converge by running `./install`; do not rely on one-off live configuration.
 - Use `funk stow --check` before risky changes. Use
   `funk stow --adopt <package>` only to migrate an intentional existing config,
   then review the Git diff because adoption changes repository files.
-- For a new package, register it in `libexec/stow-config`, document its target
-  and folding mode in `README.md`, and test the forward installation path.
+- For a new package, register it in `libexec/stow-config`, add it to the table
+  below, and test the forward installation path.
 - Add user-level macOS preferences to `libexec/configure-macos`; route
   privileged machine settings through the guarded system helpers.
 - Preserve common Emacs/readline movement, history, cutting, and yanking
@@ -34,16 +34,27 @@ converge by running `./install`; do not rely on one-off live configuration.
   possible: source tmux's config and restart Yabai/skhd services. Karabiner
   reloads its configuration automatically.
 
-The `ssh`, `ghostty`, `tmux`, `zsh`, `karabiner`, `tmuxctl`, `bin`, and `git`
-packages use `--no-folding` so their target directories remain available
-for generated or unmanaged files. Other packages may use normal Stow
-folding.
+| Package | Target | `--no-folding` |
+| --- | --- | --- |
+| `git` | `~/.config/git/` | yes |
+| `ssh` | `~/.ssh/` | yes |
+| `ghostty` | `~/.config/ghostty/` | yes |
+| `nvim` | `~/.config/nvim/` | no |
+| `skhd` | `~/.config/skhd/` | no |
+| `tmux` | `~/.config/tmux/` | yes |
+| `zsh` | `~/.zshenv`, `~/.zshrc`, `~/.zsh/` | yes |
+| `yabai` | `~/.config/yabai/` | no |
+| `karabiner` | `~/.config/karabiner/` | yes |
+| `tmuxctl` | `~/.config/tmuxctl/` | yes |
+| `bin` | `~/.local/bin/` | yes |
+| `starship` | `~/.config/starship.toml` | no |
+| `btop` | `~/.config/btop/` | no |
 
-A `--no-folding` package's target directory is therefore allowed to hold files
-Funk does not track; `~/.ssh/config.d` is the case to reason from. `funk
-ssh-tailnet-config` writes it from live Tailscale state, and only a real
-`~/.ssh` holding one Stow symlink makes that possible — under folding the
-generator would be writing into this checkout.
+A `--no-folding` package's target directory stays a real directory, so it can
+hold files Funk does not track. That is the whole reason those rows are marked:
+`~/.ssh/config.d` is written by `funk ssh-tailnet-config` and
+`~/.config/git/config.local` by `funk git-identity`, and under normal folding
+both generators would be writing straight back into this checkout.
 
 Machine-identifying data is generated onto the machine at converge time, never
 tracked and never adopted back. `home-awake --learn-network` records the home
