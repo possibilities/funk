@@ -45,13 +45,13 @@ orca_installer="$funk_root/libexec/install-orca"
 brewfile_installer="$funk_root/libexec/converge-brewfile"
 unattendable_lister="$funk_root/libexec/list-unattendable-casks"
 cask_dir_lister="$funk_root/libexec/repair-cask-user-dirs"
-# Agentdots owns the globally managed agent skills; its sync-skills is the
+# AgentStart owns the globally managed agent skills; its sync-skills is the
 # no-download convergence path this scheduled run is allowed to take. The
 # checkout is required the same way ./install requires it: a machine whose
 # updater is installed has run ./install, which refuses to finish without
-# Agentdots, so a missing checkout here is damage worth failing over.
-agentdots_root="${FUNK_AGENTDOTS_ROOT:-$HOME/code/agentdots}"
-skill_sync="$agentdots_root/scripts/sync-skills"
+# AgentStart, so a missing checkout here is damage worth failing over.
+agentstart_root="${FUNK_AGENTSTART_ROOT:-$HOME/code/agentstart}"
+skill_sync="$agentstart_root/scripts/sync-skills"
 
 if [ ! -f "$brewfile" ]; then
     log "FAILED: Brewfile not found at $brewfile" >&2
@@ -74,7 +74,7 @@ fi
     exit 66
 }
 [ -x "$skill_sync" ] || {
-    log "FAILED: Agentdots skill sync not found at $skill_sync" >&2
+    log "FAILED: AgentStart skill sync not found at $skill_sync" >&2
     exit 66
 }
 
@@ -297,7 +297,7 @@ fi
 # them reads local directories and rewrites skill files: no downloads, no
 # elevation, no application restarts. That is exactly the kind of work this
 # six-hour path is for, so the runbooks track the checkouts without waiting
-# for the next ./install. Agentdots' sync-skills also refreshes the Orca
+# for the next ./install. AgentStart's sync-skills also refreshes the Orca
 # harness skills that used to ride along with the Orca installer above.
 if [ "$status" -eq 0 ]; then
     "$skill_sync" || status=$?

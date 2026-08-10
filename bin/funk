@@ -43,7 +43,7 @@ Commands:
   transcript-vault   Run the transcript preservation pipeline once now
   install-transcript-vault
                       Install the hourly transcript preservation agent
-  configure-orca     Apply the Agentdots-managed Orca settings overlay
+  configure-orca     Apply the AgentStart-managed Orca settings overlay
   configure-macos    Apply Funk's user-level macOS preferences
   verify-notifications
                       Confirm Funk's health alerts can reach the screen
@@ -97,15 +97,15 @@ case "$command_name" in
         ;;
     install-agentsurface-shims)
         shift
-        # Agentdots owns the fleet-facing installers; this stays a funk
+        # AgentStart owns the fleet-facing installers; this stays a funk
         # subcommand for muscle memory and delegates.
-        agentdots_shims="$HOME/code/agentdots/scripts/install-agentsurface-shims"
-        if [ ! -x "$agentdots_shims" ]; then
-            printf 'funk: Agentdots owns the agentsurface shims and is missing: %s\n' \
-                "$agentdots_shims" >&2
+        agentstart_shims="$HOME/code/agentstart/scripts/install-agentsurface-shims"
+        if [ ! -x "$agentstart_shims" ]; then
+            printf 'funk: AgentStart owns the agentsurface shims and is missing: %s\n' \
+                "$agentstart_shims" >&2
             exit 66
         fi
-        exec "$agentdots_shims" "$@"
+        exec "$agentstart_shims" "$@"
         ;;
     verify-local-services)
         shift
@@ -121,15 +121,15 @@ case "$command_name" in
         ;;
     configure-orca)
         shift
-        # Agentdots owns the Orca settings overlay and its merge tooling;
+        # AgentStart owns the Orca settings overlay and its merge tooling;
         # this stays a funk subcommand for muscle memory and delegates.
-        agentdots_configure="$HOME/code/agentdots/scripts/configure-orca"
-        if [ ! -x "$agentdots_configure" ]; then
-            printf 'funk: Agentdots owns the Orca settings overlay and is missing: %s\n' \
-                "$agentdots_configure" >&2
+        agentstart_configure="$HOME/code/agentstart/scripts/configure-orca"
+        if [ ! -x "$agentstart_configure" ]; then
+            printf 'funk: AgentStart owns the Orca settings overlay and is missing: %s\n' \
+                "$agentstart_configure" >&2
             exit 66
         fi
-        exec "$agentdots_configure" "$@"
+        exec "$agentstart_configure" "$@"
         ;;
     configure-macos)
         shift

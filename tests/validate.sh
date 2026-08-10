@@ -488,13 +488,13 @@ if command -v brew >/dev/null 2>&1; then
 fi
 
 update_test_dir=$(mktemp -d "${TMPDIR:-/tmp}/funk-update-test.XXXXXX")
-# The scheduled updater delegates skill synchronization to the Agentdots
+# The scheduled updater delegates skill synchronization to the AgentStart
 # checkout, so these tests exercise the real sibling scripts against the
 # fixture stubs. Resolve it from the real HOME before any test overrides it;
 # a machine without the checkout cannot validate Funk, by design.
-update_agentdots_root="${FUNK_AGENTDOTS_ROOT:-$HOME/code/agentdots}"
-[ -x "$update_agentdots_root/scripts/sync-skills" ] \
-    || fail "Funk requires the Agentdots checkout to validate: $update_agentdots_root"
+update_agentstart_root="${FUNK_AGENTSTART_ROOT:-$HOME/code/agentstart}"
+[ -x "$update_agentstart_root/scripts/sync-skills" ] \
+    || fail "Funk requires the AgentStart checkout to validate: $update_agentstart_root"
 # The updater converges Homebrew casks and installs Orca.app, and
 # libexec/install-orca refuses to run anywhere but macOS. There is no seam
 # to fake that from, and faking it would be testing the fake, so the
@@ -551,7 +551,7 @@ EOF
 set +e
 update_output=$(
     HOME="$update_home" \
-        FUNK_AGENTDOTS_ROOT="$update_agentdots_root" \
+        FUNK_AGENTSTART_ROOT="$update_agentstart_root" \
         PATH="$root/tests/fixtures:/usr/bin:/bin:/usr/sbin:/sbin" \
         FUNK_TEST_BREW_EXIT=23 \
         FUNK_TEST_BREW_PREFIX="$update_test_dir/prefix" \
@@ -574,7 +574,7 @@ printf '%s\n' "$update_output" | grep -F 'FAILED with exit status 23' >/dev/null
     || fail "funk update ran a checkout installer after a Brewfile failure"
 
 HOME="$update_home" \
-    FUNK_AGENTDOTS_ROOT="$update_agentdots_root" \
+    FUNK_AGENTSTART_ROOT="$update_agentstart_root" \
     PATH="$root/tests/fixtures:/usr/bin:/bin:/usr/sbin:/sbin" \
     FUNK_TEST_BREW_EXIT=0 \
     FUNK_TEST_BREW_PREFIX="$update_test_dir/prefix" \
@@ -639,7 +639,7 @@ printf '%s\n' "$restart_notification" \
 
 : >"$update_notifier_log"
 HOME="$update_home" \
-    FUNK_AGENTDOTS_ROOT="$update_agentdots_root" \
+    FUNK_AGENTSTART_ROOT="$update_agentstart_root" \
     PATH="$root/tests/fixtures:/usr/bin:/bin:/usr/sbin:/sbin" \
     FUNK_TEST_BREW_EXIT=0 \
     FUNK_TEST_BREW_PREFIX="$update_test_dir/prefix" \
@@ -662,7 +662,7 @@ grep -F '<-message> <Installer ran; no updates.>' "$update_notifier_log" >/dev/n
 set +e
 update_output=$(
     HOME="$update_home" \
-        FUNK_AGENTDOTS_ROOT="$update_agentdots_root" \
+        FUNK_AGENTSTART_ROOT="$update_agentstart_root" \
         PATH="$root/tests/fixtures:/usr/bin:/bin:/usr/sbin:/sbin" \
         FUNK_TEST_BREW_EXIT=0 \
         FUNK_TEST_BREW_PREFIX="$update_test_dir/prefix" \
@@ -672,7 +672,7 @@ update_output=$(
         FUNK_TEST_BUN_LOG="$update_bun_log" \
         FUNK_TEST_NPX_EXIT=17 \
         FUNK_TEST_NOTIFIER_LOG="$update_notifier_log" \
-        AGENTDOTS_NPX_BIN="$root/tests/fixtures/npx" \
+        AGENTSTART_NPX_BIN="$root/tests/fixtures/npx" \
         FUNK_NPX_BIN="$root/tests/fixtures/npx" \
         FUNK_ORCA_INFO_PLIST="$update_orca_plist" \
         FUNK_TERMINAL_NOTIFIER_BIN="$root/tests/fixtures/terminal-notifier" \
@@ -702,17 +702,17 @@ else
 fi
 
 # The skill synchronization behavior itself — the agent* scan, the AgentVoice
-# skip, the Orca skill verification — is Agentdots' and is asserted by
-# ~/code/agentdots/tests/validate.sh. Funk asserts only its own wiring: the
-# scheduled updater must preflight and invoke the Agentdots sync path.
+# skip, the Orca skill verification — is AgentStart's and is asserted by
+# ~/code/agentstart/tests/validate.sh. Funk asserts only its own wiring: the
+# scheduled updater must preflight and invoke the AgentStart sync path.
 # shellcheck disable=SC2016 # Match the literal declaration in the script.
-grep -F 'skill_sync="$agentdots_root/scripts/sync-skills"' \
+grep -F 'skill_sync="$agentstart_root/scripts/sync-skills"' \
     libexec/funk-update >/dev/null \
-    || fail "scheduled updater does not preflight the Agentdots skill sync"
+    || fail "scheduled updater does not preflight the AgentStart skill sync"
 # shellcheck disable=SC2016 # Match the literal default checkout resolution.
-grep -F 'agentdots_root="${FUNK_AGENTDOTS_ROOT:-$HOME/code/agentdots}"' \
+grep -F 'agentstart_root="${FUNK_AGENTSTART_ROOT:-$HOME/code/agentstart}"' \
     libexec/funk-update >/dev/null \
-    || fail "scheduled updater does not resolve the Agentdots checkout"
+    || fail "scheduled updater does not resolve the AgentStart checkout"
 # shellcheck disable=SC2016 # Match the literal helper invocation in the script.
 grep -F '"$skill_sync" || status=$?' libexec/funk-update >/dev/null \
     || fail "scheduled updater does not synchronize the globally managed skills"
@@ -1036,29 +1036,29 @@ grep -F 'path = ~/.config/git/config.local' git/.config/git/config >/dev/null \
     || fail "Raycast scrcpy command was not stowed"
 [ -L "$stow_home/.local/bin/raycast/localhost-8789-kiosk.sh" ] \
     || fail "Raycast kiosk command was not stowed"
-# Operator guidance and AI-tool configuration are Agentdots', linked by its
+# Operator guidance and AI-tool configuration are AgentStart's, linked by its
 # installer: the home AGENTS.md, the extension prompts, the AgentVoice
 # doctrine, the llm model configuration, and the Orca overlay (which its
 # configure-orca reads straight from that checkout — no ~/.config/orca
 # staging copy exists anymore). Funk stowing any of them again would be a
 # second writer for the same paths.
 [ ! -e "$stow_home/AGENTS.md" ] \
-    || fail "the home guidance is Agentdots'; nothing in Funk may stow ~/AGENTS.md"
+    || fail "the home guidance is AgentStart's; nothing in Funk may stow ~/AGENTS.md"
 [ ! -e "$stow_home/.config/arthack" ] \
-    || fail "the extension prompts are Agentdots'; nothing in Funk may stow ~/.config/arthack"
+    || fail "the extension prompts are AgentStart's; nothing in Funk may stow ~/.config/arthack"
 [ ! -e "$stow_home/.config/agentvoice" ] \
-    || fail "the AgentVoice doctrine is Agentdots'; nothing in Funk may stow ~/.config/agentvoice"
+    || fail "the AgentVoice doctrine is AgentStart's; nothing in Funk may stow ~/.config/agentvoice"
 [ ! -e "$stow_home/Library/Application Support/io.datasette.llm" ] \
-    || fail "the llm configuration is Agentdots'; nothing in Funk may stow into io.datasette.llm"
+    || fail "the llm configuration is AgentStart's; nothing in Funk may stow into io.datasette.llm"
 [ ! -e "$stow_home/.config/orca" ] \
-    || fail "the Orca overlay is Agentdots'; nothing in Funk may stow ~/.config/orca"
+    || fail "the Orca overlay is AgentStart's; nothing in Funk may stow ~/.config/orca"
 HOME="$stow_home" "$root/bin/funk" stow --check >/dev/null 2>&1
-# The overlay's merge behavior is asserted by Agentdots' own suite; Funk
+# The overlay's merge behavior is asserted by AgentStart's own suite; Funk
 # asserts only its wiring: the subcommand must delegate to that checkout.
 # shellcheck disable=SC2016 # Match the literal delegation path in bin/funk.
-grep -F 'agentdots_configure="$HOME/code/agentdots/scripts/configure-orca"' \
+grep -F 'agentstart_configure="$HOME/code/agentstart/scripts/configure-orca"' \
     bin/funk >/dev/null \
-    || fail "funk configure-orca does not delegate to the Agentdots overlay tooling"
+    || fail "funk configure-orca does not delegate to the AgentStart overlay tooling"
 
 mcd_path="$stow_home/mcd parent/mcd child"
 cmkdir_path="$stow_home/cmkdir parent/cmkdir child"
@@ -1128,11 +1128,11 @@ grep -F '"$funk_root/libexec/converge-brew-casks" claude chatgpt' install >/dev/
 # shellcheck disable=SC2016 # Match the literal Orca installer call in ./install.
 grep -F '"$funk_root/libexec/install-orca"' install >/dev/null \
     || fail "default install does not install the Orca cask"
-# shellcheck disable=SC2016 # Match the literal Agentdots invocation in ./install.
-grep -F '"$agentdots_root/scripts/install.sh" --install' install >/dev/null \
-    || fail "default install does not run the Agentdots installer"
-grep -F 'Agentdots owns the AI toolchain and is missing' install >/dev/null \
-    || fail "default install does not stop loudly without the Agentdots checkout"
+# shellcheck disable=SC2016 # Match the literal AgentStart invocation in ./install.
+grep -F '"$agentstart_root/scripts/install.sh" --install' install >/dev/null \
+    || fail "default install does not run the AgentStart installer"
+grep -F 'AgentStart owns the AI toolchain and is missing' install >/dev/null \
+    || fail "default install does not stop loudly without the AgentStart checkout"
 grep -F "\"\$funk_command\" configure-orca" install >/dev/null \
     || fail "default install does not reconcile Orca settings"
 grep -F "\"\$funk_command\" install-tailscale-recovery" install >/dev/null \
@@ -1233,7 +1233,7 @@ if grep -F 'app="^browserctl-display$"' \
 fi
 
 # The AI toolchain plan — vendor CLIs, npm globals, skills, extension prompts
-# — is Agentdots' and is asserted by ~/code/agentdots/tests/validate.sh. Funk
+# — is AgentStart's and is asserted by ~/code/agentstart/tests/validate.sh. Funk
 # asserts only the surface it kept: the Orca cask plan.
 orca_plan=$(libexec/install-orca --check)
 for required_orca_plan in \
@@ -1244,13 +1244,13 @@ for required_orca_plan in \
     printf '%s\n' "$orca_plan" | grep -F "$required_orca_plan" >/dev/null \
         || fail "Orca installation plan is missing: $required_orca_plan"
 done
-# The Orca harness skills moved to Agentdots' sync-skills; a skills line here
+# The Orca harness skills moved to AgentStart's sync-skills; a skills line here
 # would be the second synchronization path that split exists to prevent.
 if printf '%s\n' "$orca_plan" | grep -Fq 'skills add'; then
-    fail "Orca installation plan still synchronizes skills owned by Agentdots"
+    fail "Orca installation plan still synchronizes skills owned by AgentStart"
 fi
 if grep -F 'skills add' libexec/install-orca >/dev/null; then
-    fail "the Orca installer still synchronizes skills owned by Agentdots"
+    fail "the Orca installer still synchronizes skills owned by AgentStart"
 fi
 
 if grep -Eq '^cask "(chatgpt|claude)"$|stablyai/orca/orca' Brewfile; then
@@ -1408,14 +1408,14 @@ if grep -Eq '/usr/bin/xattr -(c|d[^r])|xattr[^[:cntrl:]]+(where_from|provenance)
     libexec/release-cask-quarantine; then
     fail "cask helper weakens extended attributes beyond recursive quarantine removal"
 fi
-# The Agentdots skill sync joined the scheduled path when the updater started
+# The AgentStart skill sync joined the scheduled path when the updater started
 # delegating to it, so it inherits the same prohibition even though it lives
 # in the sibling checkout.
 if grep -Eqi 'bundle cleanup|uninstall|fetch-head|telegram|sudo' \
     bin/funk libexec/funk-update libexec/install-update-agent \
     libexec/install-orca libexec/converge-brewfile libexec/converge-brew-casks \
     libexec/repair-cask-artifacts \
-    "$update_agentdots_root/scripts/sync-skills" \
+    "$update_agentstart_root/scripts/sync-skills" \
     launchd/com.arthack.funk.update.plist.in; then
     fail "scheduled updater contains a prohibited operation"
 fi

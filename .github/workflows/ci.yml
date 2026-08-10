@@ -30,15 +30,15 @@ jobs:
         with:
           path: funk
 
-      - name: Check out Agentdots
-        # Funk asserts its half of the Agentdots contract and drives `funk update`
+      - name: Check out AgentStart
+        # Funk asserts its half of the AgentStart contract and drives `funk update`
         # against that checkout, so the sibling has to be here or the suite refuses
-        # to run. FUNK_AGENTDOTS_ROOT below is the override the suite already has,
+        # to run. FUNK_AGENTSTART_ROOT below is the override the suite already has,
         # which is why nothing needs to sit at ~/code.
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
-          repository: possibilities/agentdots
-          path: agentdots
+          repository: possibilities/agentstart
+          path: agentstart
 
       - name: Install test dependencies
         # The suite fakes brew, tailscale, adb, and the notifier through
@@ -58,5 +58,5 @@ jobs:
       - name: Validate
         working-directory: funk
         env:
-          FUNK_AGENTDOTS_ROOT: ${{ github.workspace }}/agentdots
+          FUNK_AGENTSTART_ROOT: ${{ github.workspace }}/agentstart
         run: tests/validate.sh

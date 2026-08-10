@@ -14,14 +14,14 @@ Default installation:
   - installs Homebrew when missing
   - applies Funk's Brewfile
   - installs the AI desktop applications
-  - runs the Agentdots installer, which owns the AI command-line toolchain,
+  - runs the AgentStart installer, which owns the AI command-line toolchain,
     harness configuration, and every globally managed agent skill
   - stows all user configuration packages into the target user's home
   - installs the window stack and converges Yabai Spaces 1-9
   - links the funk command into the active Homebrew bin directory
   - installs and loads the update and Tailscale recovery LaunchAgents
   - installs the home-network sleep and screen-lock agent
-  - verifies the resident services Agentdots installs: the Agentbrain worker
+  - verifies the resident services AgentStart installs: the Agentbrain worker
     and share ingress, the Agentweb daemon, and the Agentusage daemon
   - applies Funk's user-level macOS preferences
   - writes ~/.ssh/config.d from the tailnet Tailscale is reporting
@@ -152,13 +152,13 @@ FUNK_ROOT="$funk_root" "$funk_root/libexec/converge-brewfile"
 
 # Everything the agent fleet depends on — harness CLIs, pinned npm globals,
 # MCP registration, guidance links, and every globally managed skill — is
-# owned by the Agentdots checkout, and this machine is not converged without
+# owned by the AgentStart checkout, and this machine is not converged without
 # it. A missing checkout is a hard stop, like a missing Art Hack checkout
 # inside that installer, not an optional skip.
-agentdots_root="$HOME/code/agentdots"
-[ -x "$agentdots_root/scripts/install.sh" ] \
-    || die "Agentdots owns the AI toolchain and is missing; clone it first: git clone <your agentdots remote> $agentdots_root"
-"$agentdots_root/scripts/install.sh" --install
+agentstart_root="$HOME/code/agentstart"
+[ -x "$agentstart_root/scripts/install.sh" ] \
+    || die "AgentStart owns the AI toolchain and is missing; clone it first: git clone <your AgentStart remote> $agentstart_root"
+"$agentstart_root/scripts/install.sh" --install
 # Orca owns its own settings file while it runs, so configure-orca refuses to
 # race it and exits EX_TEMPFAIL. That is a step to repeat after quitting Orca,
 # not a failed installation, so record it and finish everything else.

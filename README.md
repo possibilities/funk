@@ -6,8 +6,8 @@ Funky dotfiles.
 
 The machine half of one macOS setup: Homebrew, GNU Stow packages, launchd
 agents, and system settings. The AI toolchain is the other half and lives in
-[agentdots](https://github.com/possibilities/agentdots), which `./install`
-requires as a sibling checkout at `~/code/agentdots`.
+[AgentStart](https://github.com/possibilities/agentstart), which `./install`
+requires as a sibling checkout at `~/code/agentstart`.
 
 This converges one operator's machine, and the defaults are that operator's.
 Read it, fork it, take what you want — but `./install` is not a starting point

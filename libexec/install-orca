@@ -38,7 +38,7 @@ Orca:
   brew install --cask --yes stablyai/orca/orca  # when missing
   leave an installed Orca to its own updater  # never brew upgrade
   remove com.apple.quarantine only from Homebrew's declared Orca.app target
-  verify the cask receipt  # the Orca harness skills are Agentdots' sync-skills
+  verify the cask receipt  # the Orca harness skills are AgentStart's sync-skills
 EOF
         exit 0
         ;;
@@ -72,7 +72,7 @@ export PATH="$HOME/.local/bin:$brew_prefix/bin:/usr/bin:/bin:/usr/sbin:/sbin:$or
 # it on quit, when nothing is left to break.
 #
 # Only the application: the Orca harness skills (orca-cli, orchestration,
-# computer-use) are harness configuration, which Agentdots owns and both
+# computer-use) are harness configuration, which AgentStart owns and both
 # installs and verifies in its scripts/sync-skills.
 "$script_dir/converge-brew-casks" --install-only stablyai/orca/orca
 

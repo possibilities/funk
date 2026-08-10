@@ -162,40 +162,40 @@ upgrade.
 
 ## AI tooling and skills
 
-Funk no longer owns AI-toolchain installation; `~/code/agentdots` does. The
+Funk no longer owns AI-toolchain installation; `~/code/agentstart` does. The
 boundary rubric lives in the wiki (`agentwiki get funk-boundary`):
 anything depended on by or deeply related to the agent* fleet — harness CLIs,
 pinned npm globals, MCP registration, guidance links, extension prompts, and
-every globally managed skill — belongs in Agentdots, and the machine itself —
+every globally managed skill — belongs in AgentStart, and the machine itself —
 Homebrew, Stow, launchd, macOS settings, account migration — stays here.
 
 Concretely, Funk keeps the AI *desktop applications* (the claude and chatgpt
 casks, converged from `./install`, and the Orca cask, installed once by
 `libexec/install-orca` and then left to its own updater). `./install` then
-calls `~/code/agentdots/scripts/install.sh --install` and refuses to finish
+calls `~/code/agentstart/scripts/install.sh --install` and refuses to finish
 if that checkout is missing; the scheduled updater calls
-`~/code/agentdots/scripts/sync-skills` the same way. Do not grow a second
+`~/code/agentstart/scripts/sync-skills` the same way. Do not grow a second
 installer or skill-synchronization path in this repository — a new AI tool,
-skill, or harness configuration belongs in Agentdots.
+skill, or harness configuration belongs in AgentStart.
 
 Every operator guidance file the harnesses and the voice orchestrator read
-is Agentdots', linked by its installer rather than stowed here: the
+is AgentStart's, linked by its installer rather than stowed here: the
 deliberately empty `~/AGENTS.md` (with `~/.claude/CLAUDE.md` and
 `~/.codex/AGENTS.md` linked at it), the extension prompts at
 `~/.config/agentguidance/`, and the AgentVoice doctrine at
 `~/.config/agentvoice/`. The `agents`, `arthack`, `agentvoice`, `llm`, and
 `orca` Stow packages are all gone; do not recreate one — edit
-`~/code/agentdots/prompts/` or `~/code/agentdots/config/` instead.
+`~/code/agentstart/prompts/` or `~/code/agentstart/config/` instead.
 
 Funk's repository guidance lives in this `AGENTS.md`, not in a priming skill.
 Do not install or synchronize a separate `funk` skill.
 
 Configuration another program writes is overlaid, never adopted. Orca rewrites
 every agent CLI's hook configuration on launch, so those files stay out of
-Stow entirely; `funk configure-orca` — now a delegation to Agentdots'
+Stow entirely; `funk configure-orca` — now a delegation to AgentStart's
 `scripts/configure-orca`, which owns the overlay at `config/orca/` — merges
 only the keys the overlay names. The llm CLI and its model configuration are
-likewise Agentdots' (`config/llm/`, and the formula left the Brewfile with
+likewise AgentStart's (`config/llm/`, and the formula left the Brewfile with
 them). Adopt a file only when Funk is its sole writer.
 
 Prove a configuration file is read before adopting it. A directory under
@@ -205,10 +205,10 @@ behind. Find the code path that reads the file, or leave it where it is;
 adopting a retired file publishes dead configuration as live.
 
 After changing the AI application or migration steps here, or anything in the
-Agentdots-owned toolchain, run:
+AgentStart-owned toolchain, run:
 
 ```sh
-~/code/agentdots/scripts/install.sh --install
+~/code/agentstart/scripts/install.sh --install
 ```
 
 Then compare the installed `collab` manifest with its agentguidance source

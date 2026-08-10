@@ -63,7 +63,7 @@ fi
 
 printf 'Agentweb\n'
 if ! command -v agentweb >/dev/null 2>&1; then
-    bad "agentweb is not installed; run ~/code/agentdots/scripts/install.sh --install"
+    bad "agentweb is not installed; run ~/code/agentstart/scripts/install.sh --install"
 elif [ "$(agentweb daemon status 2>/dev/null)" = ready ]; then
     ok "daemon answers ready"
 else
@@ -72,7 +72,7 @@ fi
 
 printf 'Agentusage\n'
 if ! command -v agentusage >/dev/null 2>&1; then
-    bad "agentusage is not installed; run ~/code/agentdots/scripts/install.sh --install"
+    bad "agentusage is not installed; run ~/code/agentstart/scripts/install.sh --install"
 elif [ "$(agentusage daemon status 2>/dev/null)" = ready ]; then
     ok "daemon answers ready (both observation sidecars fresh)"
 else
@@ -112,7 +112,7 @@ if service_running agentbrain.share && [ -n "$tailnet_address" ]; then
     if command -v agentbrain >/dev/null 2>&1; then
         token=$(agentbrain share token show --reveal 2>/dev/null)
     else
-        bad "agentbrain is not installed; run ~/code/agentdots/scripts/install.sh --install"
+        bad "agentbrain is not installed; run ~/code/agentstart/scripts/install.sh --install"
     fi
     if [ -n "$token" ]; then
         status=$(printf 'authorization: Bearer %s\n' "$token" |
