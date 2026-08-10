@@ -740,8 +740,17 @@ files whose mtimes are recent, which covers everything the rsync stage adds
 in normal operation. Historic-mtime files (bulk imports, restic restores)
 never qualify — and `cass index --full` skips explicit local sources
 entirely — so after any bulk import run `funk transcript-vault backfill`,
-which force-ingests every archive project directory through
-`cass index --watch-once` in batches.
+which force-ingests archive project directories through
+`cass index --watch-once`, one directory per cycle (a multi-directory cycle
+over heavy regions grows until the OS kills it).
+
+Name the directories a bulk import actually touched —
+`funk transcript-vault backfill -Users-mike-code-keeper …`, as bare names or
+absolute paths under the canonical tree — and the pass is limited to them. A
+bare `backfill` re-ingests all of them, which makes the heavy directories
+re-pay their full lexical cost, hours of work, to rediscover that nothing
+changed. Either form skips cleanly while another vault run holds the lock,
+so a backfill never indexes in parallel with the hourly agent.
 
 `funk install-transcript-vault` renders and bootstraps the
 `com.arthack.funk.transcript-vault` LaunchAgent (at login and hourly);

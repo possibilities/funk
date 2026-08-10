@@ -27,17 +27,25 @@ set -uo pipefail
 
 PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$HOME/.local/bin"
 
+usage() {
+    printf 'Usage: transcript-vault [run|backfill [project-dir...]]\n' >&2
+    printf '  run       normal hourly pipeline (default)\n' >&2
+    printf '  backfill  force-ingest archive project dirs into cass; needed\n' >&2
+    printf '            after bulk imports of historic-mtime files, which\n' >&2
+    printf '            incremental watermarks skip and --full ignores.\n' >&2
+    printf '            Bare names or absolute paths under the canonical tree\n' >&2
+    printf '            limit the pass to those directories; with no arguments\n' >&2
+    printf '            every project directory is re-ingested.\n' >&2
+}
+
 mode=${1:-run}
 case "$mode" in
-    run | backfill) ;;
-    *)
-        printf 'Usage: transcript-vault [run|backfill]\n' >&2
-        printf '  run       normal hourly pipeline (default)\n' >&2
-        printf '  backfill  force-ingest every archive project dir into cass;\n' >&2
-        printf '            needed after bulk imports of historic-mtime files,\n' >&2
-        printf '            which incremental watermarks skip and --full ignores\n' >&2
-        exit 64
+    run)
+        shift 2>/dev/null || true
+        [ "$#" -eq 0 ] || { usage; exit 64; }
         ;;
+    backfill) shift ;;
+    *) usage; exit 64 ;;
 esac
 
 ARCHIVE_ROOT=/Volumes/Scratch/claude-archive
@@ -78,9 +86,9 @@ mkdir -p "$CANON" "$ARCHIVE_ROOT/history"
 # cass ingests archive content three different ways, and only one works for
 # bulk history: incremental runs watermark-gate files by mtime (so historic
 # files never qualify), --full runs skip explicit local sources entirely,
-# and --watch-once force-scans exactly the paths it is given. Feed it every
-# project directory in batches, retrying a batch when another index run
-# holds the lock.
+# and --watch-once force-scans exactly the paths it is given. Feed it one
+# project directory per cycle, retrying when another index run holds the
+# lock.
 if [ "$mode" = backfill ]; then
     command -v cass >/dev/null 2>&1 || { log "backfill: cass missing"; exit 1; }
     [ -d "$CASS_DATA_DIR" ] || { log "backfill: $CASS_DATA_DIR missing"; exit 1; }
@@ -109,18 +117,35 @@ if [ "$mode" = backfill ]; then
         batch_rc=1
         return 1
     }
-    count=0
-    list=""
-    for d in "$CANON"/*/; do
-        list="$list,${d%/}"
-        count=$((count + 1))
-        if [ "$count" -eq 1 ]; then
-            run_batch "$list" || true
-            list=""
-            count=0
-        fi
+    # Named project directories limit the pass; with none, every directory
+    # is re-ingested. A bulk import usually touches a handful of directories,
+    # and a whole-tree pass makes the heavy ones re-pay their full lexical
+    # cost -- hours of work -- to rediscover that nothing changed.
+    targets=()
+    if [ "$#" -gt 0 ]; then
+        for arg in "$@"; do
+            case "$arg" in
+                *..*) log "backfill: refusing traversal in target: $arg"; exit 64 ;;
+                /*) target=${arg%/} ;;
+                *) target="$CANON/${arg%/}" ;;
+            esac
+            case "$target/" in
+                "$CANON"/*/) ;;
+                *) log "backfill: target is outside $CANON: $arg"; exit 64 ;;
+            esac
+            [ -d "$target" ] || { log "backfill: no such project dir: $arg"; exit 64; }
+            targets+=("$target")
+        done
+    else
+        for d in "$CANON"/*/; do
+            [ -d "$d" ] || continue
+            targets+=("${d%/}")
+        done
+    fi
+    log "backfill: ${#targets[@]} project dir(s) to ingest"
+    for target in ${targets[@]+"${targets[@]}"}; do
+        run_batch "$target" || true
     done
-    [ -n "$list" ] && { run_batch "$list" || true; }
     log "backfill complete (errors=$batch_rc)"
     exit "$batch_rc"
 fi
