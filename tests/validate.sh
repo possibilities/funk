@@ -71,6 +71,7 @@ bin/.local/bin/ginit
 bin/.local/bin/ghinit
 bin/.local/bin/tailscale-ensure-online
 bin/.local/bin/home-awake
+bin/.local/bin/ssh-tailnet-config
 bin/.local/bin/transcript-vault
 bin/.local/bin/adb-wireless-connect
 bin/.local/bin/adb-wireless-pair
@@ -81,6 +82,7 @@ bin/.local/bin/raycast/scrcpy-no-audio-flex.sh
 bin/.local/bin/raycast/localhost-8789-kiosk.sh
 tests/adb-wireless.sh
 tests/home-awake.sh
+tests/ssh-tailnet-config.sh
 tests/kiosk-launcher.sh
 tests/scrcpy-launchers.sh
 tests/tailscale-online.sh
@@ -957,6 +959,12 @@ trap 'rm -rf "$stow_home"' EXIT
 HOME="$stow_home" "$root/bin/funk" stow
 [ -L "$stow_home/.config/git/config" ] || fail "git package was not stowed"
 [ -L "$stow_home/.ssh/config" ] || fail "ssh config was not stowed"
+# The tailnet host files are generated onto the machine from live Tailscale
+# state, so Stow must never create or own that directory. The ssh package is
+# --no-folding exactly so ~/.ssh can be a real directory holding both the one
+# file Funk tracks and a config.d it does not.
+[ ! -e "$stow_home/.ssh/config.d" ] \
+    || fail "the tailnet host directory was stowed; it is generated, not tracked"
 [ -d "$stow_home/.ssh" ] && [ ! -L "$stow_home/.ssh" ] \
     || fail "ssh package did not use --no-folding"
 [ -L "$stow_home/.config/ghostty/config" ] \
@@ -1286,6 +1294,7 @@ grep -Fx 'brew "scrcpy"' Brewfile >/dev/null \
 grep -Fx 'cask "android-platform-tools", greedy: true' Brewfile >/dev/null \
     || fail "Android Platform Tools are missing from the Brewfile"
 "$root/tests/tailscale-online.sh"
+"$root/tests/ssh-tailnet-config.sh"
 "$root/tests/gog-authed.sh"
 "$root/tests/funk-notify.sh"
 # home-awake asserts a root helper's installability through BSD stat -f and
@@ -1442,6 +1451,28 @@ fi
 if grep -R -E 'NOPASSWD:[[:space:]]*(ALL|/[^[:space:]]+[[:space:]]+\*)' \
     system >/dev/null; then
     fail "broad passwordless sudo rule found"
+fi
+
+# The operator's tailnet left this repository and must not come back. A re-added
+# host file or a pasted MagicDNS suffix is the regression these catch; the
+# fixture's example-tailnet.ts.net is the only tailnet name allowed to appear.
+if git ls-files ssh/.ssh/config.d | grep -q .; then
+    fail "ssh/.ssh/config.d has tracked host files again; they are generated onto the machine"
+fi
+# A real MagicDNS suffix is lowercase, which is what separates one from the
+# upper-case placeholders the README uses in command examples.
+if git grep -I -n -E '[a-z0-9][a-z0-9-]*\.ts\.net' -- . \
+    | grep -v 'example-tailnet\.ts\.net' | grep -q .; then
+    fail "a real tailnet name is tracked in this repository"
+fi
+grep -F 'exec "$FUNK_ROOT/bin/.local/bin/ssh-tailnet-config"' bin/funk >/dev/null \
+    || fail "funk does not dispatch ssh-tailnet-config"
+grep -F '"$funk_command" ssh-tailnet-config' install >/dev/null \
+    || fail "./install does not write the tailnet ssh host files"
+# Writing ssh_config files needs nothing privileged, and a converged ./install
+# must not prompt for a password.
+if grep -q sudo bin/.local/bin/ssh-tailnet-config; then
+    fail "the tailnet ssh generator reaches for sudo"
 fi
 
 # PF is a BSD packet filter; only pfctl can say whether the rendered ruleset

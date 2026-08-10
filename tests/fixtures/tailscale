@@ -12,6 +12,16 @@ if [ -n "${FUNK_TEST_TAILSCALE_LOG:-}" ]; then
     printf '%s\n' "$*" >>"$FUNK_TEST_TAILSCALE_LOG"
 fi
 
+# Unset means an ordinary tailnet. Explicitly empty is a tailnet with MagicDNS
+# off, which reports an empty suffix and empty DNSNames rather than bare
+# hostnames -- the shape the ssh host generator has to survive.
+suffix=${FUNK_TEST_TAILSCALE_SUFFIX-example-tailnet.ts.net}
+
+qualified() {
+    [ -n "$suffix" ] || return 0
+    printf '%s.%s.' "$1" "$suffix"
+}
+
 if [ "${1:-}" = status ] && [ "${2:-}" = --json ] && [ "$#" -eq 2 ]; then
     [ "${FUNK_TEST_TAILSCALE_STATUS_FAIL:-0}" -eq 0 ] || exit 1
     if [ "${FUNK_TEST_TAILSCALE_INVALID_JSON:-0}" -eq 1 ]; then
@@ -25,14 +35,41 @@ if [ "${1:-}" = status ] && [ "${2:-}" = --json ] && [ "$#" -eq 2 ]; then
     [ "${FUNK_TEST_TAILSCALE_PEER_STATE:-Online}" = Online ] || peer_online=false
     peer_name=${FUNK_TEST_TAILSCALE_PEER_NAME:-smolbird}
     peer_id=${FUNK_TEST_TAILSCALE_PEER_ID:-n123-test-smolbird}
+    self_name=${FUNK_TEST_TAILSCALE_SELF_NAME:-greybird}
+    # A device's OS hostname and its MagicDNS label drift apart the moment the
+    # hostname is not a DNS label, and they never converge again. These two name
+    # the peer whose HostName is deliberately not its label.
+    raw_label=${FUNK_TEST_TAILSCALE_RAW_LABEL-}
+    raw_hostname=${FUNK_TEST_TAILSCALE_RAW_HOSTNAME-}
 
     if [ "${FUNK_TEST_TAILSCALE_PEER_STATE:-Online}" = Missing ]; then
         peer_json='{}'
+    elif [ -n "${FUNK_TEST_TAILSCALE_PEER_NAMES:-}" ]; then
+        # The ssh host generator needs a whole tailnet rather than the single
+        # peer the recovery checks ask about. Names are emitted exactly as
+        # given, unusable ones included, so what gets tested is the generator's
+        # own name check rather than this fixture's.
+        peer_index=0
+        peer_json='{'
+        # shellcheck disable=SC2086 # The name list is deliberately word-split.
+        for peer in $FUNK_TEST_TAILSCALE_PEER_NAMES; do
+            peer_index=$((peer_index + 1))
+            [ "$peer_index" -eq 1 ] || peer_json="$peer_json,"
+            peer_hostname=$peer
+            [ "$peer" != "$raw_label" ] || peer_hostname=$raw_hostname
+            peer_json="$peer_json$(
+                printf \
+                    '"nodekey:test-%s":{"ID":"n123-test-%s","HostName":"%s","DNSName":"%s","Online":%s}' \
+                    "$peer_index" "$peer_index" "$peer_hostname" \
+                    "$(qualified "$peer")" "$peer_online"
+            )"
+        done
+        peer_json="$peer_json}"
     else
         peer_json=$(
             printf \
-                '{"nodekey:test-smolbird":{"ID":"%s","HostName":"%s","DNSName":"%s.example-tailnet.ts.net.","Online":%s}}' \
-                "$peer_id" "$peer_name" "$peer_name" "$peer_online"
+                '{"nodekey:test-smolbird":{"ID":"%s","HostName":"%s","DNSName":"%s","Online":%s}}' \
+                "$peer_id" "$peer_name" "$(qualified "$peer_name")" "$peer_online"
         )
     fi
 
@@ -40,10 +77,10 @@ if [ "${1:-}" = status ] && [ "${2:-}" = --json ] && [ "$#" -eq 2 ]; then
 {
   "Version": "1.999.0-test",
   "BackendState": "$state",
-  "MagicDNSSuffix": "example-tailnet.ts.net",
+  "MagicDNSSuffix": "$suffix",
   "Self": {
-    "HostName": "greybird",
-    "DNSName": "greybird.example-tailnet.ts.net.",
+    "HostName": "$self_name",
+    "DNSName": "$(qualified "$self_name")",
     "Online": $self_online
   },
   "Peer": $peer_json
