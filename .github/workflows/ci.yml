@@ -1,0 +1,37 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    # tests/validate.sh lints plists with plutil and PlistBuddy and parses the
+    # travel firewall through pfctl, so the suite only means anything on macOS.
+    runs-on: macos-26
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Install shellcheck
+        # validate.sh skips its shellcheck pass when the binary is missing, which
+        # is the silent-hole failure Funk warns about elsewhere: a green run that
+        # never linted anything. Install it so the gate is real.
+        run: |
+          if ! command -v shellcheck >/dev/null 2>&1; then
+            brew install shellcheck
+          fi
+          shellcheck --version
+
+      - name: Validate
+        run: tests/validate.sh
