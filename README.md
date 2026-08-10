@@ -259,8 +259,12 @@ port.phone=8022
 ```
 
 Without that file every host gets this account's own name and no `Port`. The
-tailnet suffix, the device names, and those accounts are the operator's own and
-none of them are in this repository.
+tailnet suffix and those accounts are the operator's own and neither is in this
+repository. Device names are a weaker case and are treated as one: a few appear
+as overridable defaults in the helpers that talk to a specific machine, and in
+this README's own prose. A bare label resolves nowhere outside the tailnet that
+defines it, so they are names for hosts you do not have rather than a way to
+reach them.
 
 Ownership rests on one line. Every generated file opens with
 

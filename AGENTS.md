@@ -62,11 +62,15 @@ and a real directory to hold the untracked one.
 
 Never Stow credentials, secrets, generated application state, remote-device
 configuration, root-owned helpers, LaunchDaemons, rendered LaunchAgents, or live
-tailnet identity — MagicDNS suffixes, device names, and the accounts this
-machine logs into other machines as. `tests/validate.sh` pins that last one with
-a `git ls-files` check on `ssh/.ssh/config.d` and a `.ts.net` grep over the
-tree, so re-adding a host file is a deliberate, reviewable change rather than a
-convenience. Install privileged files through Funk's guarded helpers; never link
+tailnet identity — MagicDNS suffixes and the accounts this machine logs into
+other machines as. `tests/validate.sh` pins that last one with a `git ls-files`
+check on `ssh/.ssh/config.d` and a `.ts.net` grep over the tree, so re-adding a
+host file is a deliberate, reviewable change rather than a convenience. Bare
+device names are the one part of a tailnet this rule does not chase: several are
+overridable defaults in the helpers that address a specific machine, and a label
+that resolves nowhere off its own tailnet is not worth the churn of generating.
+Do not widen the rule to cover them without also changing those helpers — a rule
+the tree already breaks teaches the next reader to ignore it. Install privileged files through Funk's guarded helpers; never link
 a root execution path into this user-writable checkout.
 
 An unattended agent that needs root gets a purpose-built helper, not a
