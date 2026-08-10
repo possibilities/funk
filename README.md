@@ -59,7 +59,7 @@ downloads.
 
 Funk stows no agent guidance at all: `~/AGENTS.md` (deliberately empty,
 with `~/.claude/CLAUDE.md` and `~/.codex/AGENTS.md` linked at it), the
-operator extension prompts at `~/.config/arthack/`, and the AgentVoice
+operator extension prompts at `~/.config/agentguidance/`, and the AgentVoice
 doctrine at `~/.config/agentvoice/` are all Agentdots'
 (`~/code/agentdots/prompts/`), linked by its installer, which refuses to
 replace an independent non-symlink file at any of those locations.
@@ -176,10 +176,11 @@ callers pass no permission flags of their own — and an operator who wants
 gates back writes a *disabling* `~/.config/agentsurface/config.json` by
 hand or passes `--x-no-yolo`.
 
-There is no `arthack` package anymore: the Art Hack extension prompts are
+There is no `arthack` package anymore: the extension prompts are
 cross-project agent guidance, so they live in Agentdots
-(`~/code/agentdots/prompts/arthack/`), whose installer links them into
-`~/.config/arthack/`. The lesson the package encoded still stands — a fresh
+(`~/code/agentdots/prompts/agentguidance/`), whose installer links them into
+`~/.config/agentguidance/`; agentguidance (the renamed arthack checkout)
+renders them into its skills. The lesson the package encoded still stands — a fresh
 account must render the same skills this one does — and the Agentdots
 installer preserves it by refusing to run without the prompt sources.
 

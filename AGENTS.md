@@ -97,7 +97,7 @@ Every operator guidance file the harnesses and the voice orchestrator read
 is Agentdots', linked by its installer rather than stowed here: the
 deliberately empty `~/AGENTS.md` (with `~/.claude/CLAUDE.md` and
 `~/.codex/AGENTS.md` linked at it), the extension prompts at
-`~/.config/arthack/`, and the AgentVoice doctrine at
+`~/.config/agentguidance/`, and the AgentVoice doctrine at
 `~/.config/agentvoice/`. The `agents`, `arthack`, `agentvoice`, `llm`, and
 `orca` Stow packages are all gone; do not recreate one — edit
 `~/code/agentdots/prompts/` or `~/code/agentdots/config/` instead.
@@ -126,5 +126,6 @@ Agentdots-owned toolchain, run:
 ~/code/agentdots/scripts/install.sh --install
 ```
 
-Then compare the installed `collab` manifest with its Art Hack source manifest.
+Then compare the installed `collab` manifest with its agentguidance source
+template.
 Do not substitute a manual copy or a second helper for this convergence check.
