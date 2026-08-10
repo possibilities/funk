@@ -116,13 +116,16 @@ if grep -R -Eqi 'keeper|KEEPER_ZSH_DROPINS' zsh; then
 fi
 
 if command -v shellcheck >/dev/null 2>&1; then
-    # Pinned to warning because the style tier is not stable across shellcheck
-    # releases: 0.9.0 raises 39 SC2015 notes here that 0.11.0 does not, so an
-    # unpinned run means whatever version the machine happens to have. Errors and
-    # warnings — the tiers that catch real defects — are still fatal.
+    # Every tier is fatal, including style. That only holds if the version is
+    # controlled: 0.9.0 raises 39 SC2015 notes on assertions that 0.11.0 does not
+    # emit even when SC2015 is explicitly requested, because upstream retired the
+    # check. CI pins the version rather than weakening the severity.
+    # One invocation: the release binary's peak RSS is ~3.7GB whether it is given
+    # one five-line fixture or all 76 files, so splitting the run buys nothing and
+    # only pays the startup cost repeatedly. It needs a machine with real memory.
     # The checker treats the skhd DSL as shell, so it is intentionally excluded.
     # shellcheck disable=SC2086
-    shellcheck --severity=warning --shell=bash $shell_files
+    shellcheck --shell=bash $shell_files
 else
     skip "shellcheck static analysis of every shell file" "shellcheck is not installed"
 fi

@@ -41,12 +41,30 @@ jobs:
 
       - name: Install test dependencies
         # The suite fakes brew, tailscale, adb, and the notifier through
-        # tests/fixtures; these four it runs for real. shellcheck especially:
+        # tests/fixtures; these it runs for real. shellcheck especially:
         # validate.sh skips that pass when the binary is missing, and a green run
         # that silently linted nothing is the failure this repository warns about.
         run: |
           sudo apt-get update
-          sudo apt-get install --yes shellcheck stow zsh jq
+          sudo apt-get install --yes stow zsh jq
+      - name: Install pinned shellcheck
+        # Not apt's: Ubuntu ships 0.9.0, which raises 39 SC2015 notes on
+        # assertions that 0.11.0 does not emit even when the check is requested
+        # by name — upstream retired it. Pinning the version is what lets
+        # validate.sh keep every severity tier fatal instead of lowering the bar
+        # to whatever the runner happens to package.
+        env:
+          SHELLCHECK_VERSION: v0.11.0
+          SHELLCHECK_SHA256: 8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198
+        run: |
+          set -euo pipefail
+          archive="shellcheck-${SHELLCHECK_VERSION}.linux.x86_64.tar.xz"
+          curl -fsSL -o "$archive" \
+            "https://github.com/koalaman/shellcheck/releases/download/${SHELLCHECK_VERSION}/${archive}"
+          printf '%s  %s\n' "$SHELLCHECK_SHA256" "$archive" | sha256sum --check --strict
+          tar -xJf "$archive"
+          sudo install -m 0755 "shellcheck-${SHELLCHECK_VERSION}/shellcheck" /usr/local/bin/shellcheck
+          rm -rf "$archive" "shellcheck-${SHELLCHECK_VERSION}"
           shellcheck --version | sed -n 2p
 
       - name: Validate

@@ -66,10 +66,13 @@ rather than PlistBuddy and plutil.
 CI runs the portable half on Ubuntu, so a green run there is not a claim that
 the macOS-only checks passed — only that nothing portable regressed. **Run
 `tests/validate.sh` on the machine before landing anything that touches the
-guarded halves**; that run is the one where the skip list is empty. Pin
-shellcheck's severity rather than trusting a runner's default: the style tier
-moves between releases, and an unpinned run means whatever version is
-installed.
+guarded halves**; that run is the one where the skip list is empty.
+
+Every shellcheck severity is fatal, style included. That is only safe because
+CI installs a pinned shellcheck by checksum instead of the runner's package:
+0.9.0 raises SC2015 on assertions 0.11.0 does not emit even when asked for it
+by name. Bump the version and its `SHELLCHECK_SHA256` together, and fix what a
+newer release finds rather than lowering the severity to silence it.
 
 ## Unprivileged convergence
 
