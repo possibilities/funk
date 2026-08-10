@@ -4,6 +4,7 @@ set -euo pipefail
 
 helper_target=/usr/local/libexec/funk-home-awake
 keychain_service=funk-home-awake
+keychain_state_file="$HOME/.local/state/funk/home-awake-keychain"
 
 die() {
     printf 'funk install-home-awake: %s\n' "$*" >&2
@@ -65,8 +66,23 @@ if ! /usr/bin/security find-generic-password -a "$(id -un)" \
     cat <<'EOF'
 
 Screen-lock changes still need the login password that authorizes them. Until
-it is stored, home-awake manages sleep only. Store it with:
+it is stored and approved, home-awake manages sleep only:
 
   home-awake --set-password
+  home-awake --authorize
+EOF
+# The stored item trusts no application, so reading it raises a keychain dialog
+# until a human answers one. Asking here would raise that dialog inside
+# ./install, which is the one path that must converge without prompting, so this
+# reports the verdict home-awake last recorded and leaves the prompt to
+# --authorize. No recorded verdict means nothing has hit the condition yet, and
+# a machine that is working is not worth a paragraph.
+elif [ "$(cat "$keychain_state_file" 2>/dev/null || true)" = unapproved ]; then
+    cat <<'EOF'
+
+home-awake will not read the stored login password until the keychain asks you
+once, at a terminal. Until then it manages sleep only:
+
+  home-awake --authorize
 EOF
 fi

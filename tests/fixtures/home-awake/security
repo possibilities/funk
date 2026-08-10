@@ -1,12 +1,54 @@
 #!/bin/bash
+# Stands in for /usr/bin/security.
+#
+# Three read outcomes are modelled, because those are the three home-awake has
+# to tell apart: the item read back, the item absent, and the read refused.
+# Absence is exit 44 -- errSecItemNotFound, truncated to a shell status -- and a
+# refusal is deliberately parameterised, because home-awake must treat every
+# other code alike rather than enumerating the ways a keychain can say no.
 
 set -euo pipefail
 
-[ "${1:-}" = find-generic-password ] || exit 1
+command=${1:-}
+shift || true
 
-if [ "${FUNK_TEST_HA_PASSWORD_MISSING:-0}" -eq 1 ]; then
-    printf 'security: SecKeychainSearchCopyNext: The specified item could not be found.\n' >&2
-    exit 44
-fi
+log() {
+    [ -n "${FUNK_TEST_HA_LOG:-}" ] || return 0
+    {
+        printf 'security-stub'
+        printf ' <%s>' "$command" "$@"
+        printf '\n'
+    } >>"$FUNK_TEST_HA_LOG"
+}
 
-printf 'test-login-password\n'
+log "$@"
+
+case "$command" in
+    find-generic-password)
+        if [ "${FUNK_TEST_HA_PASSWORD_MISSING:-0}" -eq 1 ]; then
+            printf 'security: SecKeychainSearchCopyNext: %s\n' \
+                'The specified item could not be found in the keychain.' >&2
+            exit 44
+        fi
+        if [ -n "${FUNK_TEST_HA_PASSWORD_DENIED:-}" ]; then
+            printf 'security: SecKeychainItemCopyContent: %s\n' \
+                'User canceled the operation.' >&2
+            exit "$FUNK_TEST_HA_PASSWORD_DENIED"
+        fi
+        printf 'test-login-password\n'
+        ;;
+    delete-generic-password)
+        [ "${FUNK_TEST_HA_DELETE_STATUS:-0}" -eq 0 ] \
+            || exit "$FUNK_TEST_HA_DELETE_STATUS"
+        ;;
+    add-generic-password)
+        # The real tool prompts on the terminal for a bare trailing -w, which is
+        # the property under test everywhere except here: the stub records the
+        # arguments and stores nothing.
+        [ "${FUNK_TEST_HA_ADD_STATUS:-0}" -eq 0 ] \
+            || exit "$FUNK_TEST_HA_ADD_STATUS"
+        ;;
+    *)
+        exit 1
+        ;;
+esac

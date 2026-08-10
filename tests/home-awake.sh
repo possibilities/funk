@@ -11,11 +11,17 @@ trap 'rm -rf "$test_home"' EXIT
 state_dir="$test_home/.local/state/funk"
 config_file="$test_home/.config/funk/home-awake.conf"
 screenlock_state_file="$state_dir/home-awake-screenlock"
+keychain_state_file="$state_dir/home-awake-keychain"
 caffeinate_plist="$state_dir/com.arthack.funk.home-awake-caffeinate.plist"
 mkdir -p "$state_dir" "$test_home/.config/funk"
 cp "$root/launchd/com.arthack.funk.home-awake-caffeinate.plist" "$caffeinate_plist"
 
 log="$test_home/actions.log"
+# The keychain states below are announced through terminal-notifier, so the
+# notifier is pinned at a stub: the fixture PATH alone would only make the
+# assertions unreachable, and a PATH that ever grows the real binary would post
+# this suite's fictional verdicts into the operator's Notification Center.
+notifier_log="$test_home/notifier.log"
 sleep_file="$test_home/sleep-disabled"
 screenlock_file="$test_home/screenlock"
 caffeinate_marker="$test_home/caffeinate-loaded"
@@ -44,14 +50,17 @@ run_ha() {
         FUNK_TEST_HA_SCREENLOCK_FILE="$screenlock_file" \
         FUNK_TEST_HA_CAFFEINATE_FILE="$caffeinate_marker" \
         FUNK_TEST_HA_ARP_COLD_FILE="$arp_cold_file" \
+        FUNK_TERMINAL_NOTIFIER_BIN="$root/tests/fixtures/terminal-notifier" \
+        FUNK_TEST_NOTIFIER_LOG="$notifier_log" \
         "$script" "$@"
 }
 
 reset_state() {
     : >"$log"
+    : >"$notifier_log"
     printf '0\n' >"$sleep_file"
     printf '300\n' >"$screenlock_file"
-    rm -f "$caffeinate_marker" "$screenlock_state_file"
+    rm -f "$caffeinate_marker" "$screenlock_state_file" "$keychain_state_file"
     : >"$arp_cold_file"
     record_home_router "$home_router"
 }
@@ -161,6 +170,146 @@ FUNK_TEST_HA_ETHERNET=1 FUNK_TEST_HA_AC=1 FUNK_TEST_HA_PASSWORD_MISSING=1 \
     || fail "a delay was recorded even though the screen lock never changed"
 [ "$(cat "$sleep_file")" = 1 ] \
     || fail "a missing password prevented the unrelated sleep change"
+grep -F '<-message> <Screen lock unmanaged: run home-awake --set-password>' \
+    "$notifier_log" >/dev/null \
+    || fail "a missing keychain item did not say how to store one"
+
+# Nothing is stored, so this state re-checks itself on every tick -- which makes
+# it the one where a banner per tick would actually reach the operator.
+: >"$notifier_log"
+FUNK_TEST_HA_ETHERNET=1 FUNK_TEST_HA_AC=1 FUNK_TEST_HA_PASSWORD_MISSING=1 \
+    run_ha || true
+[ ! -s "$notifier_log" ] \
+    || fail "the standing missing-password notice was posted again on the next tick"
+
+# A refused read is a different answer from a missing item, and it is the one
+# that must not repeat: this agent runs every thirty seconds inside the GUI
+# session, so a read nobody has approved is a keychain dialog every thirty
+# seconds. One attempt, one notification, then nothing until --authorize.
+reset_state
+status=0
+FUNK_TEST_HA_ETHERNET=1 FUNK_TEST_HA_AC=1 FUNK_TEST_HA_PASSWORD_DENIED=128 \
+    run_ha || status=$?
+[ "$status" -ne 0 ] || fail "a refused keychain read was reported as success"
+[ "$(cat "$screenlock_file")" = 300 ] \
+    || fail "the screen lock changed without an approved password"
+[ ! -e "$screenlock_state_file" ] \
+    || fail "a refused read recorded a delay the screen lock never left"
+grep -F 'security-stub <find-generic-password>' "$log" >/dev/null \
+    || fail "the first run after a refusal did not attempt the keychain read"
+grep -F '<-message> <Screen lock unmanaged: run home-awake --authorize>' \
+    "$notifier_log" >/dev/null \
+    || fail "a refused keychain read did not say how to approve it"
+
+: >"$log"
+: >"$notifier_log"
+FUNK_TEST_HA_ETHERNET=1 FUNK_TEST_HA_AC=1 FUNK_TEST_HA_PASSWORD_DENIED=128 \
+    run_ha || true
+if grep -F 'security-stub <find-generic-password>' "$log" >/dev/null; then
+    fail "a refused keychain read was retried on the next tick"
+fi
+[ ! -s "$notifier_log" ] \
+    || fail "the standing approval notice was posted again on the next tick"
+
+# Which code a refusal carries is not something this suite can pin: a declined
+# prompt, a locked keychain and an ACL that does not list the reader all report
+# different ones. home-awake keys on the single code that means absence, so
+# every other refusal has to reach the same held state.
+for refusal in 1 36 51 128; do
+    reset_state
+    FUNK_TEST_HA_ETHERNET=1 FUNK_TEST_HA_AC=1 \
+        FUNK_TEST_HA_PASSWORD_DENIED="$refusal" run_ha || true
+    [ "$(cat "$screenlock_file")" = 300 ] \
+        || fail "refusal $refusal changed the screen lock"
+    : >"$log"
+    FUNK_TEST_HA_ETHERNET=1 FUNK_TEST_HA_AC=1 \
+        FUNK_TEST_HA_PASSWORD_DENIED="$refusal" run_ha || true
+    if grep -F 'security-stub <find-generic-password>' "$log" >/dev/null; then
+        fail "refusal $refusal was retried instead of held"
+    fi
+done
+
+# --authorize is the way out of the held state, and the read it performs exists
+# only to make the prompt happen here, so the password may not come back out.
+reset_state
+FUNK_TEST_HA_ETHERNET=1 FUNK_TEST_HA_AC=1 FUNK_TEST_HA_PASSWORD_DENIED=128 \
+    run_ha || true
+authorize_output=$(run_ha --authorize)
+if printf '%s\n' "$authorize_output" | grep -F 'test-login-password' >/dev/null; then
+    fail "--authorize printed the password it read"
+fi
+FUNK_TEST_HA_ETHERNET=1 FUNK_TEST_HA_AC=1 run_ha
+[ "$(cat "$screenlock_file")" = off ] \
+    || fail "--authorize did not restore unattended screen-lock management"
+
+# Approving what is not stored, and approving a read that is refused anyway, are
+# both failures: neither may leave the agent believing it has consent.
+reset_state
+status=0
+FUNK_TEST_HA_PASSWORD_MISSING=1 run_ha --authorize >/dev/null 2>&1 || status=$?
+[ "$status" -ne 0 ] || fail "--authorize approved a keychain item that is missing"
+status=0
+FUNK_TEST_HA_PASSWORD_DENIED=128 run_ha --authorize >/dev/null 2>&1 || status=$?
+[ "$status" -ne 0 ] || fail "--authorize reported a refused read as approved"
+: >"$log"
+FUNK_TEST_HA_ETHERNET=1 FUNK_TEST_HA_AC=1 run_ha || true
+if grep -F 'security-stub <find-generic-password>' "$log" >/dev/null; then
+    fail "a refusal declined at the terminal did not hold the unattended read"
+fi
+keychain_status=$(run_ha --status)
+printf '%s\n' "$keychain_status" | grep -Fx 'screenlock password: unapproved' >/dev/null \
+    || fail "--status did not report the recorded keychain verdict"
+
+# Re-storing must replace the item's access list rather than merge into it, so
+# the old copy is deleted first and the new one is added trusting nothing. -T ""
+# is the only way to say that: security trusts the creating application, which
+# here is security itself, unless the empty path revokes it.
+reset_state
+run_ha --set-password >/dev/null
+grep -F 'security-stub <delete-generic-password>' "$log" >/dev/null \
+    || fail "--set-password wrote over the existing item instead of replacing it"
+delete_line=$(awk '/security-stub <delete-generic-password>/ { print NR; exit }' "$log")
+add_line=$(awk '/security-stub <add-generic-password>/ { print NR; exit }' "$log")
+[ -n "$add_line" ] || fail "--set-password did not store the item"
+[ "$delete_line" -lt "$add_line" ] \
+    || fail "--set-password stored the new item before removing the old one"
+grep -F '<-T> <>' "$log" >/dev/null \
+    || fail "--set-password stored an item that trusts its creating application"
+if grep -F '<-T> </usr/bin/security>' "$log" >/dev/null; then
+    fail "--set-password granted /usr/bin/security unattended access again"
+fi
+if grep -F '<-U>' "$log" >/dev/null; then
+    fail "--set-password relied on an update to revoke an existing grant"
+fi
+
+# A first run has nothing to delete, and that is not a failure.
+reset_state
+FUNK_TEST_HA_DELETE_STATUS=44 run_ha --set-password >/dev/null \
+    || fail "--set-password failed on the missing item a first run deletes"
+grep -F 'security-stub <add-generic-password>' "$log" >/dev/null \
+    || fail "--set-password did not store the item after a first-run delete"
+
+# Any other delete failure means the old access list may still stand, so nothing
+# is stored on top of it.
+reset_state
+status=0
+FUNK_TEST_HA_DELETE_STATUS=1 run_ha --set-password >/dev/null 2>&1 || status=$?
+[ "$status" -ne 0 ] || fail "a failed delete was reported as a stored password"
+if grep -F 'security-stub <add-generic-password>' "$log" >/dev/null; then
+    fail "the item was re-added after its old copy could not be removed"
+fi
+
+# A freshly stored item trusts nothing, so the agent must wait to be told it may
+# read rather than finding out through a dialog.
+reset_state
+run_ha --set-password >/dev/null
+: >"$log"
+FUNK_TEST_HA_ETHERNET=1 FUNK_TEST_HA_AC=1 run_ha || true
+if grep -F 'security-stub <find-generic-password>' "$log" >/dev/null; then
+    fail "--set-password left the agent reading an item nobody had approved"
+fi
+[ "$(cat "$screenlock_file")" = 300 ] \
+    || fail "an unapproved item still turned the screen lock off"
 
 # A restore with no recorded delay must re-lock immediately rather than guess.
 reset_state

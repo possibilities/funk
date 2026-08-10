@@ -96,6 +96,7 @@ tests/fixtures/chrome
 tests/fixtures/dscacheutil
 tests/fixtures/dns-sd
 tests/fixtures/gh
+tests/fixtures/home-awake/security
 tests/fixtures/nc
 tests/fixtures/npx
 tests/fixtures/scrcpy
@@ -253,6 +254,29 @@ actual_home_awake_rules=$(
 )
 [ "$actual_home_awake_rules" = "$expected_home_awake_rules" ] \
     || fail "home-awake sudoers rules differ from the approved set"
+
+# The login password those screen-lock changes authenticate with is stored
+# trusting no application, so reading it costs a human decision once. Leaving -T
+# out does not achieve that: security(1) says "the application which creates an
+# item is trusted to access its data without warning", and the creating
+# application here is security itself -- the same binary the unattended agent
+# reads with. Only an explicit empty -T revokes it, so assert the flag rather
+# than the absence of the grant it replaced.
+grep -F -- '-T "" -l' bin/.local/bin/home-awake >/dev/null \
+    || fail "home-awake stores its keychain item trusting the application that created it"
+home_awake_code=$(grep -v '^[[:space:]]*#' bin/.local/bin/home-awake)
+if printf '%s\n' "$home_awake_code" | grep -F -- '-T /usr/bin/security' >/dev/null; then
+    fail "home-awake grants /usr/bin/security unattended access to the login password"
+fi
+# Revoking a grant by writing over the item would only be as good as the merge
+# rules of whatever performs the write, and a revocation that silently does
+# nothing is worse than none at all, because it reads as done.
+printf '%s\n' "$home_awake_code" \
+    | grep -F 'security delete-generic-password' >/dev/null \
+    || fail "home-awake updates its keychain item in place instead of replacing it"
+if printf '%s\n' "$home_awake_code" | grep -F 'add-generic-password -U' >/dev/null; then
+    fail "home-awake relies on -U to replace an existing keychain access list"
+fi
 
 # shellcheck disable=SC2016 # The installer's literal source line is the subject.
 grep -F '"$funk_command" install-home-awake' install >/dev/null \

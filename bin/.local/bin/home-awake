@@ -22,8 +22,17 @@ helper="${FUNK_HOME_AWAKE_HELPER:-/usr/local/libexec/funk-home-awake}"
 keychain_service=funk-home-awake
 caffeinate_label=com.arthack.funk.home-awake-caffeinate
 
+# security reports the Security framework's status in its exit code, and
+# errSecItemNotFound arrives as 44. That one code is the whole difference
+# between "nothing is stored yet" and "something is stored that this process may
+# not read": a refused prompt, a locked keychain and an ACL that does not list
+# the reader are all the second kind and all differ by code. Naming only 44 is
+# what keeps the classification right without enumerating the rest.
+security_not_found=44
+
 state_dir="$HOME/.local/state/funk"
 screenlock_state_file="$state_dir/home-awake-screenlock"
+keychain_state_file="$state_dir/home-awake-keychain"
 caffeinate_plist="$state_dir/$caffeinate_label.plist"
 config_file="$HOME/.config/funk/home-awake.conf"
 
@@ -40,6 +49,7 @@ Usage: home-awake
        home-awake --status
        home-awake --learn-network [NAME]
        home-awake --set-password
+       home-awake --authorize
 
 With no arguments this converges sleep and screen-lock state for the network
 this Mac is currently on. It is silent unless something changed.
@@ -49,6 +59,8 @@ this Mac is currently on. It is silent unless something changed.
                  optionally under a name of your choosing
 --set-password   Store the login password the screen-lock change authenticates
                  with, in the login keychain
+--authorize      Read that password once here, so the keychain asks for consent
+                 at this terminal instead of from the unattended agent
 EOF
 }
 
@@ -254,15 +266,81 @@ screenlock_state() {
     fi
 }
 
+# The stored login password authorizes every screen-lock change, and the item
+# trusts no application, so reading it takes a human the first time.
+#
+# Be plain about what that buys. Clicking Always Allow at that prompt puts
+# /usr/bin/security back on the item's ACL, and from then on this agent reads
+# the password exactly as freely as it did when --set-password handed out the
+# same grant itself. Nothing here hides the password from code running as this
+# user. What changes is who granted it: a person, at a terminal, answering a
+# question about their own login password, rather than an installer granting it
+# on their behalf and never mentioning it again.
+keychain_state() {
+    local state=unknown
+
+    [ ! -r "$keychain_state_file" ] || state=$(cat "$keychain_state_file")
+    printf '%s\n' "$state"
+}
+
+record_keychain_state() {
+    mkdir -p "$state_dir"
+    printf '%s\n' "$1" >"$keychain_state_file"
+}
+
+# One notification per transition. The converge path retries every thirty
+# seconds for as long as it is stuck, and a banner on every tick is how a
+# notification stream teaches its reader to ignore it.
+announce_keychain_state() {
+    local state="$1"
+
+    [ "$(keychain_state)" != "$state" ] || return 0
+    record_keychain_state "$state"
+    case "$state" in
+        missing) notify 'Screen lock unmanaged: run home-awake --set-password' ;;
+        unapproved) notify 'Screen lock unmanaged: run home-awake --authorize' ;;
+    esac
+}
+
+# Prints the stored password, or records which of the three states this run is
+# in -- missing, present but unapproved, approved -- and fails.
+#
+# An unapproved item is not read again until --authorize clears that verdict.
+# This runs from a LaunchAgent inside the GUI session, so an unapproved read is
+# a SecurityAgent dialog, and one every thirty seconds is not a failed
+# authorization but an unusable machine. A missing item carries no such cost --
+# a search that matches nothing never reaches an ACL -- so that state re-checks
+# itself and recovers on its own once something is stored.
+read_login_password() {
+    local password
+    local status=0
+
+    if [ "$(keychain_state)" = unapproved ]; then
+        note "keychain item '$keychain_service' is unapproved; run home-awake --authorize"
+        return 1
+    fi
+    password=$(security find-generic-password -a "$(id -un)" \
+        -s "$keychain_service" -w 2>/dev/null) || status=$?
+    if [ "$status" -eq 0 ]; then
+        announce_keychain_state approved
+        printf '%s\n' "$password"
+        return 0
+    fi
+    if [ "$status" -eq "$security_not_found" ]; then
+        note "keychain item '$keychain_service' is missing; run home-awake --set-password"
+        announce_keychain_state missing
+    else
+        note "keychain read refused (security exit $status); run home-awake --authorize"
+        announce_keychain_state unapproved
+    fi
+    return 1
+}
+
 set_screenlock() {
     local spec="$1"
     local password
 
-    password=$(security find-generic-password -a "$(id -un)" \
-        -s "$keychain_service" -w 2>/dev/null) || {
-        note "keychain item '$keychain_service' is missing; run home-awake --set-password"
-        return 1
-    }
+    password=$(read_login_password) || return 1
     printf '%s\n' "$password" | sudo -n "$helper" screenlock "$spec" >/dev/null 2>&1
 }
 
@@ -320,6 +398,9 @@ report_status() {
         printf 'sleepdisabled: no\n'
     fi
     printf 'screenlock: %s\n' "$(screenlock_state || printf 'unknown\n')"
+    # The recorded verdict rather than a fresh probe: anything that reaches the
+    # item's data is a keychain dialog, and --status is not worth one.
+    printf 'screenlock password: %s\n' "$(keychain_state)"
     if [ -n "$router_mac" ]; then
         printf 'home router: %s (%s)\n' "${router_label:-unnamed}" "$router_mac"
     else
@@ -352,15 +433,75 @@ learn_network() {
 }
 
 set_password() {
+    local status=0
+
     printf 'Storing the login password home-awake authenticates screen-lock\n'
-    printf 'changes with. It is read by /usr/bin/security only.\n'
+    printf 'changes with. Nothing reads it back without asking you first.\n'
+    # Delete and recreate rather than update in place. -U is documented to
+    # update the item; it is not documented to replace the access control list
+    # already on it, and a revocation that quietly leaves the old grant standing
+    # is worse than no revocation at all, because it reads as done. Removing the
+    # item first makes the list written below the only list it has ever carried.
+    #
+    # A first run has nothing to remove, which security reports as
+    # errSecItemNotFound. Every other failure is real and stops here rather than
+    # being written over.
+    security delete-generic-password -a "$(id -un)" -s "$keychain_service" \
+        >/dev/null 2>&1 || status=$?
+    [ "$status" -eq 0 ] || [ "$status" -eq "$security_not_found" ] \
+        || die "the stored keychain item could not be removed (security exit $status)"
     # A bare trailing -w is what makes security prompt for the password instead
     # of taking it as an argument, where it would be visible in the process list
-    # and, worse, stored empty if the option were left out entirely.
-    security add-generic-password -U -a "$(id -un)" -s "$keychain_service" \
-        -T /usr/bin/security -l "Funk home-awake login password" -w \
+    # and, worse, stored empty if the option were left out entirely. That order
+    # costs something: an aborted prompt leaves nothing stored, because the
+    # alternative -- reading the password first so it could be put back -- means
+    # holding it in argv, a file, or a variable, which is the property the bare
+    # -w exists to preserve.
+    #
+    # -T "" is not the same as leaving -T out. security(1): "the application
+    # which creates an item is trusted to access its data without warning. You
+    # can remove this default access by explicitly specifying an empty app
+    # pathname: -T ''". Omitting the option would leave the creating application
+    # trusted -- security itself, the same binary the agent reads with -- and
+    # this whole path would revoke nothing.
+    security add-generic-password -a "$(id -un)" -s "$keychain_service" \
+        -T "" -l "Funk home-awake login password" -w \
         || die "the keychain item was not stored"
-    printf 'Stored keychain item %s.\n' "$keychain_service"
+    record_keychain_state unapproved
+    printf 'Stored keychain item %s. Nothing may read it yet.\n' "$keychain_service"
+    printf 'Run home-awake --authorize next, and choose Always Allow.\n'
+}
+
+# The first read of a fresh item raises the keychain prompt. This is where that
+# happens: in the foreground, because the operator asked for it, rather than out
+# of a LaunchAgent at whatever moment the machine next changes networks.
+authorize_password() {
+    local status=0
+
+    printf 'Reading the stored login password once, here, so the keychain asks\n'
+    printf 'at this terminal rather than from the unattended agent.\n'
+    printf 'Choose Always Allow; a plain Allow answers only this one read.\n'
+    # A plain Allow answers this read too, and leaves the ACL untouched, so the
+    # next unattended read prompts again. Both answers return the password, so
+    # nothing here can tell them apart; the recovery is the same either way,
+    # because the agent records that refusal and asks for this command again.
+    #
+    # The password is read only to make the prompt happen, so it goes nowhere:
+    # not to the terminal, not to a file, not into a variable.
+    security find-generic-password -a "$(id -un)" -s "$keychain_service" -w \
+        >/dev/null 2>&1 || status=$?
+    if [ "$status" -eq "$security_not_found" ]; then
+        record_keychain_state missing
+        die "no $keychain_service item to approve; run home-awake --set-password"
+    fi
+    if [ "$status" -ne 0 ]; then
+        record_keychain_state unapproved
+        die "the keychain read was refused; the screen lock stays unmanaged"
+    fi
+    record_keychain_state approved
+    printf '\nApproved. Always Allow put /usr/bin/security back on the item, so\n'
+    printf 'the agent now reads the password unattended: the same access that\n'
+    printf 'storing it used to grant on its own, granted by you instead.\n'
 }
 
 mode=converge
@@ -373,6 +514,7 @@ case "${1:-}" in
         learn_label=${2:-}
         ;;
     --set-password) mode=password ;;
+    --authorize) mode=authorize ;;
     -h|--help)
         usage
         exit 0
@@ -401,6 +543,10 @@ case "$mode" in
         ;;
     password)
         set_password
+        exit 0
+        ;;
+    authorize)
+        authorize_password
         exit 0
         ;;
 esac
