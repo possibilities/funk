@@ -32,10 +32,11 @@ esac
 agentbrain_root="$HOME/code/agentbrain"
 agentweb_root="$HOME/code/agentweb"
 agentusage_root="$HOME/code/agentusage"
+agentdots_root="$HOME/code/agentdots"
 
-# Each project owns its own installer, its own launchd label, and its own
-# refusal rules for foreign files. Funk decides only that these services should
-# be resident on this machine, and supplies the one fact neither project can
+# Each project owns its own installer and its own refusal rules for foreign
+# files; Agentdots owns every fleet launch agent. Funk decides only that these
+# services should be resident on this machine, and supplies the one fact none
 # know for itself: which address this host answers on inside the tailnet.
 tailnet_address() {
     command -v tailscale >/dev/null 2>&1 || return 1
@@ -44,11 +45,14 @@ tailnet_address() {
 
 if [ "$check_only" -eq 1 ]; then
     cat <<'EOF'
-Resident services from local checkouts:
-  ~/code/agentbrain/scripts/install.sh --install  # agentbrain.worker, always
-      AGENTBRAIN_INSTALL_SHARE_HOST=<tailscale ip -4>  # agentbrain.share, only when the tailnet is up
-  ~/code/agentweb/scripts/install.sh --install    # agentweb.daemon
-  ~/code/agentusage/scripts/install.sh --install  # agentusage.daemon (+ cswap and codex-swap provider CLIs)
+Resident services from local checkouts. The checkouts install their commands;
+Agentdots installs every fleet launch agent that runs them.
+  ~/code/agentbrain/scripts/install.sh --install
+  ~/code/agentweb/scripts/install.sh --install
+  ~/code/agentusage/scripts/install.sh --install  # + cswap and codex-swap provider CLIs
+  ~/code/agentdots/scripts/install-launchagents --install
+      AGENTDOTS_INSTALL_SHARE_HOST=<tailscale ip -4>  # agentbrain.share, only when the tailnet is up
+      AGENTDOTS_INSTALL_CONDUIT_SOCKET / _TOKEN_FILE  # Agentweb's socket, for Agentscrape
 EOF
     exit 0
 fi
@@ -62,6 +66,8 @@ fi
     || die "Agentweb checkout not found: $agentweb_root/scripts/install.sh is missing"
 [ -f "$agentusage_root/scripts/install.sh" ] \
     || die "Agentusage checkout not found: $agentusage_root/scripts/install.sh is missing"
+[ -x "$agentdots_root/scripts/install-launchagents" ] \
+    || die "Agentdots checkout not found: $agentdots_root/scripts/install-launchagents is missing"
 
 # The ingress is the only listener among these services, and Agentbrain refuses
 # to expose one that nobody named an address for. A tailnet that is down at
@@ -77,21 +83,30 @@ agentweb_state="${XDG_STATE_HOME:-$HOME/.local/state}/agentweb"
 conduit_socket="$agentweb_state/runtime/agentweb.sock"
 conduit_token_file="$agentweb_state/worker-token"
 
-if share_host=$(tailnet_address); then
-    printf 'Installing Agentbrain, with the share ingress bound to %s.\n' "$share_host"
-    AGENTBRAIN_INSTALL_SHARE_HOST="$share_host" \
-        AGENTBRAIN_INSTALL_CONDUIT_SOCKET="$conduit_socket" \
-        AGENTBRAIN_INSTALL_CONDUIT_TOKEN_FILE="$conduit_token_file" \
-        "$agentbrain_root/scripts/install.sh" --install
-else
-    printf 'Installing Agentbrain; no tailnet address, so the share ingress is left as it is.\n' >&2
-    AGENTBRAIN_INSTALL_CONDUIT_SOCKET="$conduit_socket" \
-        AGENTBRAIN_INSTALL_CONDUIT_TOKEN_FILE="$conduit_token_file" \
-        "$agentbrain_root/scripts/install.sh" --install
-fi
+printf 'Installing Agentbrain.\n'
+"$agentbrain_root/scripts/install.sh" --install
 
 printf 'Installing Agentweb.\n'
 "$agentweb_root/scripts/install.sh" --install
 
 printf 'Installing Agentusage.\n'
 "$agentusage_root/scripts/install.sh" --install
+
+# The commands are installed; the services that run them are Agentdots', which
+# owns every fleet launch agent. The wiring above stays here because it is a
+# fact about this machine rather than about any one project — which address the
+# tailnet handed out, and where Agentweb keeps the socket Agentscrape asks for
+# a session on. Agentdots renders it; Funk decides it.
+printf 'Installing the fleet services through Agentdots.\n'
+if share_host=$(tailnet_address); then
+    printf 'The share ingress binds to %s.\n' "$share_host"
+    AGENTDOTS_INSTALL_SHARE_HOST="$share_host" \
+        AGENTDOTS_INSTALL_CONDUIT_SOCKET="$conduit_socket" \
+        AGENTDOTS_INSTALL_CONDUIT_TOKEN_FILE="$conduit_token_file" \
+        "$agentdots_root/scripts/install-launchagents" --install
+else
+    printf 'No tailnet address, so the share ingress is left as it is.\n' >&2
+    AGENTDOTS_INSTALL_CONDUIT_SOCKET="$conduit_socket" \
+        AGENTDOTS_INSTALL_CONDUIT_TOKEN_FILE="$conduit_token_file" \
+        "$agentdots_root/scripts/install-launchagents" --install
+fi
