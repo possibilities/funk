@@ -35,14 +35,26 @@ jobs:
           repository: possibilities/agentdots
           path: agentdots
 
-      - name: Install shellcheck
-        # validate.sh skips its shellcheck pass when the binary is missing, which
-        # is the silent-hole failure Funk warns about elsewhere: a green run that
-        # never linted anything. Install it so the gate is real.
+      - name: Install test dependencies
+        # The suite fakes brew, tailscale, and the notifier through tests/fixtures,
+        # but stow and shellcheck are run for real. shellcheck especially: validate.sh
+        # skips that pass when the binary is missing, and a green run that silently
+        # linted nothing is the exact failure this repository warns about elsewhere.
+        # jq and ruby ship with the runner; assert them rather than discover it late.
         run: |
-          if ! command -v shellcheck >/dev/null 2>&1; then
-            brew install shellcheck
+          missing=()
+          for tool in stow shellcheck; do
+            command -v "$tool" >/dev/null 2>&1 || missing+=("$tool")
+          done
+          if (( ${#missing[@]} )); then
+            brew install "${missing[@]}"
           fi
+          for tool in stow shellcheck jq ruby; do
+            command -v "$tool" >/dev/null 2>&1 || {
+              printf 'ci: %s is required by tests/validate.sh and is missing\n' "$tool" >&2
+              exit 1
+            }
+          done
           shellcheck --version
 
       - name: Validate
