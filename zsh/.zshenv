@@ -24,11 +24,6 @@ export PATH="$HOME/.bun/bin:$PATH"
 # rust
 export PATH="$HOME/.cargo/bin:$PATH"
 
-# Ask Homebrew cask commands to skip download quarantine when they honor the
-# cask opt. Scheduled bundle runs also clear quarantine from Brewfile-managed app
-# bundles after installs and upgrades.
-export HOMEBREW_CASK_OPTS="--no-quarantine"
-
 # Use nvim as an editor
 export EDITOR='nvim'
 export VISUAL='nvim'
