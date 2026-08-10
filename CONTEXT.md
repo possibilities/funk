@@ -26,3 +26,20 @@ belongs to another local account, or its recorded install directories point
 into another account's home. Named for `HOMEBREW_BUNDLE_CASK_SKIP` and reported
 as `Needs ./install: …`.
 _Avoid_: broken cask, failed cask.
+
+**Generated host file** — a file under `~/.ssh/config.d/` whose first line is
+`funk ssh-tailnet-config`'s marker. The marker is the only proof of ownership
+the generator has, so it is also the only thing it may overwrite or prune;
+everything else in that directory belongs to the operator.
+_Avoid_: managed host, stowed host, tailnet config, hardcoded hosts.
+
+**Keychain hold** — the recorded verdict that stops the unattended path
+re-reading an item whose access no human has approved, so a refusal costs one
+dialog rather than one every thirty seconds. Cleared by
+`home-awake --authorize`.
+_Avoid_: locked out, denied, blocked.
+
+**Fork-and-adapt** — what this repository offers a reader who is not the account
+it converges. `./install` is written for one machine and its recorded facts, so
+the useful thing to take is a part of it, not a run of it.
+_Avoid_: bootstrap, dotfiles framework, general-purpose installer.

@@ -38,10 +38,26 @@ packages use `--no-folding` so their target directories remain available
 for generated or unmanaged files. Other packages may use normal Stow
 folding.
 
+A `--no-folding` package's target directory is therefore allowed to hold files
+Funk does not track; `~/.ssh/config.d` is the case to reason from. `funk
+ssh-tailnet-config` writes it from live Tailscale state, and only a real
+`~/.ssh` holding one Stow symlink makes that possible — under folding the
+generator would be writing into this checkout.
+
+Machine-identifying data is generated onto the machine at converge time, never
+tracked and never adopted back. `home-awake --learn-network` records the home
+router that way and `funk ssh-tailnet-config` records the tailnet that way; both
+write outside this repository, and neither may be pulled back in with
+`funk stow --adopt`.
+
 Never Stow credentials, secrets, generated application state, remote-device
-configuration, root-owned helpers, LaunchDaemons, or rendered LaunchAgents.
-Install privileged files through Funk's guarded helpers; never link a root
-execution path into this user-writable checkout.
+configuration, root-owned helpers, LaunchDaemons, rendered LaunchAgents, or live
+tailnet identity — MagicDNS suffixes, device names, and the accounts this
+machine logs into other machines as. `tests/validate.sh` pins that last one with
+a `git ls-files` check on `ssh/.ssh/config.d` and a `.ts.net` grep over the
+tree, so re-adding a host file is a deliberate, reviewable change rather than a
+convenience. Install privileged files through Funk's guarded helpers; never link
+a root execution path into this user-writable checkout.
 
 An unattended agent that needs root gets a purpose-built helper, not a
 passwordless rule on a general-purpose system binary. `system/funk-home-awake`
@@ -49,6 +65,13 @@ is the model: sudoers names that helper with an enumerated argument list, and
 the helper validates every argument before touching `pmset` or `sysadminctl`.
 `tests/validate.sh` pins the granted list, so widening it is a deliberate,
 reviewable change rather than a side effect.
+
+A keychain item's access list is the same argument in another form.
+`bin/.local/bin/home-awake` stores the login password with `-T ""` and has a
+human approve the first read, rather than granting `/usr/bin/security` — a
+general-purpose binary any process can invoke — a standing read at creation
+time. `tests/validate.sh` asserts both the flag and the absence of that grant,
+so restoring it is not a convenience fix either.
 
 ## Validation
 
@@ -61,7 +84,9 @@ Android launcher suites — skip themselves off Darwin and print what they
 skipped, and the summary line repeats the list. Everything else is portable:
 the policy greps, `bash -n` over every shell file, shellcheck, and the launchd
 plist assertions, which read through `tests/lib/plist` (stdlib `plistlib`)
-rather than PlistBuddy and plutil.
+rather than PlistBuddy and plutil. `tests/ssh-tailnet-config.sh` is portable
+too: it drives `tests/fixtures/tailscale` rather than the daemon, so it runs
+everywhere and never joins the skip list.
 
 CI runs the portable half on Ubuntu, so a green run there is not a claim that
 the macOS-only checks passed — only that nothing portable regressed. **Run
@@ -79,8 +104,9 @@ raise the floor back to style without solving the memory cost first.
 ## Unprivileged convergence
 
 A default `./install` must not ask for a password once the machine has
-converged. Two rules keep that true, and both are asserted by
-`tests/validate.sh`:
+converged — not for sudo, and not for the keychain, which asks in a dialog no
+scheduled run can answer either. Two rules keep that true, and both are asserted
+by `tests/validate.sh`:
 
 - The scheduled `funk update` path never elevates. Anything needing
   administrator authentication is identified by `libexec/list-unattendable-casks`
@@ -93,7 +119,16 @@ converged. Two rules keep that true, and both are asserted by
 
 `funk install-home-awake` follows the same rule. It compares the installed root
 helper's digest and its granted sudo invocations first, and elevates only when
-they differ from this checkout.
+they differ from this checkout. It extends the rule to the login keychain by
+probing the stored item attribute-only, without `-w`, so the lookup never
+reaches the item's data and never raises a dialog, and by reporting the verdict
+`home-awake` last recorded instead of reading the secret. The prompt belongs to
+`home-awake --authorize`, which a human runs on purpose.
+
+A step that cannot converge is reported rather than failed.
+`funk ssh-tailnet-config` exits `EX_TEMPFAIL` when Tailscale cannot answer,
+having written and removed nothing, and `./install` prints a Deferred note and
+finishes — the same shape `funk configure-orca` uses for a running Orca.
 
 Repair state that makes Homebrew elevate instead of letting it recur:
 `libexec/reclaim-app-ownership` for applications left by a previous account,
