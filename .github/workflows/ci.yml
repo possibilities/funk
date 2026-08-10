@@ -19,8 +19,9 @@ jobs:
     # plists, which is portable. The checks that genuinely need macOS — pfctl,
     # Gatekeeper xattrs, BSD stat, the Orca installer — skip themselves here and
     # name what they skipped, and the operator's own `tests/validate.sh` run on
-    # the machine is where those execute. Ubuntu keeps this off the 10x macOS
-    # runner minutes that a private repository pays for.
+    # the machine is where those execute. Ubuntu is where the portable majority
+    # runs fastest; a macOS runner would spend its extra minutes re-running the
+    # same greps.
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:

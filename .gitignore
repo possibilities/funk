@@ -1,0 +1,9 @@
+# This repository's own ignores. The `git` Stow package installs a global
+# ignore file with these patterns, but that only helps an account Funk has
+# already converged — a contributor who has not run `./install` has no such
+# configuration, and the first `git add -A` commits the Finder's leavings and
+# whatever local agent state is lying around.
+.DS_Store
+.claude/settings.local.json
+.claude/scheduled_tasks.lock
+.claude/worktrees
