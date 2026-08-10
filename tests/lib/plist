@@ -1,0 +1,85 @@
+#!/usr/bin/env python3
+"""Portable stand-in for the plist reads tests/validate.sh needs.
+
+PlistBuddy and plutil are macOS-only binaries, but every plist this suite
+validates is static XML checked into the repository — nothing here reads live
+system state. Python's stdlib plistlib parses the same bytes on any platform,
+so the suite keeps its assertions and stops requiring a macOS runner for them.
+
+The CLI deliberately mimics the two invocations validate.sh already used, so
+the call sites read the same as before:
+
+    plist -lint <file>                 # plutil -lint
+    plist -c 'Print :Key:0:Sub' <file> # PlistBuddy -c 'Print ...'
+
+`Print` exits non-zero on a missing key, because the suite uses that failure to
+assert a key's *absence* — "has an unapproved extra trigger" is a Print that is
+required to fail.
+"""
+
+import plistlib
+import sys
+
+
+def die(message: str) -> "None":
+    print(f"plist: {message}", file=sys.stderr)
+    raise SystemExit(1)
+
+
+def load(path: str):
+    try:
+        with open(path, "rb") as stream:
+            return plistlib.load(stream)
+    except FileNotFoundError:
+        die(f"no such plist: {path}")
+    except (plistlib.InvalidFileException, ValueError) as error:
+        die(f"{path} is not a readable plist: {error}")
+
+
+def render(value) -> str:
+    # PlistBuddy prints booleans lowercase and scalars bare; the suite compares
+    # against those exact spellings.
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, list):
+        return "Array {\n}"
+    if isinstance(value, dict):
+        return "Dict {\n}"
+    return str(value)
+
+
+def traverse(root, keypath: str, path: str):
+    node = root
+    for part in [segment for segment in keypath.split(":") if segment]:
+        if isinstance(node, list):
+            try:
+                node = node[int(part)]
+            except (ValueError, IndexError):
+                die(f"{path}: no entry at {keypath}")
+        elif isinstance(node, dict):
+            if part not in node:
+                die(f"{path}: no entry at {keypath}")
+            node = node[part]
+        else:
+            die(f"{path}: no entry at {keypath}")
+    return node
+
+
+def main(argv: "list[str]") -> int:
+    if len(argv) == 2 and argv[0] == "-lint":
+        load(argv[1])
+        print(f"{argv[1]}: OK")
+        return 0
+    if len(argv) == 3 and argv[0] == "-c":
+        command = argv[1].strip()
+        if not command.startswith("Print"):
+            die(f"only Print is supported, got: {command}")
+        keypath = command[len("Print") :].strip()
+        print(render(traverse(load(argv[2]), keypath, argv[2])))
+        return 0
+    die("usage: plist -lint <file> | plist -c 'Print :Key' <file>")
+    return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))

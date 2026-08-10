@@ -50,6 +50,27 @@ the helper validates every argument before touching `pmset` or `sysadminctl`.
 `tests/validate.sh` pins the granted list, so widening it is a deliberate,
 reviewable change rather than a side effect.
 
+## Validation
+
+`tests/validate.sh` is the whole suite and runs anywhere, but it does not run
+*everything* everywhere. The checks that need macOS to mean anything — the
+`pfctl` parse of the travel firewall, Gatekeeper quarantine xattrs, the
+Homebrew cask helpers that read ownership with BSD `stat -f`, the `funk update`
+path through the Darwin-gated `libexec/install-orca`, and the home-awake and
+Android launcher suites — skip themselves off Darwin and print what they
+skipped, and the summary line repeats the list. Everything else is portable:
+the policy greps, `bash -n` over every shell file, shellcheck, and the launchd
+plist assertions, which read through `tests/lib/plist` (stdlib `plistlib`)
+rather than PlistBuddy and plutil.
+
+CI runs the portable half on Ubuntu, so a green run there is not a claim that
+the macOS-only checks passed — only that nothing portable regressed. **Run
+`tests/validate.sh` on the machine before landing anything that touches the
+guarded halves**; that run is the one where the skip list is empty. Pin
+shellcheck's severity rather than trusting a runner's default: the style tier
+moves between releases, and an unpinned run means whatever version is
+installed.
+
 ## Unprivileged convergence
 
 A default `./install` must not ask for a password once the machine has

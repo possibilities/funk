@@ -15,10 +15,14 @@ permissions:
 
 jobs:
   ci:
-    # tests/validate.sh lints plists with plutil and PlistBuddy and parses the
-    # travel firewall through pfctl, so the suite only means anything on macOS.
-    runs-on: macos-26
-    timeout-minutes: 20
+    # Funk configures a Mac, but its suite is mostly static analysis of shell and
+    # plists, which is portable. The checks that genuinely need macOS — pfctl,
+    # Gatekeeper xattrs, BSD stat, the Orca installer — skip themselves here and
+    # name what they skipped, and the operator's own `tests/validate.sh` run on
+    # the machine is where those execute. Ubuntu keeps this off the 10x macOS
+    # runner minutes that a private repository pays for.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Check out repository
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -36,26 +40,14 @@ jobs:
           path: agentdots
 
       - name: Install test dependencies
-        # The suite fakes brew, tailscale, and the notifier through tests/fixtures,
-        # but stow and shellcheck are run for real. shellcheck especially: validate.sh
-        # skips that pass when the binary is missing, and a green run that silently
-        # linted nothing is the exact failure this repository warns about elsewhere.
-        # jq and ruby ship with the runner; assert them rather than discover it late.
+        # The suite fakes brew, tailscale, adb, and the notifier through
+        # tests/fixtures; these four it runs for real. shellcheck especially:
+        # validate.sh skips that pass when the binary is missing, and a green run
+        # that silently linted nothing is the failure this repository warns about.
         run: |
-          missing=()
-          for tool in stow shellcheck; do
-            command -v "$tool" >/dev/null 2>&1 || missing+=("$tool")
-          done
-          if (( ${#missing[@]} )); then
-            brew install "${missing[@]}"
-          fi
-          for tool in stow shellcheck jq ruby; do
-            command -v "$tool" >/dev/null 2>&1 || {
-              printf 'ci: %s is required by tests/validate.sh and is missing\n' "$tool" >&2
-              exit 1
-            }
-          done
-          shellcheck --version
+          sudo apt-get update
+          sudo apt-get install --yes shellcheck stow zsh jq
+          shellcheck --version | sed -n 2p
 
       - name: Validate
         working-directory: funk
