@@ -64,12 +64,6 @@ doctrine at `~/.config/agentvoice/` are all Agentdots'
 (`~/code/agentdots/prompts/`), linked by its installer, which refuses to
 replace an independent non-symlink file at any of those locations.
 
-GitHub CLI installs through the Brewfile, and
-`libexec/migrate-gh-credentials` preserves an existing login: it can adopt an
-old `/Users/mike/.config/gh/hosts.yml` only when no current host config
-exists and the old file contains a portable token. Keyring-backed credentials
-cannot be transferred by copying that file.
-
 Karabiner reads its config once at launch and watches `~/.config/karabiner`
 for changes, but Stow links `karabiner.json` to a file inside the checkout, so
 editing it leaves the symlink untouched and no event reaches the watcher.
@@ -396,12 +390,11 @@ Run from the checked-out repository as the new account, never with `sudo`:
 
 This installs Homebrew when absent, explicitly upgrades every eligible
 Brewfile dependency, stows every user configuration package, initializes
-tmux-fzf, the pinned Node runtime, and shell-gpt, migrates GitHub CLI
-credentials, converges the AI desktop applications, runs the Agentdots
-installer for everything else AI (the checkout at `~/code/agentdots` is
-required — `./install` stops without it), links `funk` into the active
-Homebrew `bin` directory,
-installs the scheduled updater, Tailscale recovery, and home-network
+tmux-fzf, the pinned Node runtime, and shell-gpt, converges the AI desktop
+applications, runs the Agentdots installer for everything else AI (the
+checkout at `~/code/agentdots` is required — `./install` stops without it),
+links `funk` into the active Homebrew `bin` directory, installs the
+scheduled updater, Tailscale recovery, and home-network
 `home-awake` agents, starts the Yabai/skhd/Karabiner stack, and converges Yabai
 Spaces 1–9. The `home-awake` step prompts for `sudo` once on a fresh machine to
 install its root helper, then skips the privileged work on every later run.

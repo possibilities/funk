@@ -40,7 +40,6 @@ libexec/repair-cask-user-dirs
 libexec/reclaim-app-ownership
 libexec/list-unattendable-casks
 libexec/install-orca
-libexec/migrate-gh-credentials
 libexec/stow-config
 libexec/initialize-configs
 libexec/install-update-agent
@@ -1066,9 +1065,6 @@ grep -F '"$funk_root/libexec/converge-brewfile"' install >/dev/null \
     || fail "default install does not converge Brewfile upgrades before Node setup"
 grep -F "\"\$funk_root/libexec/initialize-configs\"" install >/dev/null \
     || fail "default install does not initialize config dependencies"
-# shellcheck disable=SC2016 # Match the literal helper invocations in ./install.
-grep -F '"$funk_root/libexec/migrate-gh-credentials"' install >/dev/null \
-    || fail "default install does not migrate GitHub CLI credentials"
 # shellcheck disable=SC2016 # Match the literal cask converge in ./install.
 grep -F '"$funk_root/libexec/converge-brew-casks" claude chatgpt' install >/dev/null \
     || fail "default install does not converge the AI desktop applications"
@@ -1181,8 +1177,7 @@ fi
 
 # The AI toolchain plan — vendor CLIs, npm globals, skills, extension prompts
 # — is Agentdots' and is asserted by ~/code/agentdots/tests/validate.sh. Funk
-# asserts only the surface it kept: the Orca cask plan and the GitHub CLI
-# credential migration.
+# asserts only the surface it kept: the Orca cask plan.
 orca_plan=$(libexec/install-orca --check)
 for required_orca_plan in \
     'brew install --cask --yes stablyai/orca/orca  # when missing' \
@@ -1201,10 +1196,6 @@ if grep -F 'skills add' libexec/install-orca >/dev/null; then
     fail "the Orca installer still synchronizes skills owned by Agentdots"
 fi
 
-grep -F '^[[:space:]]*oauth_token:' libexec/migrate-gh-credentials >/dev/null \
-    || fail "GitHub CLI migration does not require a portable token"
-grep -F 'Preserving existing GitHub CLI credentials' libexec/migrate-gh-credentials >/dev/null \
-    || fail "GitHub CLI migration does not preserve an existing login"
 if grep -Eq '^cask "(chatgpt|claude)"$|stablyai/orca/orca' Brewfile; then
     fail "AI desktop application leaked back into the bootstrap Brewfile"
 fi

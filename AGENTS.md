@@ -111,10 +111,9 @@ Homebrew, Stow, launchd, macOS settings, account migration — stays here.
 
 Concretely, Funk keeps the AI *desktop applications* (the claude and chatgpt
 casks, converged from `./install`, and the Orca cask, installed once by
-`libexec/install-orca` and then left to its own updater) plus the `gh`
-credential migration. `./install` then calls
-`~/code/agentdots/scripts/install.sh --install` and refuses to finish if that
-checkout is missing; the scheduled updater calls
+`libexec/install-orca` and then left to its own updater). `./install` then
+calls `~/code/agentdots/scripts/install.sh --install` and refuses to finish
+if that checkout is missing; the scheduled updater calls
 `~/code/agentdots/scripts/sync-skills` the same way. Do not grow a second
 installer or skill-synchronization path in this repository — a new AI tool,
 skill, or harness configuration belongs in Agentdots.
