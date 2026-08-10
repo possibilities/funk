@@ -72,6 +72,7 @@ bin/.local/bin/ghinit
 bin/.local/bin/tailscale-ensure-online
 bin/.local/bin/home-awake
 bin/.local/bin/ssh-tailnet-config
+bin/.local/bin/git-identity
 bin/.local/bin/transcript-vault
 bin/.local/bin/adb-wireless-connect
 bin/.local/bin/adb-wireless-pair
@@ -998,6 +999,23 @@ HOME="$stow_home" "$root/bin/funk" stow
     || fail "the tailnet host directory was stowed; it is generated, not tracked"
 [ -d "$stow_home/.ssh" ] && [ ! -L "$stow_home/.ssh" ] \
     || fail "ssh package did not use --no-folding"
+
+# Identity is the operator's, not the repository's. A tracked name or address
+# is published on sight, and worse, silently authors a fork's commits as this
+# repository's owner. It lives in an untracked config.local that the tracked
+# file includes — which only lands outside the checkout while the git package
+# is --no-folding, because a relative include resolves against the directory of
+# the link git opened. Folded, ~/.config/git IS the repository, so both halves
+# are asserted here: no identity in the tracked file, and a real directory to
+# hold the untracked one.
+if grep -Eq '^[[:space:]]*(name|email)[[:space:]]*=' git/.config/git/config; then
+    fail "the tracked git config carries an identity; funk git-identity owns that"
+fi
+grep -F 'path = ~/.config/git/config.local' git/.config/git/config >/dev/null \
+    || fail "the tracked git config does not include the local identity file"
+[ -d "$stow_home/.config/git" ] && [ ! -L "$stow_home/.config/git" ] \
+    || fail "git package did not use --no-folding; config.local would land in the repository"
+[ -L "$stow_home/.config/git/config" ] || fail "git config was not stowed"
 [ -L "$stow_home/.config/ghostty/config" ] \
     || fail "Ghostty config was not stowed"
 [ -L "$stow_home/.config/nvim" ] && [ -f "$stow_home/.config/nvim/init.lua" ] \

@@ -29,6 +29,8 @@ Commands:
   stow [options]     Link Funk's user configuration packages into HOME
   ssh-tailnet-config [--check]
                       Write ~/.ssh/config.d from live Tailscale state
+  git-identity [--status]
+                      Set this account's commit name and address, once
   install-updater    Install and load Funk's four-times-daily user LaunchAgent
   install-tailscale-recovery
                       Install the login/five-minute Tailscale recovery agent
@@ -72,6 +74,10 @@ case "$command_name" in
     ssh-tailnet-config)
         shift
         exec "$FUNK_ROOT/bin/.local/bin/ssh-tailnet-config" "$@"
+        ;;
+    git-identity)
+        shift
+        exec "$FUNK_ROOT/bin/.local/bin/git-identity" "$@"
         ;;
     install-updater)
         shift

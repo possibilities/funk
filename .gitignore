@@ -4,6 +4,10 @@
 # configuration, and the first `git add -A` commits the Finder's leavings and
 # whatever local agent state is lying around.
 .DS_Store
+# Belt and braces. This file belongs at ~/.config/git/config.local and lands
+# there only while the git package is --no-folding; folded, that path resolves
+# back into this directory and the operator's identity would be committable.
+git/.config/git/config.local
 .claude/settings.local.json
 .claude/scheduled_tasks.lock
 .claude/worktrees

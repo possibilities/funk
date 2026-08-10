@@ -182,6 +182,12 @@ fi
 # being signed out or offline is a "run it again later", not a failed
 # installation: nothing is written, nothing is removed, and whatever aliases are
 # already on the machine go on working.
+# Asks for a name and address exactly once, on an account that has neither, and
+# is silent forever after. It runs before the ssh hosts because both want the
+# operator's attention and a question is better asked before a report scrolls
+# past it.
+"$funk_command" git-identity
+
 ssh_hosts_deferred=0
 ssh_hosts_failed=0
 ssh_hosts_status=0

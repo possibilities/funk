@@ -55,7 +55,7 @@ known_package() {
 
 needs_no_folding() {
     case "$1" in
-        ssh|ghostty|tmux|zsh|karabiner|tmuxctl|bin)
+        ssh|ghostty|tmux|zsh|karabiner|tmuxctl|bin|git)
             return 0
             ;;
         *)

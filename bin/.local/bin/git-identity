@@ -1,0 +1,217 @@
+#!/bin/bash
+# Write the git identity this account commits under, outside the repository.
+#
+# git/.config/git/config is Stow-managed and, once this repository is public,
+# read by strangers. A name and address in it are published — but the worse
+# failure is quieter: someone forks Funk, runs ./install, and every commit they
+# make is authored by whoever the tracked file names, until they happen to look.
+# Identity therefore lives in an untracked local file that the tracked config
+# includes, and this command writes that file.
+#
+# The include only lands outside the checkout because the git package is
+# --no-folding. Folded, ~/.config/git is itself a link into the repository, and
+# a relative include resolves against the link's directory — so the identity
+# file would be written straight back into the working tree, one `git add -A`
+# from being committed. libexec/stow-config keeps git in the no-folding set for
+# this reason and tests/validate.sh pins it there.
+
+set -euo pipefail
+
+# The one line that says this file is ours. Unlike the ssh generator's marker
+# this is advisory: an identity file is written once and then belongs to the
+# operator, so nothing here ever overwrites it.
+marker='# Written by funk git-identity. Not tracked by Funk; edit freely.'
+
+config_file="$HOME/.config/git/config.local"
+tracked_config="$HOME/.config/git/config"
+
+usage() {
+    cat <<'EOF'
+Usage: git-identity
+       git-identity --status
+       git-identity --name NAME --email ADDRESS
+
+With no arguments this writes the local identity file if it is missing and says
+nothing when it is already there. An existing file is never rewritten: it is the
+operator's, and a wrong address silently reattributing commits is worse than any
+convergence this could offer.
+
+--status  Report the identity git resolves, and the file it comes from
+EOF
+}
+
+die() {
+    printf 'git-identity: %s\n' "$*" >&2
+    exit 1
+}
+
+gh_binary() {
+    local candidate
+    for candidate in "${GH:-}" gh /opt/homebrew/bin/gh /usr/local/bin/gh; do
+        [ -n "$candidate" ] || continue
+        if command -v "$candidate" >/dev/null 2>&1; then
+            command -v "$candidate"
+            return 0
+        fi
+    done
+    return 1
+}
+
+# gh knows the account's display name and login, and that is all it knows. The
+# commit address is deliberately not read from it: GitHub returns null for a
+# private address, and an account whose public address differs from the one it
+# has always committed under would be silently re-attributed from the next
+# commit onward. Nothing here guesses an address.
+gh_name() {
+    local gh_bin
+
+    gh_bin=$(gh_binary) || return 1
+    "$gh_bin" api user --jq '.name // empty' 2>/dev/null || return 1
+}
+
+gh_login() {
+    local gh_bin
+
+    gh_bin=$(gh_binary) || return 1
+    "$gh_bin" api user --jq '.login // empty' 2>/dev/null || return 1
+}
+
+write_identity() {
+    local name="$1"
+    local email="$2"
+    local login="$3"
+    local directory
+    local temporary
+
+    directory=$(dirname "$config_file")
+    [ -d "$directory" ] || die "$directory does not exist; run funk stow first"
+    [ ! -L "$directory" ] \
+        || die "$directory is a Stow link into the repository; the git package must be --no-folding"
+
+    temporary="${config_file}.tmp.$$"
+    {
+        printf '%s\n\n' "$marker"
+        printf '[user]\n\tname = %s\n\temail = %s\n' "$name" "$email"
+        [ -z "$login" ] || printf '[github]\n\tuser = %s\n' "$login"
+    } >"$temporary"
+    chmod 0644 "$temporary"
+    mv -f "$temporary" "$config_file"
+    printf 'Wrote %s\n' "$config_file"
+}
+
+report_status() {
+    local name
+    local email
+    local origin
+
+    name=$(git config --get user.name 2>/dev/null || true)
+    email=$(git config --get user.email 2>/dev/null || true)
+
+    printf 'name:  %s\n' "${name:-<unset>}"
+    printf 'email: %s\n' "${email:-<unset>}"
+    if [ -f "$config_file" ]; then
+        printf 'local identity file: %s\n' "$config_file"
+    else
+        printf 'local identity file: missing; run funk git-identity\n'
+    fi
+    origin=$(git config --show-origin --get user.email 2>/dev/null | awk '{ print $1 }' || true)
+    [ -z "$origin" ] || printf 'resolved from: %s\n' "$origin"
+    if [ -f "$tracked_config" ] && grep -Eq '^[[:space:]]*email[[:space:]]*=' "$tracked_config"; then
+        printf 'WARNING: the Stow-managed config carries an address of its own\n'
+    fi
+}
+
+name=
+email=
+mode=converge
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --status)
+            mode=status
+            shift
+            ;;
+        --name)
+            [ "$#" -ge 2 ] || die "--name requires a value"
+            name=$2
+            shift 2
+            ;;
+        --email)
+            [ "$#" -ge 2 ] || die "--email requires a value"
+            email=$2
+            shift 2
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        *)
+            usage >&2
+            exit 64
+            ;;
+    esac
+done
+
+case "$mode" in
+    status)
+        [ -z "$name" ] && [ -z "$email" ] || die "--status takes no other options"
+        report_status
+        exit 0
+        ;;
+esac
+
+if [ -f "$config_file" ] && [ -z "$name" ] && [ -z "$email" ]; then
+    exit 0
+fi
+
+if [ -n "$name" ] || [ -n "$email" ]; then
+    [ -n "$name" ] && [ -n "$email" ] \
+        || die "--name and --email must be given together"
+    write_identity "$name" "$email" "$(gh_login || true)"
+    exit 0
+fi
+
+# Reached only on a machine with no identity file yet, which for a human running
+# ./install means exactly once, on a fresh account. Asking here is the whole
+# point: the alternative is printing a command and trusting the operator to
+# remember it months later, having long since scrolled past. A converged machine
+# has the file and returns above without ever reaching this, so this is not a
+# prompt that ./install grows permanently.
+suggested_name=$(gh_name || true)
+
+if [ -t 0 ]; then
+    printf 'This account has no git identity yet, and Funk does not carry one:\n'
+    printf 'a tracked name and address would author every commit made in a fork\n'
+    printf "as this repository's owner. Setting it now, once.\n\n"
+
+    if [ -n "$suggested_name" ]; then
+        printf 'Name [%s]: ' "$suggested_name"
+    else
+        printf 'Name: '
+    fi
+    IFS= read -r name || name=
+    [ -n "$name" ] || name="$suggested_name"
+    [ -n "$name" ] || die "a name is required"
+
+    # No default is offered. GitHub reports null for a private address, and the
+    # address someone has always committed under is frequently not the one on
+    # their account — proposing either would quietly re-attribute every commit
+    # from here on.
+    printf 'Commit email: '
+    IFS= read -r email || email=
+    [ -n "$email" ] || die "an email address is required"
+
+    write_identity "$name" "$email" "$(gh_login || true)"
+    exit 0
+fi
+
+# Non-interactive: a scheduled run or a pipe. Say what is missing and let the
+# caller carry it, rather than blocking on a prompt nobody is there to answer.
+printf 'No git identity is configured for this account.\n'
+printf 'Set yours with:\n'
+if [ -n "$suggested_name" ]; then
+    printf '  funk git-identity --name %s --email you@example.com\n' \
+        "$(printf '%q' "$suggested_name")"
+else
+    printf '  funk git-identity --name "Your Name" --email you@example.com\n'
+fi
+exit 0

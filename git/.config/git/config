@@ -1,6 +1,12 @@
-[user]
-    name = Mike Bannister
-    email = notimpossiblemike@gmail.com
+# Identity is deliberately not here. This file is tracked and published, so a
+# name and address in it are both a disclosure and a trap: a fork that runs
+# ./install would author every commit as this repository's owner until someone
+# noticed. `funk git-identity` writes the file included below, which is local
+# and untracked. The path is spelled absolutely rather than relatively because
+# a relative include resolves against the directory of the *link* git opened,
+# which is only outside the checkout while the git package stays --no-folding.
+[include]
+    path = ~/.config/git/config.local
 [alias]
     st = status
     ci = commit
@@ -37,8 +43,6 @@
     line-numbers = true
 [push]
     default = simple
-[github]
-  user = possibilities
 [init]
 	defaultBranch = main
 [pull]

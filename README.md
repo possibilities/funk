@@ -154,7 +154,7 @@ target account. Funk owns the union of the useful packages from both projects:
 
 | Package | Target | `--no-folding` |
 | --- | --- | --- |
-| `git` | `~/.config/git/` | no |
+| `git` | `~/.config/git/` | yes |
 | `ssh` | `~/.ssh/` | yes |
 | `ghostty` | `~/.config/ghostty/` | yes |
 | `nvim` | `~/.config/nvim/` | no |
@@ -174,6 +174,30 @@ symlink rather than becoming a symlink into the checkout: `~/.ssh/config.d/` is
 written by `funk ssh-tailnet-config` and holds files Funk does not track at
 all. Under normal folding the generator would be writing straight back into
 this repository.
+
+The `git` row is there for the same reason and one sharper edge. Funk tracks
+every git setting except who you are: a name and address in a published file
+would author a fork's commits as this repository's owner until somebody
+noticed. The tracked config ends with
+
+```
+[include]
+    path = ~/.config/git/config.local
+```
+
+and `funk git-identity` writes that file. `./install` asks for a name and
+address the first time it runs on an account that has neither — offering the
+name GitHub already knows, and never proposing an address, because GitHub
+reports nothing for a private one and the address you commit under is often not
+the one on your account. After that the file exists and nothing asks again;
+`funk git-identity` on its own is silent, and it never rewrites a file you have
+edited. `funk git-identity --status` reports the identity in force and which
+file it came from.
+
+The folding matters here more than anywhere: a relative `include.path` resolves
+against the directory of the link git opened, so under folding
+`~/.config/git/config.local` *is* a path inside this checkout, and your identity
+would be one `git add -A` from being committed.
 
 There is no `agentvoice` package anymore either: the voice orchestrator's
 doctrine (`ORCHESTRATOR.md`, `ORCHESTRATOR_SESSION_START.md`,

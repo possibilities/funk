@@ -34,7 +34,7 @@ converge by running `./install`; do not rely on one-off live configuration.
   possible: source tmux's config and restart Yabai/skhd services. Karabiner
   reloads its configuration automatically.
 
-The `ssh`, `ghostty`, `tmux`, `zsh`, `karabiner`, `tmuxctl`, and `bin`
+The `ssh`, `ghostty`, `tmux`, `zsh`, `karabiner`, `tmuxctl`, `bin`, and `git`
 packages use `--no-folding` so their target directories remain available
 for generated or unmanaged files. Other packages may use normal Stow
 folding.
@@ -47,9 +47,18 @@ generator would be writing into this checkout.
 
 Machine-identifying data is generated onto the machine at converge time, never
 tracked and never adopted back. `home-awake --learn-network` records the home
-router that way and `funk ssh-tailnet-config` records the tailnet that way; both
-write outside this repository, and neither may be pulled back in with
+router that way, `funk ssh-tailnet-config` records the tailnet that way, and
+`funk git-identity` records the commit name and address that way; all three
+write outside this repository, and none may be pulled back in with
 `funk stow --adopt`.
+
+The identity case is the one where getting the folding wrong is worst, and it
+is worth understanding before touching the `git` package. A relative
+`include.path` resolves against the directory of the *link* git opened, not the
+file behind it — so a real `~/.config/git` puts `config.local` on the machine,
+while a folded one puts the operator's name and address inside this working
+tree. `tests/validate.sh` asserts both halves: no identity in the tracked file,
+and a real directory to hold the untracked one.
 
 Never Stow credentials, secrets, generated application state, remote-device
 configuration, root-owned helpers, LaunchDaemons, rendered LaunchAgents, or live
