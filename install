@@ -174,7 +174,6 @@ fi
 "$funk_command" install-updater
 "$funk_command" install-tailscale-recovery
 "$funk_command" install-home-awake
-"$funk_command" install-local-services
 "$funk_command" install-transcript-vault
 "$funk_command" configure-macos
 

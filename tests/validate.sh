@@ -29,7 +29,6 @@ libexec/install-update-agent
 libexec/install-tailscale-agent
 libexec/install-home-awake
 libexec/install-home-awake-agent
-libexec/install-local-services
 libexec/verify-local-services
 libexec/install-transcript-vault-agent
 libexec/configure-macos
