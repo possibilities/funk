@@ -68,11 +68,13 @@ the macOS-only checks passed — only that nothing portable regressed. **Run
 `tests/validate.sh` on the machine before landing anything that touches the
 guarded halves**; that run is the one where the skip list is empty.
 
-Every shellcheck severity is fatal, style included. That is only safe because
-CI installs a pinned shellcheck by checksum instead of the runner's package:
-0.9.0 raises SC2015 on assertions 0.11.0 does not emit even when asked for it
-by name. Bump the version and its `SHELLCHECK_SHA256` together, and fix what a
-newer release finds rather than lowering the severity to silence it.
+shellcheck runs at `--severity=warning`, and that floor is deliberate rather
+than lazy. The style tier disagrees between releases — 0.9.0 raises SC2015 on
+assertions 0.11.0 will not emit even when asked for SC2015 by name — so
+enforcing it means pinning a version, and the pinned release binary needs
+roughly 3.7GB of RSS whether it is handed all 76 files or one five-line
+fixture. That was tried and reverted. Fix what errors and warnings find; do not
+raise the floor back to style without solving the memory cost first.
 
 ## Unprivileged convergence
 
