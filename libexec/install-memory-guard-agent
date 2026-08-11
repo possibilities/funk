@@ -1,0 +1,102 @@
+#!/bin/bash
+
+set -euo pipefail
+
+label=com.arthack.funk.memory-guard
+
+die() {
+    printf 'funk install-memory-guard-agent: %s\n' "$*" >&2
+    exit 1
+}
+
+check_only=0
+case "${1:-}" in
+    "") ;;
+    --check)
+        [ "$#" -eq 1 ] || {
+            printf 'Usage: funk install-memory-guard [--check]\n' >&2
+            exit 64
+        }
+        check_only=1
+        ;;
+    *)
+        printf 'Usage: funk install-memory-guard [--check]\n' >&2
+        exit 64
+        ;;
+esac
+
+[ "$(uname -s)" = Darwin ] || die "macOS is required"
+[ "$(id -u)" -ne 0 ] || die "run this command as the target user, not root"
+
+funk_root=${FUNK_ROOT:?FUNK_ROOT is not set}
+template="$funk_root/launchd/$label.plist.in"
+helper="$funk_root/bin/.local/bin/memory-guard"
+agent_dir="$HOME/Library/LaunchAgents"
+agent_path="$agent_dir/$label.plist"
+log_dir="$HOME/Library/Logs/Funk"
+log_path="$log_dir/memory-guard.log"
+domain="gui/$(id -u)"
+# The guard posts banners through funk-notify, which lives in the stow-managed
+# bin directory; a launchd job inherits none of the login shell's PATH.
+agent_path_value="$HOME/.local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+
+[ -f "$template" ] || die "template not found: $template"
+[ -x "$helper" ] || die "memory guard helper is missing or not executable: $helper"
+
+# The guard degrades rather than fails when the notifier is absent: reclaiming
+# memory is the product and the banner only reports it.
+command -v funk-notify >/dev/null 2>&1 || [ -x "$HOME/.local/bin/funk-notify" ] \
+    || printf 'note: funk-notify is not installed; the guard will act without posting banners\n'
+
+tmpdir=$(mktemp -d "${TMPDIR:-/tmp}/funk-memory-guard.XXXXXX")
+trap 'rm -rf "$tmpdir"' EXIT
+rendered="$tmpdir/$label.plist"
+
+cp "$template" "$rendered"
+/usr/bin/plutil -remove ProgramArguments.0 "$rendered"
+/usr/bin/plutil -insert ProgramArguments.0 -string "$helper" "$rendered"
+/usr/bin/plutil -replace EnvironmentVariables.HOME -string "$HOME" "$rendered"
+/usr/bin/plutil -replace EnvironmentVariables.PATH -string "$agent_path_value" "$rendered"
+/usr/bin/plutil -replace StandardOutPath -string "$log_path" "$rendered"
+/usr/bin/plutil -replace StandardErrorPath -string "$log_path" "$rendered"
+/usr/bin/plutil -lint "$rendered" >/dev/null
+
+[ "$(/usr/libexec/PlistBuddy -c 'Print :ProgramArguments:0' "$rendered")" = "$helper" ] \
+    || die "rendered guard helper is incorrect"
+[ "$(/usr/libexec/PlistBuddy -c 'Print :EnvironmentVariables:HOME' "$rendered")" = "$HOME" ] \
+    || die "rendered guard HOME is incorrect"
+if /usr/libexec/PlistBuddy -c 'Print :ProgramArguments:1' "$rendered" >/dev/null 2>&1; then
+    die "rendered guard agent has an unexpected extra argument"
+fi
+[ "$(/usr/libexec/PlistBuddy -c 'Print :RunAtLoad' "$rendered")" = true ] \
+    || die "rendered guard agent does not run at login"
+[ "$(/usr/libexec/PlistBuddy -c 'Print :StartInterval' "$rendered")" = 60 ] \
+    || die "rendered guard agent does not run every minute"
+
+# A guard whose own pass errors out is a guard that silently stops guarding, so
+# prove one runs before installing the schedule that depends on it.
+"$helper" --check >/dev/null || die "memory guard self-check failed"
+
+if [ "$check_only" -eq 1 ]; then
+    printf 'Memory guard LaunchAgent renders and validates successfully.\n'
+    exit 0
+fi
+
+mkdir -p "$agent_dir" "$log_dir"
+if [ -L "$agent_path" ]; then
+    die "refusing to replace symlink: $agent_path"
+fi
+
+if [ -e "$agent_path" ]; then
+    existing_label=$(/usr/libexec/PlistBuddy -c 'Print :Label' "$agent_path" 2>/dev/null || true)
+    [ "$existing_label" = "$label" ] \
+        || die "refusing to replace unrelated file: $agent_path"
+fi
+
+/usr/bin/install -m 0644 "$rendered" "$agent_path"
+/bin/launchctl bootout "$domain/$label" 2>/dev/null || true
+/bin/launchctl bootstrap "$domain" "$agent_path"
+
+printf 'Installed %s (at login and every minute)\n' "$agent_path"
+printf 'Logs append to %s\n' "$log_path"
+printf 'Inspect with: memory-guard --status\n'

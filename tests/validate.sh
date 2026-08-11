@@ -48,6 +48,7 @@ libexec/install-home-awake
 libexec/install-home-awake-agent
 libexec/verify-local-services
 libexec/install-transcript-vault-agent
+libexec/install-memory-guard-agent
 libexec/configure-macos
 libexec/verify-notifications
 libexec/configure-system
@@ -74,6 +75,7 @@ bin/.local/bin/home-awake
 bin/.local/bin/ssh-tailnet-config
 bin/.local/bin/git-identity
 bin/.local/bin/transcript-vault
+bin/.local/bin/memory-guard
 bin/.local/bin/adb-wireless-connect
 bin/.local/bin/adb-wireless-pair
 bin/.local/bin/raycast/scrcpy.sh
@@ -165,6 +167,7 @@ plist_lint launchd/com.arthack.funk.update.plist.in >/dev/null
 plist_lint launchd/com.arthack.funk.tailscale-online.plist.in >/dev/null
 plist_lint launchd/com.arthack.funk.gog-authed.plist.in >/dev/null
 plist_lint launchd/com.arthack.funk.transcript-vault.plist.in >/dev/null
+plist_lint launchd/com.arthack.funk.memory-guard.plist.in >/dev/null
 plist_lint system/com.arthack.funk.harden-boot.plist >/dev/null
 plist_lint launchd/com.arthack.funk.home-awake.plist.in >/dev/null
 plist_lint launchd/com.arthack.funk.home-awake-caffeinate.plist >/dev/null

@@ -43,6 +43,9 @@ Commands:
   transcript-vault   Run the transcript preservation pipeline once now
   install-transcript-vault
                       Install the hourly transcript preservation agent
+  memory-guard       Run one memory-guard pass now (--status, --dry-run)
+  install-memory-guard
+                      Install the per-minute memory guard agent
   configure-orca     Apply the AgentStart-managed Orca settings overlay
   configure-macos    Apply Funk's user-level macOS preferences
   verify-notifications
@@ -118,6 +121,14 @@ case "$command_name" in
     install-transcript-vault)
         shift
         exec "$FUNK_ROOT/libexec/install-transcript-vault-agent" "$@"
+        ;;
+    memory-guard)
+        shift
+        exec "$FUNK_ROOT/bin/.local/bin/memory-guard" "$@"
+        ;;
+    install-memory-guard)
+        shift
+        exec "$FUNK_ROOT/libexec/install-memory-guard-agent" "$@"
         ;;
     configure-orca)
         shift
