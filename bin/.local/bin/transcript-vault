@@ -53,6 +53,10 @@ ARCHIVE_HOME="$ARCHIVE_ROOT/home"
 CANON="$ARCHIVE_HOME/.claude/projects"
 LIVE="$HOME/.claude/projects"
 CASS_DATA_DIR=/Volumes/Scratch/cass
+# An incremental pass is seconds to minutes; this bound only ever fires on
+# a wedge, and it must stay well under the hourly interval so a stopped
+# pass cannot delay the next firing.
+INDEX_TIMEOUT=${TRANSCRIPT_VAULT_INDEX_TIMEOUT:-1500}
 CREDS_DIR="$HOME/.config/restic"
 export RESTIC_CACHE_DIR=/Volumes/Scratch/cache/restic
 
@@ -224,12 +228,59 @@ fi
 # are watermark-gated by mtime, which covers everything rsync adds in normal
 # operation; bulk imports of historic-mtime files need a one-shot
 # `cass index --full --data-dir /Volumes/Scratch/cass`.
+#
+# The pass is bounded. cass can wedge — its indexing thread spins without
+# posting progress (its issues #244/#258) — and an unbounded stage holds this
+# script's single-instance lock for as long as the wedge lasts, so every later
+# hourly firing skips and preservation stops with it. That happened on
+# 2026-08-12: a wedged index blocked the lock for hours and the rsync and
+# restic stages never ran again until it was killed by hand. Indexing is the
+# one stage this pipeline can lose without losing data, so it gets a deadline
+# and the preservation stages keep their schedule.
 if command -v cass >/dev/null 2>&1 && [ -d "$CASS_DATA_DIR" ]; then
     index_rc=0
-    index_out=$(nice -n 20 cass index \
-        --data-dir "$CASS_DATA_DIR" --json --no-progress-events 2>&1) || index_rc=$?
+    index_out_file=$(mktemp "${TMPDIR:-/tmp}/transcript-vault-index.XXXXXX")
+    index_rc_file=$(mktemp "${TMPDIR:-/tmp}/transcript-vault-index-rc.XXXXXX")
+    # The child records its own status so this shell never needs `wait`, and
+    # the job is disowned: bash announces a signalled background job it still
+    # owns ("Terminated: 15") on stderr, which lands in this log looking like a
+    # failure rather than the deadline working as designed.
+    {
+        nice -n 20 cass index \
+            --data-dir "$CASS_DATA_DIR" --json --no-progress-events \
+            >"$index_out_file" 2>&1
+        printf '%s\n' "$?" >"$index_rc_file"
+    } &
+    index_pid=$!
+    disown "$index_pid" 2>/dev/null || true
+    waited=0
+    while kill -0 "$index_pid" 2>/dev/null; do
+        if [ "$waited" -ge "$INDEX_TIMEOUT" ]; then
+            # Kill the indexer itself, not just the subshell wrapping it.
+            # Signalling only the wrapper leaves cass running, still holding
+            # the database, while this log claims the pass was stopped.
+            pkill -P "$index_pid" 2>/dev/null
+            kill "$index_pid" 2>/dev/null
+            sleep 2
+            pkill -9 -P "$index_pid" 2>/dev/null
+            kill -9 "$index_pid" 2>/dev/null
+            index_rc=124
+            break
+        fi
+        sleep 5
+        waited=$((waited + 5))
+    done
+    if [ "$index_rc" -eq 0 ]; then
+        index_rc=$(cat "$index_rc_file" 2>/dev/null)
+        index_rc=${index_rc:-1}
+    fi
+    index_out=$(cat "$index_out_file" 2>/dev/null)
+    rm -f "$index_out_file" "$index_rc_file"
     if [ "$index_rc" -eq 0 ]; then
         log "cass index done: $(printf '%s' "$index_out" | tr -d '\n' | cut -c 1-300)"
+    elif [ "$index_rc" -eq 124 ]; then
+        log "cass index exceeded ${INDEX_TIMEOUT}s and was stopped (non-fatal); \
+preservation stages already completed"
     else
         log "cass index failed or busy, exit $index_rc (non-fatal)"
     fi
