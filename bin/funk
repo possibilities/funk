@@ -36,7 +36,7 @@ Commands:
                       Install the login/five-minute Tailscale recovery agent
   home-awake [option] Converge or report home-network sleep and screen lock
   install-home-awake  Install the home-network sleep and screen-lock agent
-  install-agentsurface-shims
+  install-agentlaunch-shims
                       Install PATH shims that balance bare claude/codex/pi launches
   verify-local-services
                       Confirm the fleet services are running and reachable
@@ -46,7 +46,6 @@ Commands:
   memory-guard       Run one memory-guard pass now (--status, --dry-run)
   install-memory-guard
                       Install the per-minute memory guard agent
-  configure-orca     Apply the AgentStart-managed Orca settings overlay
   configure-macos    Apply Funk's user-level macOS preferences
   verify-notifications
                       Confirm Funk's health alerts can reach the screen
@@ -98,13 +97,13 @@ case "$command_name" in
         shift
         exec "$FUNK_ROOT/libexec/install-home-awake" "$@"
         ;;
-    install-agentsurface-shims)
+    install-agentlaunch-shims)
         shift
         # AgentStart owns the fleet-facing installers; this stays a funk
         # subcommand for muscle memory and delegates.
-        agentstart_shims="$HOME/code/agentstart/scripts/install-agentsurface-shims"
+        agentstart_shims="$HOME/code/agentstart/scripts/install-agentlaunch-shims"
         if [ ! -x "$agentstart_shims" ]; then
-            printf 'funk: AgentStart owns the agentsurface shims and is missing: %s\n' \
+            printf 'funk: AgentStart owns the AgentLaunch shims and is missing: %s\n' \
                 "$agentstart_shims" >&2
             exit 66
         fi
@@ -129,18 +128,6 @@ case "$command_name" in
     install-memory-guard)
         shift
         exec "$FUNK_ROOT/libexec/install-memory-guard-agent" "$@"
-        ;;
-    configure-orca)
-        shift
-        # AgentStart owns the Orca settings overlay and its merge tooling;
-        # this stays a funk subcommand for muscle memory and delegates.
-        agentstart_configure="$HOME/code/agentstart/scripts/configure-orca"
-        if [ ! -x "$agentstart_configure" ]; then
-            printf 'funk: AgentStart owns the Orca settings overlay and is missing: %s\n' \
-                "$agentstart_configure" >&2
-            exit 66
-        fi
-        exec "$agentstart_configure" "$@"
         ;;
     configure-macos)
         shift

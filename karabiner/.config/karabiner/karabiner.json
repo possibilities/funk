@@ -341,67 +341,6 @@
             ]
           },
           {
-            "description": "Option+M/,/U/I sends Orca's tab and worktree navigation chords",
-            "manipulators": [
-              {
-                "type": "basic",
-                "conditions": [
-                  {
-                    "type": "frontmost_application_if",
-                    "bundle_identifiers": ["^com\\.stablyai\\.orca$"]
-                  }
-                ],
-                "from": {
-                  "key_code": "m",
-                  "modifiers": { "mandatory": ["option"] }
-                },
-                "to": [{ "key_code": "open_bracket", "modifiers": ["command", "shift"] }]
-              },
-              {
-                "type": "basic",
-                "conditions": [
-                  {
-                    "type": "frontmost_application_if",
-                    "bundle_identifiers": ["^com\\.stablyai\\.orca$"]
-                  }
-                ],
-                "from": {
-                  "key_code": "comma",
-                  "modifiers": { "mandatory": ["option"] }
-                },
-                "to": [{ "key_code": "close_bracket", "modifiers": ["command", "shift"] }]
-              },
-              {
-                "type": "basic",
-                "conditions": [
-                  {
-                    "type": "frontmost_application_if",
-                    "bundle_identifiers": ["^com\\.stablyai\\.orca$"]
-                  }
-                ],
-                "from": {
-                  "key_code": "u",
-                  "modifiers": { "mandatory": ["option"] }
-                },
-                "to": [{ "key_code": "down_arrow", "modifiers": ["command", "shift"] }]
-              },
-              {
-                "type": "basic",
-                "conditions": [
-                  {
-                    "type": "frontmost_application_if",
-                    "bundle_identifiers": ["^com\\.stablyai\\.orca$"]
-                  }
-                ],
-                "from": {
-                  "key_code": "i",
-                  "modifiers": { "mandatory": ["option"] }
-                },
-                "to": [{ "key_code": "up_arrow", "modifiers": ["command", "shift"] }]
-              }
-            ]
-          },
-          {
             "description": "Caps Lock sends Escape",
             "manipulators": [
               {

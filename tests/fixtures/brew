@@ -53,16 +53,6 @@ case "$*" in
         if [ "$status" -eq 0 ] && [ -n "${FUNK_TEST_FORMULA_NEW:-}" ]; then
             set_state_value formula:terminal-notifier "$FUNK_TEST_FORMULA_NEW"
         fi
-        # Nothing Homebrew does moves Orca's bundle any more. This stands in
-        # for the app's own updater landing a release while the scheduled run
-        # is in flight, which is now the only way the reported Orca version can
-        # change across a single run.
-        if [ "$status" -eq 0 ] && [ -n "${FUNK_TEST_ORCA_BUNDLE_NEW:-}" ] \
-            && [ -n "${FUNK_ORCA_INFO_PLIST:-}" ]; then
-            /usr/libexec/PlistBuddy \
-                -c "Set :CFBundleShortVersionString $FUNK_TEST_ORCA_BUNDLE_NEW" \
-                "$FUNK_ORCA_INFO_PLIST" >/dev/null 2>&1
-        fi
         exit "$status"
         ;;
     "list --formula --versions "*)
@@ -78,7 +68,7 @@ case "$*" in
     "upgrade --cask --greedy --yes "*|"install --cask --yes "*)
         name=${*: -1}
         receipt_name=${name##*/}
-        version=${FUNK_TEST_ORCA_NEW:-$(state_value "cask:$receipt_name")}
+        version=$(state_value "cask:$receipt_name")
         [ -n "$version" ] || version=1.0.0
         set_state_value "cask:$receipt_name" "$version"
         ;;

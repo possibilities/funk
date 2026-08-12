@@ -54,8 +54,8 @@ die() {
 
 # Nothing is wrong with this checkout; Tailscale just cannot answer right now.
 # EX_TEMPFAIL is what ./install reads to report the step as deferred rather than
-# failing the installation, the same way a running Orca defers its settings
-# overlay. Nothing has been written or removed when this is reached, so the
+# failing the installation. Nothing has been written or removed when this is
+# reached, so the
 # aliases already on the machine keep working.
 defer() {
     printf 'ssh-tailnet-config: %s\n' "$*" >&2

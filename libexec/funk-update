@@ -41,7 +41,6 @@ esac
 
 funk_root=${FUNK_ROOT:?FUNK_ROOT is not set}
 brewfile="$funk_root/Brewfile"
-orca_installer="$funk_root/libexec/install-orca"
 brewfile_installer="$funk_root/libexec/converge-brewfile"
 unattendable_lister="$funk_root/libexec/list-unattendable-casks"
 cask_dir_lister="$funk_root/libexec/repair-cask-user-dirs"
@@ -57,10 +56,6 @@ if [ ! -f "$brewfile" ]; then
     log "FAILED: Brewfile not found at $brewfile" >&2
     exit 66
 fi
-[ -x "$orca_installer" ] || {
-    log "FAILED: Orca installer not found at $orca_installer" >&2
-    exit 66
-}
 [ -x "$brewfile_installer" ] || {
     log "FAILED: Brewfile installer not found at $brewfile_installer" >&2
     exit 66
@@ -102,8 +97,6 @@ snapshot_versions() {
     local output
     local version
     local label
-    local orca_plist
-    local lock_file="$HOME/.agents/.skill-lock.json"
 
     : >"$destination"
     for kind in formula cask; do
@@ -118,34 +111,6 @@ snapshot_versions() {
         done < <("$brew_bin" bundle list --file="$brewfile" --"$kind" 2>/dev/null || true)
     done
 
-    # Orca updates itself, so Homebrew's receipt stops describing what is
-    # actually installed the first time the app's own updater applies a
-    # release. The bundle is the only honest source, and reading it also keeps
-    # the running-copy check below meaningful no matter which updater moved it.
-    orca_plist=${FUNK_ORCA_INFO_PLIST:-/Applications/Orca.app/Contents/Info.plist}
-    if [ -f "$orca_plist" ]; then
-        version=$(
-            /usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' \
-                "$orca_plist" 2>/dev/null || true
-        )
-        if [ -n "$version" ]; then
-            printf 'app:orca\tOrca\t%s\n' "$version" >>"$destination"
-        fi
-    fi
-
-    if [ -f "$lock_file" ]; then
-        for name in orca-cli orchestration computer-use; do
-            version=$(
-                /usr/bin/jq -r --arg name "$name" \
-                    '.skills[$name].skillFolderHash // empty' \
-                    "$lock_file" 2>/dev/null || true
-            )
-            [ -n "$version" ] || continue
-            printf 'skill:%s\t%s skill\t%s\n' "$name" "$name" "$version" \
-                >>"$destination"
-        done
-    fi
-
     LC_ALL=C sort -o "$destination" "$destination"
 }
 
@@ -154,8 +119,6 @@ collect_changes() {
     local label
     local new_version
     local old_version
-    local old_short
-    local new_short
 
     : >"$changes"
     while IFS=$'\t' read -r key label new_version; do
@@ -166,28 +129,13 @@ collect_changes() {
         )
         [ "$old_version" != "$new_version" ] || continue
 
-        case "$key" in
-            skill:*)
-                old_short=${old_version:0:8}
-                new_short=${new_version:0:8}
-                if [ -n "$old_version" ]; then
-                    printf '%s rev %s → %s\n' "$label" "$old_short" "$new_short" \
-                        >>"$changes"
-                else
-                    printf '%s installed @ rev %s\n' "$label" "$new_short" \
-                        >>"$changes"
-                fi
-                ;;
-            *)
-                if [ -n "$old_version" ]; then
-                    printf '%s %s → %s\n' "$label" "$old_version" "$new_version" \
-                        >>"$changes"
-                else
-                    printf '%s installed @ %s\n' "$label" "$new_version" \
-                        >>"$changes"
-                fi
-                ;;
-        esac
+        if [ -n "$old_version" ]; then
+            printf '%s %s → %s\n' "$label" "$old_version" "$new_version" \
+                >>"$changes"
+        else
+            printf '%s installed @ %s\n' "$label" "$new_version" \
+                >>"$changes"
+        fi
     done <"$after"
 }
 
@@ -224,38 +172,6 @@ send_notification() {
         -group "$group"
 }
 
-# Funk no longer upgrades Orca -- the app's own updater does, and it applies on
-# quit, so the running copy is normally the one on disk. This stays as the
-# tripwire for when that is not true: whatever replaced the bundle, a running
-# Orca goes on serving code that is no longer there, and the first lazily
-# loaded pane fails on a chunk it can no longer resolve. Nothing else would say
-# so on a machine where Orca is always open. A dedicated group keeps the prompt
-# from being buried in the general "Updated: ..." summary.
-orca_restart_notice() {
-    local version
-    local running_processes
-
-    version=$(
-        /usr/bin/awk '$1 == "Orca" { print $NF; exit }' "$changes"
-    )
-    [ -n "$version" ] || return 0
-    # Only a running Orca needs restarting; a stopped one picks the new bundle
-    # up on its next launch, and nagging about that would be noise. `pgrep -x`
-    # does not match this bundle on macOS, and matching the name alone would
-    # also catch the Helper processes, so compare the executable path exactly.
-    #
-    # Deliberately not a pipeline: `grep -q` exits on its first match, which
-    # SIGPIPEs `ps`, and under this script's `pipefail` that reads as a failed
-    # pipeline even though the match succeeded -- silently skipping the very
-    # notification this exists to send.
-    running_processes=$(/bin/ps -axo comm= || true)
-    /usr/bin/grep -qxF \
-        "${FUNK_ORCA_BINARY:-/Applications/Orca.app/Contents/MacOS/Orca}" \
-        <<<"$running_processes" || return 0
-    printf 'Orca %s is installed; the running copy is still the old one.\n' \
-        "$version"
-}
-
 snapshot_versions "$before"
 
 # A pkg cask, a cask whose removal steps run a privileged script, and an
@@ -289,16 +205,12 @@ fi
 status=0
 log "starting: $brew_bin bundle install --upgrade --file=$brewfile"
 "$brewfile_installer" || status=$?
-if [ "$status" -eq 0 ]; then
-    "$orca_installer" || status=$?
-fi
 # Each agent CLI's runbook ships as a skill inside its own checkout, and a
 # stale runbook misleads a session as badly as a stale binary does. Refreshing
 # them reads local directories and rewrites skill files: no downloads, no
 # elevation, no application restarts. That is exactly the kind of work this
 # six-hour path is for, so the runbooks track the checkouts without waiting
-# for the next ./install. AgentStart's sync-skills also refreshes the Orca
-# harness skills that used to ride along with the Orca installer above.
+# for the next ./install.
 if [ "$status" -eq 0 ]; then
     "$skill_sync" || status=$?
 fi
@@ -337,13 +249,6 @@ if [ "$notify" -eq 1 ]; then
             notification_body="$notification_body Needs ./install: $skipped_summary."
         fi
         send_notification "Funk Update" "$notification_body" || status=1
-        orca_restart=$(orca_restart_notice)
-        if [ -n "$orca_restart" ]; then
-            log "Orca was upgraded while running; restart is pending"
-            send_notification "Restart Orca" \
-                "$orca_restart Restart it when you are ready." \
-                com.arthack.funk.orca-restart || true
-        fi
     else
         if [ -n "$change_summary" ]; then
             notification_body="Installer failed after updating: $change_summary. See update.log."

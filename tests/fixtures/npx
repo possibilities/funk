@@ -10,43 +10,6 @@ if [ -n "${FUNK_TEST_NPX_LOG:-}" ]; then
     } >>"$FUNK_TEST_NPX_LOG"
 fi
 
-case "$*" in
-    "--yes skills add https://github.com/stablyai/orca "*)
-        if [ -n "${FUNK_TEST_ORCA_CLI_HASH:-}" ] \
-            && [ -f "$HOME/.agents/.skill-lock.json" ]; then
-            staged="$HOME/.agents/.skill-lock.json.tmp"
-            /usr/bin/jq --arg hash "$FUNK_TEST_ORCA_CLI_HASH" \
-                '.skills["orca-cli"].skillFolderHash = $hash' \
-                "$HOME/.agents/.skill-lock.json" >"$staged"
-            mv "$staged" "$HOME/.agents/.skill-lock.json"
-        fi
-        ;;
-    "--yes skills list --global --json")
-        cat <<'EOF'
-[
-  {
-    "name": "orca-cli",
-    "scope": "global",
-    "source": "stablyai/orca",
-    "agents": ["Codex", "Claude Code", "Pi"]
-  },
-  {
-    "name": "orchestration",
-    "scope": "global",
-    "source": "stablyai/orca",
-    "agents": ["Codex", "Claude Code", "Pi"]
-  },
-  {
-    "name": "computer-use",
-    "scope": "global",
-    "source": "stablyai/orca",
-    "agents": ["Codex", "Claude Code", "Pi"]
-  }
-]
-EOF
-        ;;
-esac
-
 # Callers that need to see a failing skills tool set this; everything else gets
-# the successful path above regardless of which branch matched.
+# the successful path after recording the invocation.
 exit "${FUNK_TEST_NPX_EXIT:-0}"

@@ -39,7 +39,6 @@ libexec/repair-cask-artifacts
 libexec/repair-cask-user-dirs
 libexec/reclaim-app-ownership
 libexec/list-unattendable-casks
-libexec/install-orca
 libexec/stow-config
 libexec/initialize-configs
 libexec/install-update-agent
@@ -329,8 +328,8 @@ if command -v ruby >/dev/null 2>&1; then
       data = JSON.parse(File.read(ARGV.fetch(0)))
       rules = data.fetch("profiles").fetch(0)
                   .fetch("complex_modifications").fetch("rules")
-      abort "unexpected Karabiner rule count" unless rules.length == 6
-      abort "unexpected Karabiner manipulator counts" unless rules.map { |r| r.fetch("manipulators").length } == [9, 9, 4, 2, 4, 1]
+      abort "unexpected Karabiner rule count" unless rules.length == 5
+      abort "unexpected Karabiner manipulator counts" unless rules.map { |r| r.fetch("manipulators").length } == [9, 9, 4, 2, 1]
 
       browser_ids = [
         "^com\\.google\\.Chrome$",
@@ -365,30 +364,7 @@ if command -v ruby >/dev/null 2>&1; then
           m.dig("conditions", 0, "identifiers") == [{ "is_built_in_keyboard" => true }]
       }
 
-      # Orca cannot match any Option chord on macOS: its matcher reads
-      # KeyboardEvent.key, and Option+, arrives as a composed character whether
-      # or not Command is held. Karabiner therefore sends the stock chords Orca
-      # already ships, so nothing has to be bound inside Orca at all.
-      #
-      # The four sources sit in two QWERTY columns so the hand finds them
-      # without looking: U and M share the J column, I and comma share the K
-      # column. U and I take their direction from vim, where J is down and K is
-      # up, so Option+U is the next worktree and Option+I the previous one. Tab
-      # navigation keeps physical order instead, left key previous.
-      orca_rules = rules.fetch(4).fetch("manipulators")
-      abort "unexpected Orca navigation sources" unless orca_rules.map { |m|
-        [m.dig("from", "key_code"), m.dig("from", "modifiers")]
-      } == %w[m comma u i].map { |key| [key, { "mandatory" => ["option"] }] }
-      abort "unexpected Orca navigation targets" unless orca_rules.map { |m| m.fetch("to") } ==
-        %w[open_bracket close_bracket down_arrow up_arrow].map { |key|
-          [{ "key_code" => key, "modifiers" => ["command", "shift"] }]
-        }
-      abort "Orca navigation is not scoped to Orca" unless orca_rules.all? { |m|
-        m.dig("conditions", 0, "type") == "frontmost_application_if" &&
-          m.dig("conditions", 0, "bundle_identifiers") == ["^com\\.stablyai\\.orca$"]
-      }
-
-      caps_rule = rules.fetch(5).fetch("manipulators").fetch(0)
+      caps_rule = rules.fetch(4).fetch("manipulators").fetch(0)
       abort "Caps Lock does not send Escape" unless
         caps_rule.dig("from", "key_code") == "caps_lock" &&
         caps_rule.dig("to", 0, "key_code") == "escape"
@@ -396,8 +372,8 @@ if command -v ruby >/dev/null 2>&1; then
         karabiner/.config/karabiner/karabiner.json
 elif command -v jq >/dev/null 2>&1; then
     jq -e '
-      (.profiles[0].complex_modifications.rules | length) == 6 and
-      ([.profiles[0].complex_modifications.rules[].manipulators | length] == [9, 9, 4, 2, 4, 1]) and
+      (.profiles[0].complex_modifications.rules | length) == 5 and
+      ([.profiles[0].complex_modifications.rules[].manipulators | length] == [9, 9, 4, 2, 1]) and
       (all(.profiles[0].complex_modifications.rules[0].manipulators[];
         .conditions[0].bundle_identifiers ==
           ["^com\\.google\\.Chrome$", "^com\\.google\\.Chrome\\.canary$",
@@ -416,22 +392,9 @@ elif command -v jq >/dev/null 2>&1; then
       (all(.profiles[0].complex_modifications.rules[3].manipulators[];
         .conditions[0] ==
           {"type": "device_if", "identifiers": [{"is_built_in_keyboard": true}]})) and
-      ([.profiles[0].complex_modifications.rules[4].manipulators[] |
-        [.from.key_code, .from.modifiers]] ==
-        [["comma", {"mandatory": ["option"]}], ["period", {"mandatory": ["option"]}],
-         ["u", {"mandatory": ["option"]}], ["i", {"mandatory": ["option"]}]]) and
-      ([.profiles[0].complex_modifications.rules[4].manipulators[].to] ==
-        [[{"key_code": "open_bracket", "modifiers": ["command", "shift"]}],
-         [{"key_code": "close_bracket", "modifiers": ["command", "shift"]}],
-         [{"key_code": "up_arrow", "modifiers": ["command", "shift"]}],
-         [{"key_code": "down_arrow", "modifiers": ["command", "shift"]}]]) and
-      (all(.profiles[0].complex_modifications.rules[4].manipulators[];
-        .conditions[0] ==
-          {"type": "frontmost_application_if",
-           "bundle_identifiers": ["^com\\.stablyai\\.orca$"]})) and
-      (.profiles[0].complex_modifications.rules[5].manipulators[0].from.key_code ==
+      (.profiles[0].complex_modifications.rules[4].manipulators[0].from.key_code ==
         "caps_lock") and
-      (.profiles[0].complex_modifications.rules[5].manipulators[0].to[0].key_code ==
+      (.profiles[0].complex_modifications.rules[4].manipulators[0].to[0].key_code ==
         "escape")
     ' karabiner/.config/karabiner/karabiner.json >/dev/null
 else
@@ -498,70 +461,32 @@ update_test_dir=$(mktemp -d "${TMPDIR:-/tmp}/funk-update-test.XXXXXX")
 update_agentstart_root="${FUNK_AGENTSTART_ROOT:-$HOME/code/agentstart}"
 [ -x "$update_agentstart_root/scripts/sync-skills" ] \
     || fail "Funk requires the AgentStart checkout to validate: $update_agentstart_root"
-# The updater converges Homebrew casks and installs Orca.app, and
-# libexec/install-orca refuses to run anywhere but macOS. There is no seam
-# to fake that from, and faking it would be testing the fake, so the
-# behavioural half of the updater is macOS-only and says so when it skips.
-# Everything the updater is asserted to *contain* — the sync-skills wiring,
-# the prohibited-operation ban, the plist schedule — is static and still runs.
-# The body is left at column 0 because it contains heredocs, whose terminators
-# cannot be indented.
+# AgentStart's real sync-skills path is Darwin-gated, so the behavioral updater
+# test remains macOS-only. Static wiring and safety assertions still run in CI.
 if [ "$(uname -s)" = Darwin ]; then
 update_home="$update_test_dir/home"
 update_state="$update_test_dir/brew-state"
 update_brew_log="$update_test_dir/brew.log"
 update_npx_log="$update_test_dir/npx.log"
-update_bun_log="$update_test_dir/bun.log"
 update_notifier_log="$update_test_dir/notifier.log"
-# Stand in for a running Orca. launchd is always running and needs no cleanup:
-# spawning a process here instead would outlive any fail() exit, which happens
-# before a cleanup line and holds this suite's output pipe open until it dies.
-# Pinning something keeps the branch deterministic rather than depending on
-# whether the machine running the tests happens to have Orca open.
-update_running_binary=/sbin/launchd
-# Orca's version now comes from the bundle rather than Homebrew's receipt,
-# because the app updates itself and the receipt stops describing what is
-# installed the moment it does. Pin a fixture bundle so the assertions below do
-# not depend on which Orca the machine running the tests happens to have.
-update_orca_plist="$update_test_dir/Orca-Info.plist"
-write_orca_plist() {
-    /bin/cat >"$update_orca_plist" <<EOF
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-	<key>CFBundleShortVersionString</key>
-	<string>$1</string>
-</dict>
-</plist>
-EOF
-}
-write_orca_plist 0.9.0
-mkdir -p "$update_home/.agents"
-printf '%s\n' \
-    $'formula:terminal-notifier\t1.0.0' \
-    $'cask:orca\t0.9.0' \
-    >"$update_state"
-cat >"$update_home/.agents/.skill-lock.json" <<'EOF'
-{
-  "skills": {
-    "orca-cli": {"skillFolderHash": "1111111111111111111111111111111111111111"},
-    "orchestration": {"skillFolderHash": "2222222222222222222222222222222222222222"},
-    "computer-use": {"skillFolderHash": "3333333333333333333333333333333333333333"}
-  }
-}
-EOF
+update_code_root="$update_test_dir/code"
+mkdir -p "$update_home" "$update_code_root/agentfixture/skills/fixture"
+printf '%s\n' '---' 'name: fixture' '---' '# Fixture' \
+    >"$update_code_root/agentfixture/skills/fixture/SKILL.md"
+printf '%s\n' $'formula:terminal-notifier\t1.0.0' >"$update_state"
+: >"$update_npx_log"
 set +e
 update_output=$(
     HOME="$update_home" \
         FUNK_AGENTSTART_ROOT="$update_agentstart_root" \
+        AGENTSTART_CODE_ROOT="$update_code_root" \
+        AGENTSTART_NPX_BIN="$root/tests/fixtures/npx" \
         PATH="$root/tests/fixtures:/usr/bin:/bin:/usr/sbin:/sbin" \
         FUNK_TEST_BREW_EXIT=23 \
         FUNK_TEST_BREW_PREFIX="$update_test_dir/prefix" \
         FUNK_TEST_BREW_STATE="$update_state" \
         FUNK_TEST_BREW_LOG="$update_brew_log" \
-        FUNK_TEST_BUN_LOG="$update_bun_log" \
-        FUNK_ORCA_INFO_PLIST="$update_orca_plist" \
+        FUNK_TEST_NPX_LOG="$update_npx_log" \
         FUNK_SPCTL_BIN="$root/tests/fixtures/spctl" \
         "$root/bin/funk" update 2>&1
 )
@@ -573,123 +498,74 @@ grep -F "brew-stub <bundle> <install> <--upgrade> <--file=$root/Brewfile>" \
     || fail "funk update did not explicitly request Brewfile upgrades"
 printf '%s\n' "$update_output" | grep -F 'FAILED with exit status 23' >/dev/null \
     || fail "funk update did not log failure"
-[ ! -s "$update_bun_log" ] \
-    || fail "funk update ran a checkout installer after a Brewfile failure"
+[ ! -s "$update_npx_log" ] \
+    || fail "funk update ran skill synchronization after a Brewfile failure"
 
 HOME="$update_home" \
     FUNK_AGENTSTART_ROOT="$update_agentstart_root" \
+    AGENTSTART_CODE_ROOT="$update_code_root" \
+    AGENTSTART_NPX_BIN="$root/tests/fixtures/npx" \
     PATH="$root/tests/fixtures:/usr/bin:/bin:/usr/sbin:/sbin" \
     FUNK_TEST_BREW_EXIT=0 \
     FUNK_TEST_BREW_PREFIX="$update_test_dir/prefix" \
     FUNK_TEST_BREW_STATE="$update_state" \
     FUNK_TEST_BREW_LOG="$update_brew_log" \
     FUNK_TEST_FORMULA_NEW=2.0.0 \
-    FUNK_TEST_ORCA_BUNDLE_NEW=1.0.0 \
-    FUNK_TEST_ORCA_CLI_HASH=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
     FUNK_TEST_NPX_LOG="$update_npx_log" \
-    FUNK_TEST_BUN_LOG="$update_bun_log" \
     FUNK_TEST_NOTIFIER_LOG="$update_notifier_log" \
-    FUNK_NPX_BIN="$root/tests/fixtures/npx" \
-    FUNK_BUN_BIN="$root/tests/fixtures/bun" \
-    FUNK_ORCA_BINARY="$update_running_binary" \
-    FUNK_ORCA_INFO_PLIST="$update_orca_plist" \
     FUNK_TERMINAL_NOTIFIER_BIN="$root/tests/fixtures/terminal-notifier" \
     FUNK_SPCTL_BIN="$root/tests/fixtures/spctl" \
     "$root/bin/funk" update --notify >/dev/null
-# Orca ships its own updater and the cask marks itself auto_updates so Homebrew
-# will not compete with it; --greedy is the one flag that overrides that. Doing
-# it anyway replaces the bundle under a running app, whose renderer then cannot
-# resolve the code-split chunks it was built against -- Preferences was the
-# pane that surfaced it. An installed Orca must be left alone.
-if grep -F '<--greedy>' "$update_brew_log" >/dev/null; then
-    fail "scheduled update greedily upgraded a cask that updates itself"
-fi
-if grep -F 'brew-stub <upgrade> <--cask>' "$update_brew_log" >/dev/null; then
-    fail "scheduled update upgraded Orca instead of leaving it to its own updater"
-fi
-grep -F 'brew-stub <list> <--cask> <--versions> <orca>' "$update_brew_log" >/dev/null \
-    || fail "scheduled update did not check whether Orca is installed at all"
-grep -F 'npx-stub <--yes> <skills> <add> <https://github.com/stablyai/orca>' \
-    "$update_npx_log" >/dev/null \
-    || fail "scheduled update did not synchronize Orca skills"
-# Select by title rather than by position: an upgrade of a running Orca sends a
-# second, separate notification, and reading whichever happened to be last would
-# make these assertions depend on that.
 notification=$(grep -F '<Funk Update>' "$update_notifier_log" | tail -n 1)
 printf '%s\n' "$notification" | grep -F 'terminal-notifier 1.0.0 → 2.0.0' >/dev/null \
     || fail "change-aware notification omitted the upgraded formula"
-printf '%s\n' "$notification" | grep -F 'Orca 0.9.0 → 1.0.0' >/dev/null \
-    || fail "change-aware notification omitted the upgraded Orca cask"
-printf '%s\n' "$notification" | grep -F 'orca-cli skill rev 11111111 → aaaaaaaa' >/dev/null \
-    || fail "change-aware notification omitted the updated Orca skill revision"
-if printf '%s\n' "$notification" | grep -Eq 'orchestration|computer-use'; then
-    fail "change-aware notification listed unchanged Orca skills"
-fi
-
-# Whatever replaced the bundle -- now Orca's own updater rather than Homebrew --
-# a running Orca goes on serving code that is no longer on disk. On a machine
-# where Orca is always open that is otherwise invisible until a pane fails to
-# load, so the run must say so, in its own notification group rather than buried
-# in the "Updated: ..." summary.
-restart_notification=$(grep -F '<Restart Orca>' "$update_notifier_log" | tail -n 1 || true)
-[ -n "$restart_notification" ] \
-    || fail "a bundle that changed under a running Orca did not prompt for a restart"
-printf '%s\n' "$restart_notification" | grep -F '1.0.0' >/dev/null \
-    || fail "Orca restart prompt omitted the version now on disk"
-printf '%s\n' "$restart_notification" \
-    | grep -F '<-group> <com.arthack.funk.orca-restart>' >/dev/null \
-    || fail "Orca restart prompt shares the general update notification group"
+grep -F 'npx-stub <--yes> <skills> <add>' "$update_npx_log" >/dev/null \
+    || fail "scheduled update did not synchronize fleet skills"
 
 : >"$update_notifier_log"
 HOME="$update_home" \
     FUNK_AGENTSTART_ROOT="$update_agentstart_root" \
+    AGENTSTART_CODE_ROOT="$update_code_root" \
+    AGENTSTART_NPX_BIN="$root/tests/fixtures/npx" \
     PATH="$root/tests/fixtures:/usr/bin:/bin:/usr/sbin:/sbin" \
     FUNK_TEST_BREW_EXIT=0 \
     FUNK_TEST_BREW_PREFIX="$update_test_dir/prefix" \
     FUNK_TEST_BREW_STATE="$update_state" \
     FUNK_TEST_BREW_LOG="$update_brew_log" \
     FUNK_TEST_FORMULA_NEW=2.0.0 \
-    FUNK_TEST_ORCA_CLI_HASH=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
     FUNK_TEST_NPX_LOG="$update_npx_log" \
     FUNK_TEST_NOTIFIER_LOG="$update_notifier_log" \
-    FUNK_NPX_BIN="$root/tests/fixtures/npx" \
-    FUNK_ORCA_INFO_PLIST="$update_orca_plist" \
     FUNK_TERMINAL_NOTIFIER_BIN="$root/tests/fixtures/terminal-notifier" \
     FUNK_SPCTL_BIN="$root/tests/fixtures/spctl" \
     "$root/bin/funk" update --notify >/dev/null
 grep -F '<-message> <Installer ran; no updates.>' "$update_notifier_log" >/dev/null \
     || fail "no-op scheduled update did not send the required concise notification"
 
-: >"$update_bun_log"
 : >"$update_notifier_log"
 set +e
 update_output=$(
-    HOME="$update_home" \
+        HOME="$update_home" \
         FUNK_AGENTSTART_ROOT="$update_agentstart_root" \
+        AGENTSTART_CODE_ROOT="$update_code_root" \
         PATH="$root/tests/fixtures:/usr/bin:/bin:/usr/sbin:/sbin" \
         FUNK_TEST_BREW_EXIT=0 \
         FUNK_TEST_BREW_PREFIX="$update_test_dir/prefix" \
         FUNK_TEST_BREW_STATE="$update_state" \
         FUNK_TEST_BREW_LOG="$update_brew_log" \
         FUNK_TEST_NPX_LOG="$update_npx_log" \
-        FUNK_TEST_BUN_LOG="$update_bun_log" \
         FUNK_TEST_NPX_EXIT=17 \
         FUNK_TEST_NOTIFIER_LOG="$update_notifier_log" \
         AGENTSTART_NPX_BIN="$root/tests/fixtures/npx" \
-        FUNK_NPX_BIN="$root/tests/fixtures/npx" \
-        FUNK_ORCA_INFO_PLIST="$update_orca_plist" \
         FUNK_TERMINAL_NOTIFIER_BIN="$root/tests/fixtures/terminal-notifier" \
         FUNK_SPCTL_BIN="$root/tests/fixtures/spctl" \
         "$root/bin/funk" update --notify 2>&1
 )
 update_status=$?
 set -e
-[ "$update_status" -eq 17 ] \
+[ "$update_status" -eq 1 ] \
     || fail "funk update did not propagate an installer failure"
-printf '%s\n' "$update_output" | grep -F 'FAILED with exit status 17' >/dev/null \
+printf '%s\n' "$update_output" | grep -F 'FAILED with exit status 1' >/dev/null \
     || fail "funk update did not log the installer failure"
-grep -F 'brew-stub <list> <--cask> <--versions> <orca>' "$update_brew_log" >/dev/null \
-    || fail "installer failure test did not converge Orca before failing"
 grep -F 'npx-stub <--yes> <skills> <add>' "$update_npx_log" >/dev/null \
     || fail "installer failure test did not reach a skill installer"
 failure_notification=$(tail -n 1 "$update_notifier_log")
@@ -700,12 +576,11 @@ printf '%s\n' "$failure_notification" \
         >/dev/null \
     || fail "installer failure notification omitted the log pointer"
 else
-    skip "funk update behaviour (Homebrew convergence, Orca install, notifications)" \
-        "needs macOS: libexec/install-orca is Darwin-gated"
+    skip "funk update behaviour (Homebrew convergence, skill sync, notifications)" \
+        "needs macOS: AgentStart sync-skills is Darwin-gated"
 fi
 
-# The skill synchronization behavior itself — the agent* scan, the AgentVoice
-# skip, the Orca skill verification — is AgentStart's and is asserted by
+# The skill synchronization behavior itself is AgentStart's and is asserted by
 # ~/code/agentstart/tests/validate.sh. Funk asserts only its own wiring: the
 # scheduled updater must preflight and invoke the AgentStart sync path.
 # shellcheck disable=SC2016 # Match the literal declaration in the script.
@@ -1040,11 +915,9 @@ grep -F 'path = ~/.config/git/config.local' git/.config/git/config >/dev/null \
 [ -L "$stow_home/.local/bin/raycast/localhost-8789-kiosk.sh" ] \
     || fail "Raycast kiosk command was not stowed"
 # Operator guidance and AI-tool configuration are AgentStart's, linked by its
-# installer: the home AGENTS.md, the extension prompts, the AgentVoice
-# doctrine, the llm model configuration, and the Orca overlay (which its
-# configure-orca reads straight from that checkout — no ~/.config/orca
-# staging copy exists anymore). Funk stowing any of them again would be a
-# second writer for the same paths.
+# installer: the home AGENTS.md, extension prompts, AgentVoice doctrine, and
+# llm model configuration. Funk stowing any of them again would be a second
+# writer for the same paths.
 [ ! -e "$stow_home/AGENTS.md" ] \
     || fail "the home guidance is AgentStart's; nothing in Funk may stow ~/AGENTS.md"
 [ ! -e "$stow_home/.config/arthack" ] \
@@ -1053,15 +926,15 @@ grep -F 'path = ~/.config/git/config.local' git/.config/git/config >/dev/null \
     || fail "the AgentVoice doctrine is AgentStart's; nothing in Funk may stow ~/.config/agentvoice"
 [ ! -e "$stow_home/Library/Application Support/io.datasette.llm" ] \
     || fail "the llm configuration is AgentStart's; nothing in Funk may stow into io.datasette.llm"
-[ ! -e "$stow_home/.config/orca" ] \
-    || fail "the Orca overlay is AgentStart's; nothing in Funk may stow ~/.config/orca"
 HOME="$stow_home" "$root/bin/funk" stow --check >/dev/null 2>&1
-# The overlay's merge behavior is asserted by AgentStart's own suite; Funk
-# asserts only its wiring: the subcommand must delegate to that checkout.
+# AgentStart owns balanced launch shims; Funk keeps only a convenience
+# delegation and the shell PATH entry for the installed AgentLaunch directory.
 # shellcheck disable=SC2016 # Match the literal delegation path in bin/funk.
-grep -F 'agentstart_configure="$HOME/code/agentstart/scripts/configure-orca"' \
+grep -F 'agentstart_shims="$HOME/code/agentstart/scripts/install-agentlaunch-shims"' \
     bin/funk >/dev/null \
-    || fail "funk configure-orca does not delegate to the AgentStart overlay tooling"
+    || fail "funk install-agentlaunch-shims does not delegate to AgentStart"
+grep -F '$HOME/.local/share/agentlaunch/shims' zsh/.zshrc >/dev/null \
+    || fail "the shell does not prefer AgentLaunch's balanced harness shims"
 
 mcd_path="$stow_home/mcd parent/mcd child"
 cmkdir_path="$stow_home/cmkdir parent/cmkdir child"
@@ -1128,16 +1001,11 @@ grep -F "\"\$funk_root/libexec/initialize-configs\"" install >/dev/null \
 # shellcheck disable=SC2016 # Match the literal cask converge in ./install.
 grep -F '"$funk_root/libexec/converge-brew-casks" claude chatgpt' install >/dev/null \
     || fail "default install does not converge the AI desktop applications"
-# shellcheck disable=SC2016 # Match the literal Orca installer call in ./install.
-grep -F '"$funk_root/libexec/install-orca"' install >/dev/null \
-    || fail "default install does not install the Orca cask"
 # shellcheck disable=SC2016 # Match the literal AgentStart invocation in ./install.
 grep -F '"$agentstart_root/scripts/install.sh" --install' install >/dev/null \
     || fail "default install does not run the AgentStart installer"
 grep -F 'AgentStart owns the AI toolchain and is missing' install >/dev/null \
     || fail "default install does not stop loudly without the AgentStart checkout"
-grep -F "\"\$funk_command\" configure-orca" install >/dev/null \
-    || fail "default install does not reconcile Orca settings"
 grep -F "\"\$funk_command\" install-tailscale-recovery" install >/dev/null \
     || fail "default install does not load Tailscale recovery"
 # Unattended health checks report through terminal-notifier, so an installation
@@ -1154,11 +1022,6 @@ grep -F 'if karabiner_is_active; then' libexec/install-window-manager >/dev/null
 grep -F 'pgrep -x karabiner_console_user_server' libexec/install-window-manager >/dev/null \
     || fail "Karabiner activity check does not test its per-user session service"
 
-# A running Orca must not fail the whole installation.
-grep -F 'orca_status" -eq 75' install >/dev/null \
-    || fail "default install treats a deferred Orca reconciliation as a failure"
-grep -F 'funk configure-orca' install >/dev/null \
-    || fail "default install does not report how to finish a deferred Orca step"
 grep -F 'with_windows=1' install >/dev/null \
     || fail "default install does not enable the window stack"
 grep -F -- '--without-windows) with_windows=0' install >/dev/null \
@@ -1251,28 +1114,7 @@ if grep -F 'app="^browserctl-display$"' \
     fail "Yabai floats browserctl-display even though Funk does not install it"
 fi
 
-# The AI toolchain plan — vendor CLIs, npm globals, skills, extension prompts
-# — is AgentStart's and is asserted by ~/code/agentstart/tests/validate.sh. Funk
-# asserts only the surface it kept: the Orca cask plan.
-orca_plan=$(libexec/install-orca --check)
-for required_orca_plan in \
-    'brew install --cask --yes stablyai/orca/orca  # when missing' \
-    'leave an installed Orca to its own updater  # never brew upgrade' \
-    'remove com.apple.quarantine only from Homebrew'\''s declared Orca.app target' \
-    'verify the cask receipt'; do
-    printf '%s\n' "$orca_plan" | grep -F "$required_orca_plan" >/dev/null \
-        || fail "Orca installation plan is missing: $required_orca_plan"
-done
-# The Orca harness skills moved to AgentStart's sync-skills; a skills line here
-# would be the second synchronization path that split exists to prevent.
-if printf '%s\n' "$orca_plan" | grep -Fq 'skills add'; then
-    fail "Orca installation plan still synchronizes skills owned by AgentStart"
-fi
-if grep -F 'skills add' libexec/install-orca >/dev/null; then
-    fail "the Orca installer still synchronizes skills owned by AgentStart"
-fi
-
-if grep -Eq '^cask "(chatgpt|claude)"$|stablyai/orca/orca' Brewfile; then
+if grep -Eq '^cask "(chatgpt|claude)"$' Brewfile; then
     fail "AI desktop application leaked back into the bootstrap Brewfile"
 fi
 
@@ -1432,7 +1274,7 @@ fi
 # in the sibling checkout.
 if grep -Eqi 'bundle cleanup|uninstall|fetch-head|telegram|sudo' \
     bin/funk libexec/funk-update libexec/install-update-agent \
-    libexec/install-orca libexec/converge-brewfile libexec/converge-brew-casks \
+    libexec/converge-brewfile libexec/converge-brew-casks \
     libexec/repair-cask-artifacts \
     "$update_agentstart_root/scripts/sync-skills" \
     launchd/com.arthack.funk.update.plist.in; then
@@ -1455,17 +1297,6 @@ grep -F 'HOMEBREW_BUNDLE_CASK_SKIP' libexec/funk-update >/dev/null \
 grep -F '"$cask_dir_lister" --list --brewfile "$brewfile"' \
     libexec/funk-update >/dev/null \
     || fail "scheduled updater does not skip casks installed under a previous account"
-
-# Orca updates itself; the cask sets auto_updates so Homebrew will not compete,
-# and --greedy is the single flag that overrides that. Overriding it replaces
-# the bundle under a running app, which then fails to resolve the code-split
-# chunks it was built against. Nothing on the scheduled path may ask for it.
-grep -F -- '--install-only stablyai/orca/orca' libexec/install-orca >/dev/null \
-    || fail "Orca installer does not leave an installed Orca to its own updater"
-# Comments here explain why --greedy is wrong for Orca, so scan code only.
-if grep -v '^[[:space:]]*#' libexec/install-orca | grep -F -- '--greedy' >/dev/null; then
-    fail "Orca installer still asks Homebrew to upgrade a self-updating cask"
-fi
 
 # Homebrew fails every later upgrade of a cask left in the aborted-upgrade state,
 # so both convergence paths must repair it before asking Homebrew to move an app.

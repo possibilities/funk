@@ -112,7 +112,7 @@ so restoring it is not a convenience fix either.
 *everything* everywhere. The checks that need macOS to mean anything — the
 `pfctl` parse of the travel firewall, Gatekeeper quarantine xattrs, the
 Homebrew cask helpers that read ownership with BSD `stat -f`, the `funk update`
-path through the Darwin-gated `libexec/install-orca`, and the home-awake and
+path through AgentStart's Darwin-gated skill sync, and the home-awake and
 Android launcher suites — skip themselves off Darwin and print what they
 skipped, and the summary line repeats the list. Everything else is portable:
 the policy greps, `bash -n` over every shell file, shellcheck, and the launchd
@@ -161,7 +161,7 @@ reaches the item's data and never raises a dialog, and by reporting the verdict
 A step that cannot converge is reported rather than failed.
 `funk ssh-tailnet-config` exits `EX_TEMPFAIL` when Tailscale cannot answer,
 having written and removed nothing, and `./install` prints a Deferred note and
-finishes — the same shape `funk configure-orca` uses for a running Orca.
+finishes.
 
 Repair state that makes Homebrew elevate instead of letting it recur:
 `libexec/reclaim-app-ownership` for applications left by a previous account,
@@ -178,8 +178,7 @@ every globally managed skill — belongs in AgentStart, and the machine itself �
 Homebrew, Stow, launchd, macOS settings, account migration — stays here.
 
 Concretely, Funk keeps the AI *desktop applications* (the claude and chatgpt
-casks, converged from `./install`, and the Orca cask, installed once by
-`libexec/install-orca` and then left to its own updater). `./install` then
+casks, converged from `./install`). `./install` then
 calls `~/code/agentstart/scripts/install.sh --install` and refuses to finish
 if that checkout is missing; the scheduled updater calls
 `~/code/agentstart/scripts/sync-skills` the same way. Do not grow a second
@@ -191,20 +190,16 @@ is AgentStart's, linked by its installer rather than stowed here: the
 deliberately empty `~/AGENTS.md` (with `~/.claude/CLAUDE.md` and
 `~/.codex/AGENTS.md` linked at it), the extension prompts at
 `~/.config/agentguidance/`, and the AgentVoice doctrine at
-`~/.config/agentvoice/`. The `agents`, `arthack`, `agentvoice`, `llm`, and
-`orca` Stow packages are all gone; do not recreate one — edit
+`~/.config/agentvoice/`. The `agents`, `arthack`, `agentvoice`, and `llm`
+Stow packages are all gone; do not recreate one — edit
 `~/code/agentstart/prompts/` or `~/code/agentstart/config/` instead.
 
 Funk's repository guidance lives in this `AGENTS.md`, not in a priming skill.
 Do not install or synchronize a separate `funk` skill.
 
-Configuration another program writes is overlaid, never adopted. Orca rewrites
-every agent CLI's hook configuration on launch, so those files stay out of
-Stow entirely; `funk configure-orca` — now a delegation to AgentStart's
-`scripts/configure-orca`, which owns the overlay at `config/orca/` — merges
-only the keys the overlay names. The llm CLI and its model configuration are
-likewise AgentStart's (`config/llm/`, and the formula left the Brewfile with
-them). Adopt a file only when Funk is its sole writer.
+Configuration another program writes is overlaid, never adopted. The llm CLI
+and its model configuration are AgentStart's (`config/llm/`, and the formula
+left the Brewfile with them). Adopt a file only when Funk is its sole writer.
 
 Prove a configuration file is read before adopting it. A directory under
 `~/.config` named for a program is not evidence that the program loads it —

@@ -131,7 +131,7 @@ fi
 # them once here; the step is a silent no-op once ownership is correct.
 "$funk_root/libexec/reclaim-app-ownership" \
     --brewfile "$funk_root/Brewfile" \
-    claude chatgpt stablyai/orca/orca
+    claude chatgpt
 
 # A cask installed under a previous account keeps that account's install
 # directories forever, so its upgrades fail against a home this one cannot even
@@ -144,11 +144,8 @@ FUNK_ROOT="$funk_root" "$funk_root/libexec/converge-brewfile"
 "$funk_command" stow
 "$funk_root/libexec/initialize-configs"
 
-# The AI desktop applications are Funk's: Homebrew casks, installed here and
-# converged greedily because they carry no updater conflict — except Orca,
-# which ships its own updater and is installed once, then left alone.
+# The AI desktop applications are Funk's Homebrew casks and converge here.
 "$funk_root/libexec/converge-brew-casks" claude chatgpt
-"$funk_root/libexec/install-orca"
 
 # Everything the agent fleet depends on — harness CLIs, pinned npm globals,
 # MCP registration, guidance links, and every globally managed skill — is
@@ -159,17 +156,6 @@ agentstart_root="$HOME/code/agentstart"
 [ -x "$agentstart_root/scripts/install.sh" ] \
     || die "AgentStart owns the AI toolchain and is missing; clone it first: git clone <your AgentStart remote> $agentstart_root"
 "$agentstart_root/scripts/install.sh" --install
-# Orca owns its own settings file while it runs, so configure-orca refuses to
-# race it and exits EX_TEMPFAIL. That is a step to repeat after quitting Orca,
-# not a failed installation, so record it and finish everything else.
-orca_settings_deferred=0
-orca_status=0
-"$funk_command" configure-orca || orca_status=$?
-if [ "$orca_status" -eq 75 ]; then
-    orca_settings_deferred=1
-elif [ "$orca_status" -ne 0 ]; then
-    exit "$orca_status"
-fi
 
 "$funk_command" install-updater
 "$funk_command" install-tailscale-recovery
@@ -232,14 +218,6 @@ home-awake log: $HOME/Library/Logs/Funk/home-awake.log
 Transcript vault log: $HOME/Library/Logs/Funk/transcript-vault.log
 Memory guard log: $HOME/Library/Logs/Funk/memory-guard.log
 EOF
-
-if [ "$orca_settings_deferred" -eq 1 ]; then
-    cat <<'EOF'
-
-Deferred: Orca was running, so its settings overlay was left alone rather than
-raced. Quit Orca and run: funk configure-orca
-EOF
-fi
 
 if [ "$notifications_blocked" -eq 1 ]; then
     cat <<'EOF'

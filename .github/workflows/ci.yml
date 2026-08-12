@@ -17,7 +17,7 @@ jobs:
   ci:
     # Funk configures a Mac, but its suite is mostly static analysis of shell and
     # plists, which is portable. The checks that genuinely need macOS — pfctl,
-    # Gatekeeper xattrs, BSD stat, the Orca installer — skip themselves here and
+    # Gatekeeper xattrs and BSD stat — skip themselves here and
     # name what they skipped, and the operator's own `tests/validate.sh` run on
     # the machine is where those execute. Ubuntu is where the portable majority
     # runs fastest; a macOS runner would spend its extra minutes re-running the
