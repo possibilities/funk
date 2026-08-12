@@ -40,11 +40,11 @@ find_stow() {
     return 1
 }
 
-all_packages='git ssh ghostty nvim skhd tmux zsh yabai karabiner tmuxctl bin starship btop'
+all_packages='git ssh ghostty nvim skhd tmux zsh yabai karabiner tmuxctl bin btop'
 
 known_package() {
     case "$1" in
-        git|ssh|ghostty|nvim|skhd|tmux|zsh|yabai|karabiner|tmuxctl|bin|starship|btop)
+        git|ssh|ghostty|nvim|skhd|tmux|zsh|yabai|karabiner|tmuxctl|bin|btop)
             return 0
             ;;
         *)

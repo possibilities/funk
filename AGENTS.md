@@ -55,7 +55,6 @@ converge by running `./install`; do not rely on one-off live configuration.
 | `karabiner` | `~/.config/karabiner/` | yes |
 | `tmuxctl` | `~/.config/tmuxctl/` | yes |
 | `bin` | `~/.local/bin/` | yes |
-| `starship` | `~/.config/starship.toml` | no |
 | `btop` | `~/.config/btop/` | no |
 
 A `--no-folding` package's target directory stays a real directory, so it can

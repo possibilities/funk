@@ -46,9 +46,6 @@ bindkey '^' self-insert-backslash
 function self-insert-backslash() { LBUFFER+='\'; zle .self-insert }
 zle -N self-insert-backslash
 
-if command -v starship >/dev/null 2>&1; then
-  eval "$(starship init zsh)"
-fi
 if command -v fzf >/dev/null 2>&1; then
   export FZF_DEFAULT_OPTS="--popup center,60%,40%"
   source <(fzf --zsh)

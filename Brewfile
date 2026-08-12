@@ -19,7 +19,6 @@ brew "ripgrep"
 brew "fzf"
 brew "btop"
 brew "uv"
-brew "starship"
 brew "stow"
 brew "pnpm"
 brew "oven-sh/bun/bun", trusted: true

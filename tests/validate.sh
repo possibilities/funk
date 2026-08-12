@@ -125,6 +125,10 @@ done
 if grep -R -Eqi 'keeper|KEEPER_ZSH_DROPINS' zsh; then
     fail "removed Keeper shell integration is still present"
 fi
+if grep -R -Eqi 'starship' Brewfile libexec/stow-config zsh; then
+    fail "removed Starship prompt integration is still present"
+fi
+[ ! -e starship ] || fail "removed Starship Stow package is still present"
 
 if command -v shellcheck >/dev/null 2>&1; then
     # Errors and warnings only. The style tier is not portable across releases —
@@ -421,7 +425,6 @@ brew "ripgrep"
 brew "fzf"
 brew "btop"
 brew "uv"
-brew "starship"
 brew "stow"
 brew "pnpm"
 brew "oven-sh/bun/bun", trusted: true
@@ -1030,18 +1033,18 @@ grep -F 'tmux-fzf.git' libexec/initialize-configs >/dev/null \
     || fail "tmux-fzf is not initialized"
 if grep -R -Eqi \
     'tinty|tinted-theming|catppuccin|base16|base24|syntax-theme|color_theme|theme_background' \
-    Brewfile README.md libexec ghostty nvim tmux zsh btop starship git; then
+    Brewfile README.md libexec ghostty nvim tmux zsh btop git; then
     fail "managed configuration contains a prohibited theme or theme manager"
 fi
 if grep -R -Eq \
     "%C\\(|%C[a-z]|%\\(color:|fg=(black|red|green|yellow|blue|magenta|cyan|white)|bg=(black|red|green|yellow|blue|magenta|cyan|white)|style = '(black|red|green|yellow|blue|magenta|cyan|white)'" \
-    ghostty nvim tmux zsh btop starship git; then
+    ghostty nvim tmux zsh btop git; then
     fail "managed configuration contains a theme-specific named color"
 fi
 # A hex literal is the other half of the same rule, and the one the named-color
 # pattern never caught: it pins an absolute color the terminal theme cannot move.
 if grep -R -Eq '#[0-9a-fA-F]{6}\b' \
-    ghostty nvim tmux zsh btop starship git; then
+    ghostty nvim tmux zsh btop git; then
     fail "managed configuration contains a hardcoded hex color"
 fi
 # tmux chrome is the deliberate exception, and it earns it by naming only ANSI
