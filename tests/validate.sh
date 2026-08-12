@@ -1171,9 +1171,25 @@ if grep -R -Eqi \
     fail "managed configuration contains a prohibited theme or theme manager"
 fi
 if grep -R -Eq \
-    "%C\\(|%C[a-z]|%\\(color:|fg=colour|bg=colour|style = '(black|red|green|yellow|blue|magenta|cyan|white)'" \
+    "%C\\(|%C[a-z]|%\\(color:|fg=(black|red|green|yellow|blue|magenta|cyan|white)|bg=(black|red|green|yellow|blue|magenta|cyan|white)|style = '(black|red|green|yellow|blue|magenta|cyan|white)'" \
     ghostty nvim tmux zsh btop starship git; then
     fail "managed configuration contains a theme-specific named color"
+fi
+# A hex literal is the other half of the same rule, and the one the named-color
+# pattern never caught: it pins an absolute color the terminal theme cannot move.
+if grep -R -Eq '#[0-9a-fA-F]{6}\b' \
+    ghostty nvim tmux zsh btop starship git; then
+    fail "managed configuration contains a hardcoded hex color"
+fi
+# tmux chrome is the deliberate exception, and it earns it by naming only ANSI
+# palette indices: colour0-15 resolve against whatever theme Ghostty is running,
+# so the status bar follows the terminal instead of overriding it. A sweep that
+# removes a theme manager must leave this file alone.
+[ -f tmux/.config/tmux/conf.d/theme.conf ] \
+    || fail "tmux status chrome is missing"
+if grep -Eq '(fg|bg)=colour(1[6-9]|[2-9][0-9]|[1-9][0-9][0-9])' \
+    tmux/.config/tmux/conf.d/theme.conf; then
+    fail "tmux chrome reaches past the ANSI palette the terminal theme controls"
 fi
 grep -F 'save_config_on_exit = false' btop/.config/btop/btop.conf >/dev/null \
     || fail "btop can rewrite theme defaults into its managed config"

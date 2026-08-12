@@ -33,6 +33,14 @@ converge by running `./install`; do not rely on one-off live configuration.
 - Reload affected applications after changing live configuration when
   possible: source tmux's config and restart Yabai/skhd services. Karabiner
   reloads its configuration automatically.
+- Managed configuration carries no theme: no theme manager, no named color, no
+  hex literal. `tmux/.config/tmux/conf.d/theme.conf` is the one place that
+  styles anything, and it stays legal by naming only ANSI palette indices
+  (`colour0-15`) plus `default`, which resolve against Ghostty's theme rather
+  than overriding it. `tests/validate.sh` pins all four halves — the ban, the
+  hex ban, the file's existence, and its confinement to the ANSI range — so a
+  future theming cleanup cannot sweep the status bar away again the way
+  `24663c1` did.
 
 | Package | Target | `--no-folding` |
 | --- | --- | --- |
