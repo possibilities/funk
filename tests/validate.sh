@@ -40,6 +40,7 @@ libexec/repair-cask-user-dirs
 libexec/reclaim-app-ownership
 libexec/list-unattendable-casks
 libexec/stow-config
+libexec/install-chuchu-lab-theme
 libexec/initialize-configs
 libexec/install-update-agent
 libexec/install-tailscale-agent
@@ -83,6 +84,7 @@ bin/.local/bin/raycast/scrcpy-flex.sh
 bin/.local/bin/raycast/scrcpy-no-audio-flex.sh
 bin/.local/bin/raycast/localhost-8789-kiosk.sh
 tests/adb-wireless.sh
+tests/chuchu-theme.sh
 tests/home-awake.sh
 tests/ssh-tailnet-config.sh
 tests/kiosk-launcher.sh
@@ -91,6 +93,9 @@ tests/tailscale-online.sh
 tests/gog-authed.sh
 tests/funk-notify.sh
 tests/fixtures/adb
+tests/fixtures/adb-chuchu
+tests/fixtures/adb-wireless-connect-chuchu
+tests/fixtures/apkanalyzer-chuchu
 tests/fixtures/brew
 tests/fixtures/bun
 tests/fixtures/gog
@@ -98,6 +103,7 @@ tests/fixtures/chrome
 tests/fixtures/dscacheutil
 tests/fixtures/dns-sd
 tests/fixtures/gh
+tests/fixtures/gradlew-chuchu
 tests/fixtures/home-awake/security
 tests/fixtures/nc
 tests/fixtures/npx
@@ -106,6 +112,7 @@ tests/fixtures/spctl
 tests/fixtures/systemextensionsctl
 tests/fixtures/tailscale
 tests/fixtures/terminal-notifier
+tests/fixtures/unzip-chuchu
 tests/fixtures/zig
 tests/validate.sh
 "
@@ -1059,6 +1066,18 @@ if grep -Eq '(fg|bg)=colour(1[6-9]|[2-9][0-9]|[1-9][0-9][0-9])' \
 fi
 grep -F 'save_config_on_exit = false' btop/.config/btop/btop.conf >/dev/null \
     || fail "btop can rewrite theme defaults into its managed config"
+# Signal Room is an APK asset, never desktop configuration. Pin both the exact
+# portable Ghostty shape and the Lab-only command boundary here so broad theme
+# cleanup cannot erase it and a future installer edit cannot reach stable.
+signal_room='assets/chuchu/Signal Room'
+[ -f "$signal_room" ] || fail "canonical Chuchu Signal Room theme is missing"
+[ "$(grep -Ec '^palette = ([0-9]|1[0-5])=#[0-9a-f]{6}$' "$signal_room")" -eq 16 ] \
+    || fail "Signal Room does not define exactly 16 ANSI palette colors"
+[ "$(grep -Ec '^(background|foreground|cursor-color|cursor-text|selection-background|selection-foreground) = #[0-9a-f]{6}$' "$signal_room")" -eq 6 ] \
+    || fail "Signal Room does not define the six portable Ghostty properties"
+grep -F "lab_package='com.arthack.chuchu.lab'" libexec/install-chuchu-lab-theme \
+    >/dev/null || fail "Chuchu theme installer lost its Lab package boundary"
+"$root/tests/chuchu-theme.sh"
 # shellcheck disable=SC2016 # Match the literal shell variable in the script.
 grep -F '"$funk_root/bin/funk" yabai maintain' libexec/install-window-manager >/dev/null \
     || fail "window installer does not reconcile the Yabai scripting addition"

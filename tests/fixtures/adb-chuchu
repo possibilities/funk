@@ -1,0 +1,86 @@
+#!/bin/bash
+
+set -euo pipefail
+
+for argument in "$@"; do
+    [ "$argument" != com.jossephus.chuchu ] || {
+        printf 'adb-chuchu fixture refused the official package\n' >&2
+        exit 70
+    }
+done
+
+if [ -n "${FUNK_TEST_CHUCHU_ADB_LOG:-}" ]; then
+    {
+        printf 'auto=%s\tsocket=%s\tusb=%s' \
+            "${ADB_MDNS_AUTO_CONNECT:-}" "${ADB_SERVER_SOCKET:-}" \
+            "${ADB_USB:-}"
+        for argument in "$@"; do
+            printf '\t%s' "$argument"
+        done
+        printf '\n'
+    } >>"$FUNK_TEST_CHUCHU_ADB_LOG"
+fi
+
+[ "${1:-}" = -s ] || {
+    printf 'adb-chuchu fixture requires a selected serial\n' >&2
+    exit 64
+}
+serial=${2:-}
+command=${3:-}
+shift 3
+
+[ "$serial" = "${FUNK_TEST_CHUCHU_SERIAL:-smolbird:41222}" ] || {
+    printf 'adb-chuchu fixture received the wrong serial: %s\n' "$serial" >&2
+    exit 64
+}
+
+case "$command" in
+    install)
+        [ "${1:-}" = -r ] && [ -f "${2:-}" ] || exit 64
+        printf 'Performing Streamed Install\nSuccess\n'
+        ;;
+    push)
+        [ -f "${1:-}" ] || exit 64
+        cp "$1" "${FUNK_TEST_CHUCHU_REMOTE_PREFS:?}"
+        printf '%s: 1 file pushed, 0 skipped\n' "$1"
+        ;;
+    exec-out)
+        [ "${1:-}" = run-as ] \
+            && [ "${2:-}" = com.arthack.chuchu.lab ] \
+            && [ "${3:-}" = cat ] \
+            && [ "${4:-}" = shared_prefs/chuchu_settings.xml ] \
+            || exit 64
+        cat "${FUNK_TEST_CHUCHU_PREFS:?}"
+        ;;
+    shell)
+        case "${1:-}:${2:-}:${3:-}" in
+            am:force-stop:com.arthack.chuchu.lab)
+                ;;
+            am:start:-n)
+                [ "${4:-}" = \
+                    com.arthack.chuchu.lab/com.jossephus.chuchu.MainActivity ] \
+                    || exit 64
+                ;;
+            rm:-f:*)
+                ;;
+            run-as:com.arthack.chuchu.lab:pwd)
+                printf '/data/user/0/com.arthack.chuchu.lab\n'
+                ;;
+            run-as:com.arthack.chuchu.lab:mkdir|\
+            run-as:com.arthack.chuchu.lab:chmod)
+                ;;
+            run-as:com.arthack.chuchu.lab:cp)
+                cp "${FUNK_TEST_CHUCHU_REMOTE_PREFS:?}" \
+                    "${FUNK_TEST_CHUCHU_PREFS:?}"
+                ;;
+            *)
+                printf 'unexpected adb-chuchu shell command: %s\n' "$*" >&2
+                exit 64
+                ;;
+        esac
+        ;;
+    *)
+        printf 'unexpected adb-chuchu command: %s\n' "$command" >&2
+        exit 64
+        ;;
+esac

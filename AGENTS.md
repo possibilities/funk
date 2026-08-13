@@ -41,6 +41,11 @@ converge by running `./install`; do not rely on one-off live configuration.
   hex ban, the file's existence, and its confinement to the ANSI range — so a
   future theming cleanup cannot sweep the status bar away again the way
   `24663c1` did.
+- `assets/chuchu/Signal Room` is outside that managed desktop-configuration
+  rule. It is the canonical remote APK asset consumed only by
+  `funk chuchu-theme`, which must prove the built application ID is
+  `com.arthack.chuchu.lab` before contacting ADB and must never uninstall or
+  mutate the official `com.jossephus.chuchu` package.
 
 | Package | Target | `--no-folding` |
 | --- | --- | --- |

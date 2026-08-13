@@ -1,0 +1,14 @@
+#!/bin/bash
+
+set -euo pipefail
+
+[ "${1:-}" = manifest ] && [ -f "${3:-}" ] || exit 64
+case "${2:-}" in
+    application-id)
+        printf '%s\n' "${FUNK_TEST_CHUCHU_APPLICATION_ID:-com.arthack.chuchu.lab}"
+        ;;
+    debuggable)
+        printf '%s\n' "${FUNK_TEST_CHUCHU_DEBUGGABLE:-true}"
+        ;;
+    *) exit 64 ;;
+esac

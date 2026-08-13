@@ -39,6 +39,13 @@ dialog rather than one every thirty seconds. Cleared by
 `home-awake --authorize`.
 _Avoid_: locked out, denied, blocked.
 
+**Chuchu Lab theme deployment** — The explicit `funk chuchu-theme` action that
+copies Funk's canonical Signal Room asset into the Chuchu checkout, rebuilds
+and reinstalls the debuggable Lab package with its data retained, selects the
+theme, and relaunches it. Its application-ID check runs before ADB so the
+official package is outside the command's authority.
+_Avoid_: Chuchu update, official theme install, stable replacement.
+
 **Fork-and-adapt** — what this repository offers a reader who is not the account
 it converges. `./install` is written for one machine and its recorded facts, so
 the useful thing to take is a part of it, not a run of it.

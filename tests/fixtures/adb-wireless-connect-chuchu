@@ -1,0 +1,6 @@
+#!/bin/bash
+
+set -euo pipefail
+
+[ "${1:-}" = --print-serial ] && [ "$#" -eq 1 ] || exit 64
+printf '%s\n' "${FUNK_TEST_CHUCHU_SERIAL:-smolbird:41222}"

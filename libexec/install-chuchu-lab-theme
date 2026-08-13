@@ -1,0 +1,206 @@
+#!/bin/bash
+# Build Chuchu Lab with Funk's Signal Room theme and select it on the phone.
+
+set -euo pipefail
+
+usage() {
+    cat <<'EOF'
+Usage: funk chuchu-theme
+
+Copy Funk's Signal Room asset into the Chuchu checkout, build the debug APK,
+reinstall only com.arthack.chuchu.lab with its data retained, select Signal
+Room in dark mode, and relaunch the Lab app on Funk's bound Android phone.
+
+FUNK_CHUCHU_ROOT overrides the default checkout at ~/src/chuchu.
+EOF
+}
+
+die() {
+    printf 'funk chuchu-theme: %s\n' "$*" >&2
+    exit 1
+}
+
+find_binary() {
+    local override=$1
+    shift
+    local candidate
+
+    for candidate in "$override" "$@"; do
+        [ -n "$candidate" ] || continue
+        if command -v "$candidate" >/dev/null 2>&1; then
+            command -v "$candidate"
+            return 0
+        fi
+    done
+    return 1
+}
+
+[ "$#" -eq 0 ] || {
+    case "${1:-}" in
+        -h|--help)
+            [ "$#" -eq 1 ] || {
+                usage >&2
+                exit 64
+            }
+            usage
+            exit 0
+            ;;
+    esac
+    usage >&2
+    exit 64
+}
+
+[ "$(id -u)" -ne 0 ] || die "run as the target user, not root"
+
+funk_root=${FUNK_ROOT:?FUNK_ROOT is not set}
+theme_name='Signal Room'
+lab_package='com.arthack.chuchu.lab'
+lab_activity='com.jossephus.chuchu.MainActivity'
+theme_source="$funk_root/assets/chuchu/$theme_name"
+chuchu_root=${FUNK_CHUCHU_ROOT:-"$HOME/src/chuchu"}
+
+[ -f "$theme_source" ] || die "canonical theme is missing: $theme_source"
+[ -d "$chuchu_root" ] || die "Chuchu checkout is missing: $chuchu_root"
+chuchu_root=$(cd -P -- "$chuchu_root" && pwd)
+gradle="$chuchu_root/android/gradlew"
+theme_dir="$chuchu_root/android/app/src/main/assets/themes"
+theme_target="$theme_dir/$theme_name"
+apk="$chuchu_root/android/app/build/outputs/apk/debug/app-debug.apk"
+
+[ -x "$gradle" ] || die "Chuchu Gradle wrapper is missing or not executable: $gradle"
+[ -d "$theme_dir" ] || die "Chuchu theme directory is missing: $theme_dir"
+[ ! -L "$theme_target" ] || die "refusing to replace symlinked theme target: $theme_target"
+
+if [ -f "$theme_target" ] && cmp -s "$theme_source" "$theme_target"; then
+    printf 'Signal Room already matches Funk in the Chuchu checkout.\n'
+else
+    cp "$theme_source" "$theme_target"
+    chmod 644 "$theme_target"
+    printf 'Synced Signal Room into %s.\n' "$theme_target"
+fi
+
+printf 'Building Chuchu Lab.\n'
+(
+    cd "$chuchu_root/android"
+    ./gradlew :app:assembleDebug
+)
+[ -f "$apk" ] || die "Gradle completed without producing $apk"
+
+temp_dir=$(mktemp -d "${TMPDIR:-/tmp}/funk-chuchu-theme.XXXXXX")
+remote_preferences=
+serial=
+adb_bin=
+cleanup() {
+    if [ -n "$remote_preferences" ] && [ -n "$serial" ] && [ -n "$adb_bin" ]; then
+        "$adb_bin" -s "$serial" shell rm -f "$remote_preferences" >/dev/null 2>&1 || true
+    fi
+    rm -rf "$temp_dir"
+}
+trap cleanup EXIT
+
+unzip_bin=$(find_binary "${UNZIP:-}" unzip /usr/bin/unzip) \
+    || die "unzip is required to inspect the built APK"
+apk_theme="$temp_dir/Signal Room"
+"$unzip_bin" -p "$apk" "assets/themes/$theme_name" >"$apk_theme" \
+    || die "built APK does not contain Signal Room"
+cmp -s "$theme_source" "$apk_theme" \
+    || die "built APK's Signal Room asset does not match Funk"
+
+apkanalyzer_bin=$(find_binary \
+    "${APKANALYZER:-}" apkanalyzer \
+    "${ANDROID_HOME:-}/cmdline-tools/latest/bin/apkanalyzer" \
+    "${ANDROID_SDK_ROOT:-}/cmdline-tools/latest/bin/apkanalyzer" \
+    "$HOME/Library/Android/sdk/cmdline-tools/latest/bin/apkanalyzer") \
+    || die "apkanalyzer is required to prove the APK is the Lab build"
+application_id=$("$apkanalyzer_bin" manifest application-id "$apk")
+[ "$application_id" = "$lab_package" ] \
+    || die "refusing to install APK for $application_id; expected $lab_package"
+debuggable=$("$apkanalyzer_bin" manifest debuggable "$apk")
+[ "$debuggable" = true ] \
+    || die "refusing to install a non-debuggable APK"
+
+connect_helper=${ADB_WIRELESS_CONNECT:-"$funk_root/bin/.local/bin/adb-wireless-connect"}
+[ -x "$connect_helper" ] \
+    || die "ADB connection helper is missing; run: funk stow bin"
+
+# Match adb-wireless-connect's isolated server so the serial it returns exists
+# in this process and no unrelated paired or USB device can enter the command.
+export ADB_MDNS_AUTO_CONNECT=0
+export ADB_USB=0
+export ADB_SERVER_SOCKET=tcp:localhost:5038
+adb_bin=$(find_binary "${ADB:-}" adb /opt/homebrew/bin/adb /usr/local/bin/adb) \
+    || die "adb is missing; run: brew install --cask android-platform-tools"
+serial=$("$connect_helper" --print-serial)
+case "$serial" in
+    ''|*'
+'*) die "ADB connection helper returned an invalid serial" ;;
+esac
+
+printf 'Installing %s on %s with app data retained.\n' "$lab_package" "$serial"
+"$adb_bin" -s "$serial" install -r "$apk"
+"$adb_bin" -s "$serial" shell am force-stop "$lab_package"
+"$adb_bin" -s "$serial" shell run-as "$lab_package" pwd >/dev/null \
+    || die "installed Lab APK is not accessible through run-as"
+
+preferences_old="$temp_dir/chuchu_settings.old.xml"
+preferences_new="$temp_dir/chuchu_settings.xml"
+if ! "$adb_bin" -s "$serial" exec-out run-as "$lab_package" \
+    cat shared_prefs/chuchu_settings.xml >"$preferences_old" 2>/dev/null; then
+    printf '%s\n' "<?xml version='1.0' encoding='utf-8' standalone='yes' ?>" \
+        '<map>' '</map>' >"$preferences_old"
+fi
+
+python_bin=$(find_binary "${PYTHON:-}" python3 /usr/bin/python3) \
+    || die "python3 is required to preserve Chuchu's existing preferences"
+"$python_bin" - "$preferences_old" "$preferences_new" <<'PY'
+import sys
+import xml.etree.ElementTree as ET
+
+source, destination = sys.argv[1:]
+tree = ET.parse(source)
+root = tree.getroot()
+if root.tag != "map":
+    raise SystemExit("Chuchu preferences root is not <map>")
+
+for child in list(root):
+    if child.attrib.get("name") in {"theme_name", "theme_mode"}:
+        root.remove(child)
+
+ET.SubElement(root, "string", {"name": "theme_name"}).text = "Signal Room"
+ET.SubElement(root, "string", {"name": "theme_mode"}).text = "Dark"
+if hasattr(ET, "indent"):
+    ET.indent(tree, space="    ")
+tree.write(destination, encoding="utf-8", xml_declaration=True)
+PY
+
+remote_preferences="/data/local/tmp/funk-chuchu-settings.$$"
+"$adb_bin" -s "$serial" push "$preferences_new" "$remote_preferences" >/dev/null
+"$adb_bin" -s "$serial" shell run-as "$lab_package" mkdir -p shared_prefs
+"$adb_bin" -s "$serial" shell run-as "$lab_package" \
+    cp "$remote_preferences" shared_prefs/chuchu_settings.xml
+"$adb_bin" -s "$serial" shell run-as "$lab_package" \
+    chmod 600 shared_prefs/chuchu_settings.xml
+"$adb_bin" -s "$serial" shell rm -f "$remote_preferences"
+remote_preferences=
+
+"$adb_bin" -s "$serial" shell am start \
+    -n "$lab_package/$lab_activity" >/dev/null
+preferences_verify="$temp_dir/chuchu_settings.verify.xml"
+"$adb_bin" -s "$serial" exec-out run-as "$lab_package" \
+    cat shared_prefs/chuchu_settings.xml >"$preferences_verify"
+"$python_bin" - "$preferences_verify" <<'PY'
+import sys
+import xml.etree.ElementTree as ET
+
+root = ET.parse(sys.argv[1]).getroot()
+values = {
+    child.attrib.get("name"): child.text
+    for child in root
+    if child.tag == "string"
+}
+expected = {"theme_name": "Signal Room", "theme_mode": "Dark"}
+if any(values.get(key) != value for key, value in expected.items()):
+    raise SystemExit("Chuchu Lab did not retain the Signal Room preferences")
+PY
+
+printf 'Chuchu Lab is running with Signal Room; the official package was untouched.\n'

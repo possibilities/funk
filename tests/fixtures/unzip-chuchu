@@ -1,0 +1,9 @@
+#!/bin/bash
+
+set -euo pipefail
+
+[ "${1:-}" = -p ] \
+    && [ -f "${2:-}" ] \
+    && [ "${3:-}" = 'assets/themes/Signal Room' ] \
+    || exit 64
+cat "${FUNK_TEST_CHUCHU_BUILT_THEME:?}"
