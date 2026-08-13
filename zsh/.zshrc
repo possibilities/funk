@@ -59,6 +59,9 @@ done
 # History — one file, never truncate; each shell writes immediately,
 # but up-arrow stays per-shell (no live cross-pane interleave)
 HISTFILE=~/.local/share/zsh/history
+# zsh does not create HISTFILE's parent; a missing directory silently
+# discards every command instead of erroring.
+[[ -d ${HISTFILE:h} ]] || mkdir -p ${HISTFILE:h}
 HISTSIZE=100000000
 SAVEHIST=100000000
 setopt INC_APPEND_HISTORY_TIME
