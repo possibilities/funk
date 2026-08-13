@@ -1301,12 +1301,20 @@ fi
 # The AgentStart skill sync joined the scheduled path when the updater started
 # delegating to it, so it inherits the same prohibition even though it lives
 # in the sibling checkout.
-if grep -Eqi 'bundle cleanup|uninstall|fetch-head|telegram|sudo' \
+#
+# Match code, not prose. A file that documents why it is safe names the very
+# operations it forbids — AgentStart's sync says it "never uninstalls" — and
+# scanning raw text turns each such comment into a failure, which teaches the
+# next reader to weaken the pattern rather than the scan. Only a whole-line
+# comment is dropped; a trailing comment stays attached to its code, so
+# nothing executable can hide behind a `#`.
+if sed 's/^[[:space:]]*#.*$//' \
     bin/funk libexec/funk-update libexec/install-update-agent \
     libexec/converge-brewfile libexec/converge-brew-casks \
     libexec/repair-cask-artifacts \
     "$update_agentstart_root/scripts/sync-skills" \
-    launchd/com.arthack.funk.update.plist.in; then
+    launchd/com.arthack.funk.update.plist.in \
+    | grep -Eqi 'bundle cleanup|uninstall|fetch-head|telegram|sudo'; then
     fail "scheduled updater contains a prohibited operation"
 fi
 
