@@ -28,6 +28,8 @@ Commands:
   update [--notify]  Install or upgrade packages declared by Funk
   stow [options]     Link Funk's user configuration packages into HOME
   chuchu-theme       Build/reinstall Chuchu Lab with the Signal Room theme
+  install-ghostty-terminfo
+                      Install Ghostty's terminal definition for remote shells
   ssh-tailnet-config [--check]
                       Write ~/.ssh/config.d from live Tailscale state
   git-identity [--status]
@@ -77,6 +79,10 @@ case "$command_name" in
     chuchu-theme)
         shift
         exec "$FUNK_ROOT/libexec/install-chuchu-lab-theme" "$@"
+        ;;
+    install-ghostty-terminfo)
+        shift
+        exec "$FUNK_ROOT/libexec/install-ghostty-terminfo" "$@"
         ;;
     ssh-tailnet-config)
         shift

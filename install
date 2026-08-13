@@ -143,6 +143,7 @@ fi
 FUNK_ROOT="$funk_root" "$funk_root/libexec/converge-brewfile"
 "$funk_command" stow
 "$funk_root/libexec/initialize-configs"
+"$funk_command" install-ghostty-terminfo
 
 # The AI desktop applications are Funk's Homebrew casks and converge here.
 "$funk_root/libexec/converge-brew-casks" claude chatgpt

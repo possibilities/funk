@@ -41,6 +41,7 @@ libexec/reclaim-app-ownership
 libexec/list-unattendable-casks
 libexec/stow-config
 libexec/install-chuchu-lab-theme
+libexec/install-ghostty-terminfo
 libexec/initialize-configs
 libexec/install-update-agent
 libexec/install-tailscale-agent
@@ -85,6 +86,7 @@ bin/.local/bin/raycast/scrcpy-no-audio-flex.sh
 bin/.local/bin/raycast/localhost-8789-kiosk.sh
 tests/adb-wireless.sh
 tests/chuchu-theme.sh
+tests/ghostty-terminfo.sh
 tests/home-awake.sh
 tests/ssh-tailnet-config.sh
 tests/kiosk-launcher.sh
@@ -1011,6 +1013,10 @@ grep -F "\"\$funk_root/libexec/initialize-configs\"" install >/dev/null \
 # shellcheck disable=SC2016 # Match the literal cask converge in ./install.
 grep -F '"$funk_root/libexec/converge-brew-casks" claude chatgpt' install >/dev/null \
     || fail "default install does not converge the AI desktop applications"
+grep -F '"$funk_command" install-ghostty-terminfo' install >/dev/null \
+    || fail "default install does not install Ghostty terminfo for SSH sessions"
+grep -F '"$terminfo_installer" || status=$?' libexec/funk-update >/dev/null \
+    || fail "scheduled updates do not refresh Ghostty terminfo after app upgrades"
 # shellcheck disable=SC2016 # Match the literal AgentStart invocation in ./install.
 grep -F '"$agentstart_root/scripts/install.sh" --install' install >/dev/null \
     || fail "default install does not run the AgentStart installer"
@@ -1078,6 +1084,7 @@ signal_room='assets/chuchu/Signal Room'
 grep -F "lab_package='com.arthack.chuchu.lab'" libexec/install-chuchu-lab-theme \
     >/dev/null || fail "Chuchu theme installer lost its Lab package boundary"
 "$root/tests/chuchu-theme.sh"
+"$root/tests/ghostty-terminfo.sh"
 # shellcheck disable=SC2016 # Match the literal shell variable in the script.
 grep -F '"$funk_root/bin/funk" yabai maintain' libexec/install-window-manager >/dev/null \
     || fail "window installer does not reconcile the Yabai scripting addition"

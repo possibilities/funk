@@ -1,0 +1,49 @@
+#!/bin/bash
+
+set -euo pipefail
+
+die() {
+    printf 'funk install-ghostty-terminfo: %s\n' "$*" >&2
+    exit 1
+}
+
+[ "$(id -u)" -ne 0 ] || die "run as the target user, not root"
+[ -n "${HOME:-}" ] && [ -d "$HOME" ] || die "HOME is not an existing directory"
+
+ghostty_resources=${FUNK_GHOSTTY_RESOURCES:-/Applications/Ghostty.app/Contents/Resources}
+source_db="$ghostty_resources/terminfo"
+target_db=${FUNK_TERMINFO_DIR:-$HOME/.terminfo}
+entries='67/ghostty 78/xterm-ghostty'
+
+for entry in $entries; do
+    [ -f "$source_db/$entry" ] \
+        || die "Ghostty terminfo entry is missing: $source_db/$entry"
+done
+
+current=1
+for entry in $entries; do
+    if [ ! -f "$target_db/$entry" ] \
+        || ! /usr/bin/cmp -s "$source_db/$entry" "$target_db/$entry"; then
+        current=0
+    fi
+done
+if [ "$current" -eq 1 ]; then
+    printf 'Ghostty terminfo is current in %s\n' "$target_db"
+    exit 0
+fi
+
+mkdir -p "$target_db"
+stage=$(mktemp -d "$target_db/.ghostty-terminfo.XXXXXX")
+trap 'rm -rf "$stage"' EXIT
+
+# Copy Ghostty's compiled entries verbatim so its extended capabilities remain
+# available even when the host's older tic cannot represent all of them.
+for entry in $entries; do
+    mkdir -p "$stage/${entry%/*}" "$target_db/${entry%/*}"
+    /usr/bin/install -m 0644 "$source_db/$entry" "$stage/$entry"
+done
+for entry in $entries; do
+    mv -f "$stage/$entry" "$target_db/$entry"
+done
+
+printf 'Installed Ghostty terminfo in %s\n' "$target_db"

@@ -35,6 +35,8 @@ funk update          # converge Homebrew and the scheduled agents
 funk stow --check    # preview config links
 funk stow            # link config packages into $HOME
 funk chuchu-theme    # build and push Signal Room to Chuchu Lab
+funk install-ghostty-terminfo
+                     # expose Ghostty capabilities to remote shells
 funk help            # everything else
 ```
 
