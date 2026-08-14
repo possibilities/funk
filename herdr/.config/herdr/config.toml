@@ -1,0 +1,12 @@
+[keys]
+prefix = "ctrl+space"
+
+[theme]
+name = "terminal"
+auto_switch = false
+
+[ui]
+agent_panel_sort = "priority"
+
+[ui.toast]
+delivery = "herdr"
