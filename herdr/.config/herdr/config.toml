@@ -10,3 +10,6 @@ agent_panel_sort = "priority"
 
 [ui.toast]
 delivery = "herdr"
+
+[experimental]
+kitty_graphics = true
