@@ -2,8 +2,8 @@
 prefix = "ctrl+space"
 previous_tab = ["prefix+p", "alt+1"]
 next_tab = ["prefix+n", "alt+2"]
-previous_workspace = "alt+5"
-next_workspace = "alt+6"
+next_workspace = "alt+5"
+previous_workspace = "alt+6"
 
 # Herdr 0.8.0 has no move_tab_previous/move_tab_next keybind action yet; the
 # helper drives the tab.move API instead. Swap both for the native action once
