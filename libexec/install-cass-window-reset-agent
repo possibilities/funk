@@ -2,10 +2,10 @@
 
 set -euo pipefail
 
-label=com.arthack.funk.transcript-vault
+label=com.arthack.funk.cass-window-reset
 
 die() {
-    printf 'funk install-transcript-vault-agent: %s\n' "$*" >&2
+    printf 'funk install-cass-window-reset-agent: %s\n' "$*" >&2
     exit 1
 }
 
@@ -14,13 +14,13 @@ case "${1:-}" in
     "") ;;
     --check)
         [ "$#" -eq 1 ] || {
-            printf 'Usage: funk install-transcript-vault [--check]\n' >&2
+            printf 'Usage: funk install-cass-window-reset [--check]\n' >&2
             exit 64
         }
         check_only=1
         ;;
     *)
-        printf 'Usage: funk install-transcript-vault [--check]\n' >&2
+        printf 'Usage: funk install-cass-window-reset [--check]\n' >&2
         exit 64
         ;;
 esac
@@ -30,27 +30,22 @@ esac
 
 funk_root=${FUNK_ROOT:?FUNK_ROOT is not set}
 template="$funk_root/launchd/$label.plist.in"
-helper="$funk_root/bin/.local/bin/transcript-vault"
+helper="$funk_root/bin/.local/bin/cass-window-reset"
 agent_dir="$HOME/Library/LaunchAgents"
 agent_path="$agent_dir/$label.plist"
 log_dir="$HOME/Library/Logs/Funk"
-log_path="$log_dir/transcript-vault.log"
+log_path="$log_dir/cass-window-reset.log"
 domain="gui/$(id -u)"
 
 [ -f "$template" ] || die "template not found: $template"
-[ -x "$helper" ] || die "vault helper is missing or not executable: $helper"
+[ -x "$helper" ] || die "window-reset helper is missing or not executable: $helper"
 
-# The pipeline degrades gracefully at runtime, so missing prerequisites are
-# reported rather than fatal: the agent starts doing useful work the moment
-# they appear.
-[ -f "$HOME/.config/restic/silverbird.env" ] \
-    || printf 'note: %s/.config/restic/silverbird.env is missing; restic uploads will be skipped until it exists\n' "$HOME"
-[ -d /Volumes/Scratch/claude-archive ] \
-    || printf 'note: /Volumes/Scratch/claude-archive is not mounted; runs will no-op until it is\n'
+# The helper degrades gracefully at runtime, so a missing cass is reported
+# rather than fatal: the agent starts doing useful work the moment it exists.
 command -v cass >/dev/null 2>&1 || [ -x "$HOME/.local/bin/cass" ] \
-    || printf 'note: cass is not installed; search indexing will be skipped\n'
+    || printf 'note: cass is not installed; resets will no-op until it is\n'
 
-tmpdir=$(mktemp -d "${TMPDIR:-/tmp}/funk-transcript-vault.XXXXXX")
+tmpdir=$(mktemp -d "${TMPDIR:-/tmp}/funk-cass-window-reset.XXXXXX")
 trap 'rm -rf "$tmpdir"' EXIT
 rendered="$tmpdir/$label.plist"
 
@@ -63,19 +58,19 @@ cp "$template" "$rendered"
 /usr/bin/plutil -lint "$rendered" >/dev/null
 
 [ "$(/usr/libexec/PlistBuddy -c 'Print :ProgramArguments:0' "$rendered")" = "$helper" ] \
-    || die "rendered vault helper is incorrect"
+    || die "rendered window-reset helper is incorrect"
 [ "$(/usr/libexec/PlistBuddy -c 'Print :EnvironmentVariables:HOME' "$rendered")" = "$HOME" ] \
-    || die "rendered vault HOME is incorrect"
+    || die "rendered window-reset HOME is incorrect"
 if /usr/libexec/PlistBuddy -c 'Print :ProgramArguments:1' "$rendered" >/dev/null 2>&1; then
-    die "rendered vault agent has an unexpected extra argument"
+    die "rendered window-reset agent has an unexpected extra argument"
 fi
-[ "$(/usr/libexec/PlistBuddy -c 'Print :RunAtLoad' "$rendered")" = true ] \
-    || die "rendered vault agent does not run at login"
-[ "$(/usr/libexec/PlistBuddy -c 'Print :StartInterval' "$rendered")" = 3600 ] \
-    || die "rendered vault agent does not run hourly"
+[ "$(/usr/libexec/PlistBuddy -c 'Print :RunAtLoad' "$rendered")" = false ] \
+    || die "rendered window-reset agent must not fire at every login"
+[ "$(/usr/libexec/PlistBuddy -c 'Print :StartCalendarInterval:Day' "$rendered")" = 1 ] \
+    || die "rendered window-reset agent is not monthly"
 
 if [ "$check_only" -eq 1 ]; then
-    printf 'Transcript vault LaunchAgent renders and validates successfully.\n'
+    printf 'cass window reset LaunchAgent renders and validates successfully.\n'
     exit 0
 fi
 
@@ -94,5 +89,5 @@ fi
 /bin/launchctl bootout "$domain/$label" 2>/dev/null || true
 /bin/launchctl bootstrap "$domain" "$agent_path"
 
-printf 'Installed %s (at login and hourly)\n' "$agent_path"
+printf 'Installed %s (monthly, day 1 at 04:07)\n' "$agent_path"
 printf 'Logs append to %s\n' "$log_path"

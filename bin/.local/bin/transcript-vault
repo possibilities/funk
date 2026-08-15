@@ -11,12 +11,11 @@
 #      prune anywhere: repository snapshots are kept forever. (B2 was
 #      deliberately dropped as a transcript target — the operator does not
 #      want long-term session data there.)
-#   3. cass index so coding-agent-session-search stays current. The archive
-#      tree is covered by the "archive" local source in
-#      ~/.config/cass/sources.toml (explicit scan roots bypass cass's
-#      default per-agent discovery), so one index pass covers the live
-#      stores and the archive together. The index lives on /Volumes/Scratch
-#      because the internal disk cannot hold an index over the full corpus.
+#   3. cass index so coding-agent-session-search stays current over the live
+#      agent stores under $HOME. The archive is deliberately not indexed:
+#      search is a rolling window over live sessions, kept rolling by
+#      cass-window-reset, while the archive and restic stages preserve
+#      everything forever.
 #
 # Stages degrade independently. The exit status reflects preservation only:
 # nonzero when the live sync failed, or when silverbird was reachable and
@@ -27,35 +26,18 @@ set -uo pipefail
 
 PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$HOME/.local/bin"
 
-usage() {
-    printf 'Usage: transcript-vault [run|backfill [project-dir...]]\n' >&2
-    printf '  run       normal hourly pipeline (default)\n' >&2
-    printf '  backfill  force-ingest archive project dirs into cass; needed\n' >&2
-    printf '            after bulk imports of historic-mtime files, which\n' >&2
-    printf '            incremental watermarks skip and --full ignores.\n' >&2
-    printf '            Bare names or absolute paths under the canonical tree\n' >&2
-    printf '            limit the pass to those directories; with no arguments\n' >&2
-    printf '            every project directory is re-ingested.\n' >&2
+[ "$#" -eq 0 ] || {
+    printf 'Usage: transcript-vault\n' >&2
+    exit 64
 }
-
-mode=${1:-run}
-case "$mode" in
-    run)
-        shift 2>/dev/null || true
-        [ "$#" -eq 0 ] || { usage; exit 64; }
-        ;;
-    backfill) shift ;;
-    *) usage; exit 64 ;;
-esac
 
 ARCHIVE_ROOT=/Volumes/Scratch/claude-archive
 ARCHIVE_HOME="$ARCHIVE_ROOT/home"
 CANON="$ARCHIVE_HOME/.claude/projects"
 LIVE="$HOME/.claude/projects"
-CASS_DATA_DIR=/Volumes/Scratch/cass
-# An incremental pass is seconds to minutes; this bound only ever fires on
-# a wedge, and it must stay well under the hourly interval so a stopped
-# pass cannot delay the next firing.
+# An incremental pass over the live stores is seconds to minutes; this bound
+# only ever fires on a wedge, and it must stay well under the hourly interval
+# so a stopped pass cannot delay the next firing.
 INDEX_TIMEOUT=${TRANSCRIPT_VAULT_INDEX_TIMEOUT:-1500}
 CREDS_DIR="$HOME/.config/restic"
 export RESTIC_CACHE_DIR=/Volumes/Scratch/cache/restic
@@ -64,8 +46,8 @@ log() {
     printf '[%s] %s\n' "$(date '+%Y-%m-%dT%H:%M:%S')" "$*"
 }
 
-# Single instance: an hourly firing while a long run (initial upload, full
-# index) is still working must skip, not stack.
+# Single instance: an hourly firing while a long run (initial upload, window
+# reset) is still working must skip, not stack.
 LOCK_DIR="/tmp/transcript-vault.$(id -u).lock"
 if ! mkdir "$LOCK_DIR" 2>/dev/null; then
     other=$(cat "$LOCK_DIR/pid" 2>/dev/null || true)
@@ -85,74 +67,6 @@ if [ ! -d "$ARCHIVE_ROOT" ]; then
     exit 0
 fi
 mkdir -p "$CANON" "$ARCHIVE_ROOT/history"
-
-# --- backfill mode ---------------------------------------------------------
-# cass ingests archive content three different ways, and only one works for
-# bulk history: incremental runs watermark-gate files by mtime (so historic
-# files never qualify), --full runs skip explicit local sources entirely,
-# and --watch-once force-scans exactly the paths it is given. Feed it one
-# project directory per cycle, retrying when another index run holds the
-# lock.
-if [ "$mode" = backfill ]; then
-    command -v cass >/dev/null 2>&1 || { log "backfill: cass missing"; exit 1; }
-    [ -d "$CASS_DATA_DIR" ] || { log "backfill: $CASS_DATA_DIR missing"; exit 1; }
-    # Long watch-once cycles over heavy directories trip cass's stall
-    # watchdog, which aborts the run (exit 70) after most of the batch has
-    # already ingested. Keep stall reporting but never abort, and run one
-    # directory per cycle: a 25-directory cycle over heavy regions grew until
-    # the OS OOM-killed it (SIGKILL after hours), and single-directory cycles
-    # bound memory while re-scanned directories cost only seconds.
-    export CASS_INDEX_STALL_ABORT_SECS=0
-    batch_rc=0
-    run_batch() {
-        local paths="${1#,}" try rc out
-        for try in 1 2 3; do
-            rc=0
-            out=$(nice -n 20 cass index --data-dir "$CASS_DATA_DIR" \
-                --watch-once "$paths" --json --no-progress-events 2>&1) || rc=$?
-            if [ "$rc" -eq 0 ]; then
-                log "backfill batch ok: $(printf '%s' "$out" | tr -d '\n' | cut -c 1-200)"
-                return 0
-            fi
-            log "backfill batch busy/failed (exit $rc, try $try); retrying in 90s"
-            sleep 90
-        done
-        log "ERROR: backfill batch gave up after 3 tries"
-        batch_rc=1
-        return 1
-    }
-    # Named project directories limit the pass; with none, every directory
-    # is re-ingested. A bulk import usually touches a handful of directories,
-    # and a whole-tree pass makes the heavy ones re-pay their full lexical
-    # cost -- hours of work -- to rediscover that nothing changed.
-    targets=()
-    if [ "$#" -gt 0 ]; then
-        for arg in "$@"; do
-            case "$arg" in
-                *..*) log "backfill: refusing traversal in target: $arg"; exit 64 ;;
-                /*) target=${arg%/} ;;
-                *) target="$CANON/${arg%/}" ;;
-            esac
-            case "$target/" in
-                "$CANON"/*/) ;;
-                *) log "backfill: target is outside $CANON: $arg"; exit 64 ;;
-            esac
-            [ -d "$target" ] || { log "backfill: no such project dir: $arg"; exit 64; }
-            targets+=("$target")
-        done
-    else
-        for d in "$CANON"/*/; do
-            [ -d "$d" ] || continue
-            targets+=("${d%/}")
-        done
-    fi
-    log "backfill: ${#targets[@]} project dir(s) to ingest"
-    for target in ${targets[@]+"${targets[@]}"}; do
-        run_batch "$target" || true
-    done
-    log "backfill complete (errors=$batch_rc)"
-    exit "$batch_rc"
-fi
 
 # --- 1. live -> archive sync (additive only; never --delete) ---------------
 sync_rc=0
@@ -223,21 +137,24 @@ else
 fi
 
 # --- 3. cass search index --------------------------------------------------
-# One incremental pass covers the live agent stores and the archive (the
-# "archive" local source in ~/.config/cass/sources.toml). Incremental runs
-# are watermark-gated by mtime, which covers everything rsync adds in normal
-# operation; bulk imports of historic-mtime files need a one-shot
-# `cass index --full --data-dir /Volumes/Scratch/cass`.
+# One incremental pass over the live agent stores — cass's default per-agent
+# discovery under $HOME; no local sources are configured, so the archive tree
+# stays out of the index by construction. The index is held to a rolling
+# window by cass-window-reset, which rebuilds it from the live stores.
 #
-# The pass is bounded. cass can wedge — its indexing thread spins without
-# posting progress (its issues #244/#258) — and an unbounded stage holds this
-# script's single-instance lock for as long as the wedge lasts, so every later
-# hourly firing skips and preservation stops with it. That happened on
+# The pass has a deadline. cass can wedge — its indexing thread spins without
+# posting progress (its issues #244/#258/#400) — and an unbounded stage holds
+# this script's single-instance lock for as long as the wedge lasts, so every
+# later hourly firing skips and preservation stops with it. That happened on
 # 2026-08-12: a wedged index blocked the lock for hours and the rsync and
 # restic stages never ran again until it was killed by hand. Indexing is the
 # one stage this pipeline can lose without losing data, so it gets a deadline
 # and the preservation stages keep their schedule.
-if command -v cass >/dev/null 2>&1 && [ -d "$CASS_DATA_DIR" ]; then
+#
+# The deadline reads the clock instead of counting sleep iterations: a
+# counted deadline freezes while the machine sleeps, and one wedged pass held
+# the database and this lock for five hours that way.
+if command -v cass >/dev/null 2>&1; then
     index_rc=0
     index_out_file=$(mktemp "${TMPDIR:-/tmp}/transcript-vault-index.XXXXXX")
     index_rc_file=$(mktemp "${TMPDIR:-/tmp}/transcript-vault-index-rc.XXXXXX")
@@ -246,16 +163,15 @@ if command -v cass >/dev/null 2>&1 && [ -d "$CASS_DATA_DIR" ]; then
     # owns ("Terminated: 15") on stderr, which lands in this log looking like a
     # failure rather than the deadline working as designed.
     {
-        nice -n 20 cass index \
-            --data-dir "$CASS_DATA_DIR" --json --no-progress-events \
+        nice -n 20 cass index --json --no-progress-events \
             >"$index_out_file" 2>&1
         printf '%s\n' "$?" >"$index_rc_file"
     } &
     index_pid=$!
     disown "$index_pid" 2>/dev/null || true
-    waited=0
+    deadline=$(($(date +%s) + INDEX_TIMEOUT))
     while kill -0 "$index_pid" 2>/dev/null; do
-        if [ "$waited" -ge "$INDEX_TIMEOUT" ]; then
+        if [ "$(date +%s)" -ge "$deadline" ]; then
             # Kill the indexer itself, not just the subshell wrapping it.
             # Signalling only the wrapper leaves cass running, still holding
             # the database, while this log claims the pass was stopped.
@@ -268,7 +184,6 @@ if command -v cass >/dev/null 2>&1 && [ -d "$CASS_DATA_DIR" ]; then
             break
         fi
         sleep 5
-        waited=$((waited + 5))
     done
     if [ "$index_rc" -eq 0 ]; then
         index_rc=$(cat "$index_rc_file" 2>/dev/null)
@@ -285,7 +200,7 @@ preservation stages already completed"
         log "cass index failed or busy, exit $index_rc (non-fatal)"
     fi
 else
-    log "SKIP cass: binary or $CASS_DATA_DIR missing"
+    log "SKIP cass: not installed"
 fi
 
 if [ "$sync_rc" -eq 0 ] && [ "$sb_rc" -eq 0 ]; then
