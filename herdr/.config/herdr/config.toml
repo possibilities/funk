@@ -4,7 +4,7 @@ prefix = "ctrl+space"
 [[keys.command]]
 key = "prefix+u"
 type = "popup"
-command = "agentusage"
+command = "escape-to-quit agentusage"
 description = "usage"
 width = "80%"
 height = "80%"

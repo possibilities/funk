@@ -1,0 +1,128 @@
+#!/usr/bin/env python3
+# Run a command in a pty, translating a lone Escape keypress into a quit key
+# Usage: escape-to-quit [--send KEYS] command [args...]
+#
+# Escape sequences stay intact: arrow and function keys arrive as one read that
+# begins with Escape and carries more bytes, so only a read of exactly one
+# Escape byte is treated as the key itself. Apps that turn on the kitty keyboard
+# protocol get Escape as CSI 27 u instead, so that form counts too.
+
+import fcntl
+import os
+import pty
+import re
+import select
+import signal
+import struct
+import sys
+import termios
+import tty
+
+ESCAPE = b"\x1b"
+KITTY_ESCAPE = re.compile(rb"^\x1b\[27(;[0-9:]+)?u$")
+DEFAULT_SEND = b"q"
+STDIN = sys.stdin.fileno()
+STDOUT = sys.stdout.fileno()
+
+
+def usage(message):
+    print(f"escape-to-quit: {message}", file=sys.stderr)
+    print("usage: escape-to-quit [--send KEYS] command [args...]", file=sys.stderr)
+    raise SystemExit(2)
+
+
+def parse_args(argv):
+    send = DEFAULT_SEND
+    while argv and argv[0].startswith("-"):
+        option = argv.pop(0)
+        if option == "--":
+            break
+        if option == "--send":
+            if not argv:
+                usage("--send needs a value")
+            send = argv.pop(0).encode()
+        else:
+            usage(f"unknown option {option}")
+    if not argv:
+        usage("no command given")
+    return send, argv
+
+
+def window_size():
+    try:
+        return fcntl.ioctl(STDIN, termios.TIOCGWINSZ, b"\0" * 8)
+    except OSError:
+        return struct.pack("HHHH", 24, 80, 0, 0)
+
+
+def is_escape(keys):
+    return keys == ESCAPE or KITTY_ESCAPE.match(keys) is not None
+
+
+def spawn(command):
+    pid, master = pty.fork()
+    if pid == 0:
+        try:
+            os.execvp(command[0], command)
+        except OSError as error:
+            print(f"escape-to-quit: {command[0]}: {error.strerror}", file=sys.stderr)
+            os._exit(127)
+    return pid, master
+
+
+def pump(master, send):
+    while True:
+        try:
+            readable, _, _ = select.select([STDIN, master], [], [])
+        except InterruptedError:
+            continue
+        if master in readable:
+            try:
+                output = os.read(master, 65536)
+            except OSError:
+                output = b""
+            if not output:
+                return
+            os.write(STDOUT, output)
+        if STDIN in readable:
+            try:
+                keys = os.read(STDIN, 65536)
+            except OSError:
+                keys = b""
+            if not keys:
+                return
+            os.write(master, send if is_escape(keys) else keys)
+
+
+def main():
+    send, command = parse_args(sys.argv[1:])
+    pid, master = spawn(command)
+
+    def resize(_signum=None, _frame=None):
+        try:
+            fcntl.ioctl(master, termios.TIOCSWINSZ, window_size())
+        except OSError:
+            pass
+
+    resize()
+    signal.signal(signal.SIGWINCH, resize)
+
+    saved = None
+    if os.isatty(STDIN):
+        saved = termios.tcgetattr(STDIN)
+        tty.setraw(STDIN)
+    try:
+        pump(master, send)
+    finally:
+        if saved is not None:
+            termios.tcsetattr(STDIN, termios.TCSAFLUSH, saved)
+        os.close(master)
+
+    _, status = os.waitpid(pid, 0)
+    if os.WIFSIGNALED(status):
+        raise SystemExit(128 + os.WTERMSIG(status))
+    raise SystemExit(os.WEXITSTATUS(status))
+
+
+if __name__ == "__main__":
+    main()
