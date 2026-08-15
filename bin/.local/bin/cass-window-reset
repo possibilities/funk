@@ -16,7 +16,8 @@
 # entrypoint ingests everything through the ordinary streaming path, while
 # --full's deferred authoritative rebuild hits a deterministic frankensqlite
 # snapshot conflict on this corpus (cass 0.6.25, exit 7 on the same pages
-# every run).
+# every run; filed upstream as cass issue #401 — plain incremental hits it
+# too, which is what the retry loop below absorbs).
 #
 # The reset is guarded: it holds transcript-vault's single-instance lock so
 # no hourly index pass competes, keeps the old data directory aside until the
