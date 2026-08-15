@@ -1,6 +1,14 @@
 [keys]
 prefix = "ctrl+space"
 
+[[keys.command]]
+key = "prefix+u"
+type = "popup"
+command = "agentusage"
+description = "usage"
+width = "80%"
+height = "80%"
+
 [theme]
 name = "terminal"
 auto_switch = false
