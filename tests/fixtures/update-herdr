@@ -1,0 +1,11 @@
+#!/bin/bash
+
+set -u
+
+[ -n "${FUNK_TEST_HERDR_LOG:-}" ] || exit 1
+{
+    printf 'update-herdr-stub'
+    printf ' <%s>' "$@"
+    printf '\n'
+} >>"$FUNK_TEST_HERDR_LOG"
+exit "${FUNK_TEST_HERDR_EXIT:-0}"

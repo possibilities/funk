@@ -507,6 +507,7 @@ update_state="$update_test_dir/brew-state"
 update_brew_log="$update_test_dir/brew.log"
 update_npx_log="$update_test_dir/npx.log"
 update_notifier_log="$update_test_dir/notifier.log"
+update_herdr_log="$update_test_dir/update-herdr.log"
 update_code_root="$update_test_dir/code"
 mkdir -p "$update_home" "$update_code_root/agentfixture/skills/fixture"
 printf '%s\n' '---' 'name: fixture' '---' '# Fixture' \
@@ -525,6 +526,8 @@ update_output=$(
         FUNK_TEST_BREW_STATE="$update_state" \
         FUNK_TEST_BREW_LOG="$update_brew_log" \
         FUNK_TEST_NPX_LOG="$update_npx_log" \
+        FUNK_HERDR_UPDATER_BIN="$root/tests/fixtures/update-herdr" \
+        FUNK_TEST_HERDR_LOG="$update_herdr_log" \
         FUNK_SPCTL_BIN="$root/tests/fixtures/spctl" \
         "$root/bin/funk" update 2>&1
 )
@@ -538,6 +541,8 @@ printf '%s\n' "$update_output" | grep -F 'FAILED with exit status 23' >/dev/null
     || fail "funk update did not log failure"
 [ ! -s "$update_npx_log" ] \
     || fail "funk update ran skill synchronization after a Brewfile failure"
+[ ! -s "$update_herdr_log" ] \
+    || fail "funk update ran the herdr updater after a Brewfile failure"
 
 HOME="$update_home" \
     FUNK_AGENTSTART_ROOT="$update_agentstart_root" \
@@ -552,6 +557,8 @@ HOME="$update_home" \
     FUNK_TEST_NPX_LOG="$update_npx_log" \
     FUNK_TEST_NOTIFIER_LOG="$update_notifier_log" \
     FUNK_TERMINAL_NOTIFIER_BIN="$root/tests/fixtures/terminal-notifier" \
+    FUNK_HERDR_UPDATER_BIN="$root/tests/fixtures/update-herdr" \
+    FUNK_TEST_HERDR_LOG="$update_herdr_log" \
     FUNK_SPCTL_BIN="$root/tests/fixtures/spctl" \
     "$root/bin/funk" update --notify >/dev/null
 notification=$(grep -F '<Funk Update>' "$update_notifier_log" | tail -n 1)
@@ -559,6 +566,8 @@ printf '%s\n' "$notification" | grep -F 'terminal-notifier 1.0.0 → 2.0.0' >/de
     || fail "change-aware notification omitted the upgraded formula"
 grep -F 'npx-stub <--yes> <skills> <add>' "$update_npx_log" >/dev/null \
     || fail "scheduled update did not synchronize fleet skills"
+grep -F 'update-herdr-stub' "$update_herdr_log" >/dev/null \
+    || fail "scheduled update did not run the herdr updater"
 
 : >"$update_notifier_log"
 HOME="$update_home" \
@@ -574,6 +583,8 @@ HOME="$update_home" \
     FUNK_TEST_NPX_LOG="$update_npx_log" \
     FUNK_TEST_NOTIFIER_LOG="$update_notifier_log" \
     FUNK_TERMINAL_NOTIFIER_BIN="$root/tests/fixtures/terminal-notifier" \
+    FUNK_HERDR_UPDATER_BIN="$root/tests/fixtures/update-herdr" \
+    FUNK_TEST_HERDR_LOG="$update_herdr_log" \
     FUNK_SPCTL_BIN="$root/tests/fixtures/spctl" \
     "$root/bin/funk" update --notify >/dev/null
 grep -F '<-message> <Installer ran; no updates.>' "$update_notifier_log" >/dev/null \
@@ -595,6 +606,8 @@ update_output=$(
         FUNK_TEST_NOTIFIER_LOG="$update_notifier_log" \
         AGENTSTART_NPX_BIN="$root/tests/fixtures/npx" \
         FUNK_TERMINAL_NOTIFIER_BIN="$root/tests/fixtures/terminal-notifier" \
+        FUNK_HERDR_UPDATER_BIN="$root/tests/fixtures/update-herdr" \
+        FUNK_TEST_HERDR_LOG="$update_herdr_log" \
         FUNK_SPCTL_BIN="$root/tests/fixtures/spctl" \
         "$root/bin/funk" update --notify 2>&1
 )
@@ -632,6 +645,17 @@ grep -F 'agentstart_root="${FUNK_AGENTSTART_ROOT:-$HOME/code/agentstart}"' \
 # shellcheck disable=SC2016 # Match the literal helper invocation in the script.
 grep -F '"$skill_sync" || status=$?' libexec/funk-update >/dev/null \
     || fail "scheduled updater does not synchronize the globally managed skills"
+# The herdr build behavior is AgentStart's and is asserted by its own
+# validate; Funk asserts only the wiring, and that a blocked herdr checkout
+# is triaged through update-herdr's own notification instead of failing the
+# whole scheduled run.
+# shellcheck disable=SC2016 # Match the literal declaration in the script.
+grep -F 'herdr_updater="${FUNK_HERDR_UPDATER_BIN:-$agentstart_root/scripts/update-herdr}"' \
+    libexec/funk-update >/dev/null \
+    || fail "scheduled updater does not resolve the AgentStart herdr updater"
+# shellcheck disable=SC2016 # Match the literal helper invocation in the script.
+grep -F '"$herdr_updater" || log' libexec/funk-update >/dev/null \
+    || fail "scheduled updater does not run the herdr updater as triaged, non-fatal work"
 
 # Gatekeeper quarantine is a macOS kernel feature: these assertions write and
 # read real com.apple.quarantine xattrs, so there is nothing to port. On any

@@ -52,6 +52,12 @@ terminfo_installer="$funk_root/libexec/install-ghostty-terminfo"
 # AgentStart, so a missing checkout here is damage worth failing over.
 agentstart_root="${FUNK_AGENTSTART_ROOT:-$HOME/code/agentstart}"
 skill_sync="$agentstart_root/scripts/sync-skills"
+# herdr converges from its bound checkout, not the Brewfile: AgentStart's
+# update-herdr fast-forwards clean master, builds, installs beside the
+# running server, and posts its own notification when the checkout cannot
+# converge or a new build lands. Unattended-safe by the same rules as the
+# skill sync — no sudo, no uninstalls, no application restarts.
+herdr_updater="${FUNK_HERDR_UPDATER_BIN:-$agentstart_root/scripts/update-herdr}"
 
 if [ ! -f "$brewfile" ]; then
     log "FAILED: Brewfile not found at $brewfile" >&2
@@ -75,6 +81,10 @@ fi
 }
 [ -x "$skill_sync" ] || {
     log "FAILED: AgentStart skill sync not found at $skill_sync" >&2
+    exit 66
+}
+[ -x "$herdr_updater" ] || {
+    log "FAILED: AgentStart herdr updater not found at $herdr_updater" >&2
     exit 66
 }
 
@@ -224,6 +234,13 @@ fi
 # for the next ./install.
 if [ "$status" -eq 0 ]; then
     "$skill_sync" || status=$?
+fi
+# A herdr checkout the updater cannot converge is operator state, like an
+# unattendable cask: update-herdr reports it through its own notification
+# and this log, so its exit is triaged rather than failing the run and
+# pointing the operator at the Brewfile.
+if [ "$status" -eq 0 ]; then
+    "$herdr_updater" || log "herdr updater exited $?; it notifies for itself"
 fi
 
 snapshot_versions "$after"

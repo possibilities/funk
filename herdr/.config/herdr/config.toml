@@ -67,9 +67,23 @@ auto_switch = false
 
 [ui]
 agent_panel_sort = "priority"
+# "dots" renders working, blocked, and done all as a filled dot, separated only
+# by hue; "symbols" gives each state its own glyph (working ◐, done ✓, blocked
+# ×). Added after v0.8.0, so this key needs a master build.
+status_indicators = "symbols"
+# Agent memory per kind ("cc 3.4 / co 2.1"), summed over each agent pane's
+# process tree by the stowed script beside this file.
+tab_bar_right = [
+  { type = "command", command = "~/.config/herdr/agent-mem.sh", interval_seconds = 10 },
+]
 
 [ui.toast]
 delivery = "herdr"
+
+# The binary is built from ~/src/herdr by agentstart's update-herdr, so herdr's
+# own update check would only offer a crossgrade back to the stable channel.
+[update]
+version_check = false
 
 [experimental]
 kitty_graphics = true
