@@ -20,6 +20,27 @@ type = "shell"
 command = "herdr-move-tab right"
 description = "move tab right"
 
+# Herdr 0.8.0 has no keybind action that creates a tab and starts a harness in
+# it; the helper chains tab create + agent start. Tabs keep the default numeric
+# name; agents are named <kind>-<n>.
+[[keys.command]]
+key = "prefix+shift+c"
+type = "shell"
+command = "herdr-agent-tab claude"
+description = "new tab running claude"
+
+[[keys.command]]
+key = "prefix+shift+o"
+type = "shell"
+command = "herdr-agent-tab codex"
+description = "new tab running codex"
+
+[[keys.command]]
+key = "prefix+shift+i"
+type = "shell"
+command = "herdr-agent-tab pi"
+description = "new tab running pi"
+
 [[keys.command]]
 key = "prefix+u"
 type = "popup"

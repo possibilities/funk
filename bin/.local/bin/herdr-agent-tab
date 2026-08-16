@@ -1,0 +1,67 @@
+#!/usr/bin/env python3
+# Open a new Herdr tab in the active workspace and start an agent harness in it.
+# Usage: herdr-agent-tab claude|codex|pi|<kind>
+#
+# Herdr 0.8.0 has no keybind action for "new tab running an agent": `tab create`
+# makes the topology and `agent start` adopts an idle shell pane, but nothing
+# joins them. Retire this script if a native action lands.
+
+import json
+import os
+import subprocess
+import sys
+
+
+def fail(message):
+    print(f"herdr-agent-tab: {message}", file=sys.stderr)
+    raise SystemExit(1)
+
+
+# Herdr exports HERDR_BIN_PATH into custom command bindings; fall back to PATH
+# so the script is also usable from an ordinary shell.
+def herdr(*args):
+    binary = os.environ.get("HERDR_BIN_PATH") or "herdr"
+    try:
+        completed = subprocess.run(
+            [binary, *args], capture_output=True, text=True, check=False
+        )
+    except OSError as error:
+        fail(f"{binary}: {error.strerror}")
+    if completed.returncode != 0:
+        detail = completed.stderr.strip() or completed.stdout.strip()
+        fail(f"{' '.join(args)}: {detail or 'failed'}")
+    try:
+        response = json.loads(completed.stdout)
+    except json.JSONDecodeError:
+        fail(f"{' '.join(args)}: unreadable response")
+    if "error" in response:
+        error = response["error"]
+        fail(f"{' '.join(args)}: {error.get('message', error)}")
+    return response["result"]
+
+
+# Agent names are unique among live agents, so number per kind and take the
+# first free slot rather than growing forever.
+def next_name(kind):
+    taken = {agent.get("name") for agent in herdr("agent", "list")["agents"]}
+    index = 1
+    while f"{kind}-{index}" in taken:
+        index += 1
+    return f"{kind}-{index}"
+
+
+def main():
+    if len(sys.argv) != 2:
+        print("usage: herdr-agent-tab <kind>", file=sys.stderr)
+        raise SystemExit(2)
+    kind = sys.argv[1]
+
+    name = next_name(kind)
+    # No --label: the tab keeps Herdr's default numeric name.
+    pane = herdr("tab", "create", "--focus")["root_pane"]["pane_id"]
+    # A failed start leaves the tab in place with its usable shell.
+    herdr("agent", "start", name, "--kind", kind, "--pane", pane)
+
+
+if __name__ == "__main__":
+    main()
