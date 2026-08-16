@@ -72,9 +72,13 @@ agent_panel_sort = "priority"
 # ×). Added after v0.8.0, so this key needs a master build.
 status_indicators = "symbols"
 # Agent memory per kind ("cc 3.4 / co 2.1"), summed over each agent pane's
-# process tree by the stowed script beside this file.
+# process tree by the stowed script beside this file. The status area ends
+# flush against the terminal edge, and command output is trimmed before it is
+# drawn, so the clearance has to come from a literal text entry — those keep
+# their spaces. It reads as two columns: this pad plus the separator before it.
 tab_bar_right = [
   { type = "command", command = "~/.config/herdr/agent-mem.sh", interval_seconds = 10 },
+  { type = "text", text = " " },
 ]
 
 [ui.toast]
