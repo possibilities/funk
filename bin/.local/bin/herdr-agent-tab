@@ -10,6 +10,12 @@ import json
 import os
 import subprocess
 import sys
+import time
+
+# A freshly created pane is not an available shell until its startup files
+# finish, and `agent start` rejects it as busy until then.
+SHELL_READY_TIMEOUT_SECONDS = 10.0
+SHELL_POLL_SECONDS = 0.1
 
 
 def fail(message):
@@ -19,7 +25,7 @@ def fail(message):
 
 # Herdr exports HERDR_BIN_PATH into custom command bindings; fall back to PATH
 # so the script is also usable from an ordinary shell.
-def herdr(*args):
+def call(*args):
     binary = os.environ.get("HERDR_BIN_PATH") or "herdr"
     try:
         completed = subprocess.run(
@@ -27,17 +33,22 @@ def herdr(*args):
         )
     except OSError as error:
         fail(f"{binary}: {error.strerror}")
-    if completed.returncode != 0:
-        detail = completed.stderr.strip() or completed.stdout.strip()
-        fail(f"{' '.join(args)}: {detail or 'failed'}")
-    try:
-        response = json.loads(completed.stdout)
-    except json.JSONDecodeError:
-        fail(f"{' '.join(args)}: unreadable response")
-    if "error" in response:
-        error = response["error"]
+    # Successful responses come back on stdout, error responses on stderr.
+    for stream in (completed.stdout, completed.stderr):
+        try:
+            response = json.loads(stream)
+        except json.JSONDecodeError:
+            continue
+        return response.get("result"), response.get("error")
+    detail = completed.stderr.strip() or completed.stdout.strip()
+    fail(f"{' '.join(args)}: {detail or 'no response'}")
+
+
+def herdr(*args):
+    result, error = call(*args)
+    if error is not None:
         fail(f"{' '.join(args)}: {error.get('message', error)}")
-    return response["result"]
+    return result
 
 
 # Agent names are unique among live agents, so number per kind and take the
@@ -50,6 +61,19 @@ def next_name(kind):
     return f"{kind}-{index}"
 
 
+# The server's own readiness check is the only authority on "available shell",
+# so retry against it rather than guessing from process state.
+def start_when_ready(name, kind, pane):
+    deadline = time.monotonic() + SHELL_READY_TIMEOUT_SECONDS
+    while True:
+        _, error = call("agent", "start", name, "--kind", kind, "--pane", pane)
+        if error is None:
+            return
+        if error.get("code") != "agent_pane_busy" or time.monotonic() >= deadline:
+            fail(f"agent start {name}: {error.get('message', error)}")
+        time.sleep(SHELL_POLL_SECONDS)
+
+
 def main():
     if len(sys.argv) != 2:
         print("usage: herdr-agent-tab <kind>", file=sys.stderr)
@@ -60,7 +84,7 @@ def main():
     # No --label: the tab keeps Herdr's default numeric name.
     pane = herdr("tab", "create", "--focus")["root_pane"]["pane_id"]
     # A failed start leaves the tab in place with its usable shell.
-    herdr("agent", "start", name, "--kind", kind, "--pane", pane)
+    start_when_ready(name, kind, pane)
 
 
 if __name__ == "__main__":
