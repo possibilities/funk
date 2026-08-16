@@ -49,6 +49,18 @@ description = "usage"
 width = "80%"
 height = "80%"
 
+# AgentSurface's launcher quits on esc itself, so no escape-to-quit wrapper.
+# The whole flow runs in the popup: type the intent, confirm project /
+# worktree / harness:model:effort, and the popup closes onto the new
+# workspace with the agent started and the intent submitted.
+[[keys.command]]
+key = "prefix+l"
+type = "popup"
+command = "agentsurface launch"
+description = "launch an agent"
+width = "80%"
+height = "80%"
+
 [theme]
 name = "terminal"
 auto_switch = false
