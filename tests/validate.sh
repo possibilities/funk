@@ -1022,6 +1022,34 @@ expected_gh_log=$(printf '%s\n' \
 [ "$(cat "$gh_log")" = "$expected_gh_log" ] \
     || fail "ghinit invoked gh repo create with unexpected arguments"
 
+# A GitHub repository that already exists is not a failure: bind the checkout
+# to it and let the rejected push be the operator's problem, not an abort.
+existing_remote="$helper_home/existing-remote.git"
+git init --quiet --bare --initial-branch=main "$existing_remote"
+(
+    export GIT_CONFIG_GLOBAL="$helper_home/gitconfig" GIT_CONFIG_NOSYSTEM=1
+    mkdir "$helper_home/existing-seed"
+    cd "$helper_home/existing-seed"
+    git init --quiet --initial-branch=main
+    git commit --quiet --allow-empty -m 'Upstream history'
+    git push --quiet "$existing_remote" main
+)
+set +e
+HOME="$helper_home" \
+    PATH="$root/bin/.local/bin:$root/tests/fixtures:/usr/bin:/bin" \
+    FUNK_TEST_GH_LOG="$gh_log" \
+    FUNK_TEST_GH_CREATE_FAILS=1 \
+    FUNK_TEST_GH_REPO_URL="$existing_remote" \
+    GIT_CONFIG_GLOBAL="$helper_home/gitconfig" \
+    GIT_CONFIG_NOSYSTEM=1 \
+    "$root/bin/.local/bin/ghinit" gh-existing >/dev/null 2>&1
+ghinit_existing_status=$?
+set -e
+[ "$ghinit_existing_status" -eq 0 ] \
+    || fail "ghinit failed when the GitHub repository already existed"
+[ "$(git -C "$helper_home/code/gh-existing" remote get-url origin)" = "$existing_remote" ] \
+    || fail "ghinit did not bind the existing GitHub repository as origin"
+
 set +e
 HOME="$helper_home" "$root/bin/.local/bin/ghinit" ../outside >/dev/null 2>&1
 ghinit_traversal_status=$?

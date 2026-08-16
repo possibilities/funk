@@ -38,11 +38,41 @@ fi
 
 ginit
 
-if ! git remote get-url origin >/dev/null 2>&1; then
-    gh repo create --source=. --private --push "$@"
-else
+# Push the current branch, tolerating a rejected push: an existing GitHub
+# repository may already carry commits this checkout does not have.
+push_current_branch() {
     branch=$(git symbolic-ref --short HEAD)
-    if ! git rev-parse --abbrev-ref '@{upstream}' >/dev/null 2>&1; then
-        git push -u origin "$branch"
+    if git push -u origin "$branch"; then
+        return 0
     fi
+    printf 'ghinit: origin is set, but pushing %s was rejected; reconcile the histories yourself\n' \
+        "$branch" >&2
+}
+
+# The repository gh repo create --source=. would have made: named for this
+# directory, owned by the authenticated user.
+existing_repo_url() {
+    repo=$(basename -- "$(pwd -P)")
+    case "$(gh config get git_protocol 2>/dev/null)" in
+        ssh) field=sshUrl ;;
+        *) field=url ;;
+    esac
+    gh repo view "$repo" --json "$field" --jq ".$field" 2>/dev/null
+}
+
+if ! git remote get-url origin >/dev/null 2>&1; then
+    create_status=0
+    gh repo create --source=. --private --push "$@" || create_status=$?
+    if [ "$create_status" -ne 0 ]; then
+        # Creation commonly fails only because the repository already exists.
+        # That is not an error worth stopping for: bind this checkout to it.
+        if ! remote_url=$(existing_repo_url) || [ -z "$remote_url" ]; then
+            exit "$create_status"
+        fi
+        printf 'ghinit: that repository already exists; adding it as origin\n' >&2
+        git remote add origin "$remote_url"
+        push_current_branch
+    fi
+elif ! git rev-parse --abbrev-ref '@{upstream}' >/dev/null 2>&1; then
+    push_current_branch
 fi

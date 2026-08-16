@@ -4,13 +4,28 @@ set -euo pipefail
 
 : "${FUNK_TEST_GH_LOG:?FUNK_TEST_GH_LOG is not set}"
 
-[ "${1:-}" = repo ] && [ "${2:-}" = create ] || {
-    printf 'gh-stub: unexpected command\n' >&2
-    exit 64
-}
-shift 2
-
-{
-    printf 'cwd=%s\n' "$PWD"
-    printf 'arg=%s\n' "$@"
-} >"$FUNK_TEST_GH_LOG"
+case "${1:-} ${2:-}" in
+    'repo create')
+        shift 2
+        {
+            printf 'cwd=%s\n' "$PWD"
+            printf 'arg=%s\n' "$@"
+        } >"$FUNK_TEST_GH_LOG"
+        # Stand in for a repository that already exists on GitHub.
+        [ -n "${FUNK_TEST_GH_CREATE_FAILS:-}" ] || exit 0
+        printf 'gh-stub: name already exists on this account\n' >&2
+        exit 1
+        ;;
+    'repo view')
+        # gh repo view <repo> --json <field> --jq .<field>
+        [ -n "${FUNK_TEST_GH_REPO_URL:-}" ] || exit 1
+        printf '%s\n' "$FUNK_TEST_GH_REPO_URL"
+        ;;
+    'config get')
+        printf '%s\n' "${FUNK_TEST_GH_GIT_PROTOCOL:-https}"
+        ;;
+    *)
+        printf 'gh-stub: unexpected command\n' >&2
+        exit 64
+        ;;
+esac
