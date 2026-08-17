@@ -1294,6 +1294,8 @@ grep -Fx 'f12 : yabai -m space --focus 9' skhd/.config/skhd/skhdrc >/dev/null \
 grep -F 'cmd + shift - v : /usr/bin/open "raycast://extensions/raycast/clipboard-history/clipboard-history"' \
     skhd/.config/skhd/skhdrc >/dev/null \
     || fail "Raycast Clipboard History shortcut is missing"
+grep -Fx 'ctrl - escape : terminal-notifier -remove ALL' skhd/.config/skhd/skhdrc >/dev/null \
+    || fail "terminal-notifier dismissal shortcut is missing"
 grep -F 'ctrl - l [' skhd/.config/skhd/skhdrc >/dev/null \
     || fail "browser address-bar shortcut is missing"
 for browser_name in "Google Chrome" "Google Chrome Canary" Firefox "Brave Browser"; do

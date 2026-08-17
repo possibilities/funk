@@ -55,5 +55,8 @@ ctrl + shift - 3 : /usr/sbin/screencapture -c
 ctrl + shift - 4 : /usr/sbin/screencapture -i -c
 ctrl + shift - 5 : /usr/sbin/screencapture -i "$HOME/Desktop/screenshot-$(date +\%Y\%m\%d-\%H\%M\%S).png"
 
+# Dismiss every terminal-notifier notification.
+ctrl - escape : terminal-notifier -remove ALL
+
 # Raycast Clipboard History.
 cmd + shift - v : /usr/bin/open "raycast://extensions/raycast/clipboard-history/clipboard-history"
