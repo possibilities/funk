@@ -162,7 +162,6 @@ agentstart_root="$HOME/code/agentstart"
 "$funk_command" install-tailscale-recovery
 "$funk_command" install-home-awake
 "$funk_command" install-transcript-vault
-"$funk_command" install-memory-guard
 "$funk_command" install-cass-window-reset
 "$funk_command" configure-macos
 
@@ -218,7 +217,6 @@ Update log: $HOME/Library/Logs/Funk/update.log
 Tailscale recovery log: $HOME/Library/Logs/Funk/tailscale-online.log
 home-awake log: $HOME/Library/Logs/Funk/home-awake.log
 Transcript vault log: $HOME/Library/Logs/Funk/transcript-vault.log
-Memory guard log: $HOME/Library/Logs/Funk/memory-guard.log
 EOF
 
 if [ "$notifications_blocked" -eq 1 ]; then
