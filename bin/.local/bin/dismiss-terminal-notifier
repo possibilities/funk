@@ -1,0 +1,42 @@
+#!/bin/bash
+
+set -euo pipefail
+
+find_notifier() {
+    local candidate
+
+    if [ -n "${FUNK_TERMINAL_NOTIFIER_BIN:-}" ]; then
+        [ -x "$FUNK_TERMINAL_NOTIFIER_BIN" ] || return 1
+        printf '%s\n' "$FUNK_TERMINAL_NOTIFIER_BIN"
+        return
+    fi
+
+    if command -v terminal-notifier >/dev/null 2>&1; then
+        command -v terminal-notifier
+        return
+    fi
+
+    for candidate in /opt/homebrew/bin/terminal-notifier \
+        /usr/local/bin/terminal-notifier; do
+        if [ -x "$candidate" ]; then
+            printf '%s\n' "$candidate"
+            return
+        fi
+    done
+
+    return 1
+}
+
+notifier=$(find_notifier) || exit 0
+
+# macOS currently applies at most eight of terminal-notifier's removal
+# requests per process. Drain successive batches, with a strict bound so a
+# stalled Notification Center cannot leave a hotkey process running forever.
+for _ in {1..32}; do
+    delivered=$("$notifier" -list ALL)
+    [ -n "$delivered" ] || exit 0
+    "$notifier" -remove ALL >/dev/null
+    /bin/sleep 0.1
+done
+
+[ -z "$("$notifier" -list ALL)" ]

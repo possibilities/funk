@@ -1,0 +1,31 @@
+#!/bin/bash
+
+set -euo pipefail
+
+state_file=${FUNK_TEST_NOTIFIER_STATE:?FUNK_TEST_NOTIFIER_STATE is not set}
+log_file=${FUNK_TEST_NOTIFIER_LOG:?FUNK_TEST_NOTIFIER_LOG is not set}
+limit=${FUNK_TEST_NOTIFIER_REMOVE_LIMIT:-8}
+action=${1:-}
+target=${2:-}
+
+printf '%s %s\n' "$action" "$target" >>"$log_file"
+count=$(<"$state_file")
+
+case "$action:$target" in
+    -list:ALL)
+        for ((index = 1; index <= count; index++)); do
+            printf 'notification-%s\n' "$index"
+        done
+        ;;
+    -remove:ALL)
+        if [ "$count" -gt "$limit" ]; then
+            count=$((count - limit))
+        else
+            count=0
+        fi
+        printf '%s\n' "$count" >"$state_file"
+        ;;
+    *)
+        exit 64
+        ;;
+esac

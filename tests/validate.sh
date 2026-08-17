@@ -69,6 +69,7 @@ yabai/.config/yabai/yabairc
 bin/.local/bin/tmux-cycle-session
 bin/.local/bin/tmux-move-window
 bin/.local/bin/focus-address-bar
+bin/.local/bin/dismiss-terminal-notifier
 bin/.local/bin/ginit
 bin/.local/bin/ghinit
 bin/.local/bin/tailscale-ensure-online
@@ -94,6 +95,7 @@ tests/scrcpy-launchers.sh
 tests/tailscale-online.sh
 tests/gog-authed.sh
 tests/funk-notify.sh
+tests/dismiss-terminal-notifier.sh
 tests/fixtures/adb
 tests/fixtures/adb-chuchu
 tests/fixtures/adb-wireless-connect-chuchu
@@ -114,6 +116,7 @@ tests/fixtures/spctl
 tests/fixtures/systemextensionsctl
 tests/fixtures/tailscale
 tests/fixtures/terminal-notifier
+tests/fixtures/terminal-notifier-remove-limit
 tests/fixtures/unzip-chuchu
 tests/fixtures/zig
 tests/validate.sh
@@ -1291,7 +1294,7 @@ grep -Fx 'f12 : yabai -m space --focus 9' skhd/.config/skhd/skhdrc >/dev/null \
 grep -F 'cmd + shift - v : /usr/bin/open "raycast://extensions/raycast/clipboard-history/clipboard-history"' \
     skhd/.config/skhd/skhdrc >/dev/null \
     || fail "Raycast Clipboard History shortcut is missing"
-grep -Fx 'ctrl + cmd - escape : terminal-notifier -remove ALL' skhd/.config/skhd/skhdrc >/dev/null \
+grep -Fx 'ctrl + cmd - escape : ~/.local/bin/dismiss-terminal-notifier' skhd/.config/skhd/skhdrc >/dev/null \
     || fail "terminal-notifier dismissal shortcut is missing"
 grep -F 'ctrl - l [' skhd/.config/skhd/skhdrc >/dev/null \
     || fail "browser address-bar shortcut is missing"
@@ -1313,6 +1316,7 @@ grep -Fx 'cask "android-platform-tools", greedy: true' Brewfile >/dev/null \
 "$root/tests/ssh-tailnet-config.sh"
 "$root/tests/gog-authed.sh"
 "$root/tests/funk-notify.sh"
+"$root/tests/dismiss-terminal-notifier.sh"
 # home-awake asserts a root helper's installability through BSD stat -f and
 # drives pmset and caffeinate, so it only means anything on macOS.
 if [ "$(uname -s)" = Darwin ]; then
