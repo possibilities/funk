@@ -988,6 +988,10 @@ grep -F 'path = ~/.config/git/config.local' git/.config/git/config >/dev/null \
     || fail "the AgentVoice doctrine is AgentStart's; nothing in Funk may stow ~/.config/agentvoice"
 [ ! -e "$stow_home/Library/Application Support/io.datasette.llm" ] \
     || fail "the llm configuration is AgentStart's; nothing in Funk may stow into io.datasette.llm"
+[ -L "$stow_home/.config/herdr/agent-mem.sh" ] \
+    || fail "Funk's machine-owned Herdr memory helper was not stowed"
+[ ! -e "$stow_home/.config/herdr/config.toml" ] \
+    || fail "Herdr config.toml is AgentStart's generated theme config, not Funk's"
 HOME="$stow_home" "$root/bin/funk" stow --check >/dev/null 2>&1
 # AgentStart owns balanced launch shims; Funk keeps only a convenience
 # delegation and the shell PATH entry for the installed AgentLaunch directory.
@@ -1122,11 +1126,20 @@ grep -F -- '--without-windows) with_windows=0' install >/dev/null \
     || fail "default window stack has no explicit opt-out"
 grep -F 'tmux-fzf.git' libexec/initialize-configs >/dev/null \
     || fail "tmux-fzf is not initialized"
+theme_manager_refs=$(grep -R -Eih \
+    'tinty|tinted-theming' \
+    Brewfile README.md libexec ghostty nvim tmux zsh btop git || true)
+[ "$theme_manager_refs" = 'theme = "tinted-theming"' ] \
+    || fail "managed configuration has a theme-manager reference outside Ghostty's generated theme seam"
 if grep -R -Eqi \
-    'tinty|tinted-theming|catppuccin|base16|base24|syntax-theme|color_theme|theme_background' \
+    'catppuccin|base16|base24|syntax-theme|color_theme|theme_background' \
     Brewfile README.md libexec ghostty nvim tmux zsh btop git; then
-    fail "managed configuration contains a prohibited theme or theme manager"
+    fail "managed configuration contains a prohibited hard-coded theme"
 fi
+grep -Fqx 'theme = "tinted-theming"' ghostty/.config/ghostty/config \
+    || fail "Ghostty does not select AgentStart's generated Tinty theme"
+[ ! -e ghostty/.config/ghostty/themes/tinted-theming ] \
+    || fail "Ghostty's generated Tinty palette must remain outside Funk"
 if grep -R -Eq \
     "%C\\(|%C[a-z]|%\\(color:|fg=(black|red|green|yellow|blue|magenta|cyan|white)|bg=(black|red|green|yellow|blue|magenta|cyan|white)|style = '(black|red|green|yellow|blue|magenta|cyan|white)'" \
     ghostty nvim tmux zsh btop git; then

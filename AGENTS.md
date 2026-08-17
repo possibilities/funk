@@ -33,14 +33,16 @@ converge by running `./install`; do not rely on one-off live configuration.
 - Reload affected applications after changing live configuration when
   possible: source tmux's config and restart Yabai/skhd services. Karabiner
   reloads its configuration automatically.
-- Managed configuration carries no theme: no theme manager, no named color, no
-  hex literal. `tmux/.config/tmux/conf.d/theme.conf` is the one place that
-  styles anything, and it stays legal by naming only ANSI palette indices
-  (`colour0-15`) plus `default`, which resolve against Ghostty's theme rather
-  than overriding it. `tests/validate.sh` pins all four halves — the ban, the
-  hex ban, the file's existence, and its confinement to the ANSI range — so a
-  future theming cleanup cannot sweep the status bar away again the way
-  `24663c1` did.
+- Managed configuration carries no raw palette: no hard-coded named color or
+  hex literal. Ghostty's one theme seam names `tinted-theming`, the stable
+  generated file owned by AgentStart's Tinty config at
+  `~/.config/ghostty/themes/tinted-theming`; that rendered file is untracked
+  machine state and must never be Stowed or adopted. Tmux's
+  `tmux/.config/tmux/conf.d/theme.conf` styles against that palette using only
+  ANSI indices (`colour0-15`) plus `default`. `tests/validate.sh` pins the
+  single allowed manager reference, the named-color and hex bans, the tmux
+  file's existence, and its confinement to the ANSI range, so a future theme
+  cleanup cannot sweep the status bar away again the way `24663c1` did.
 - `assets/chuchu/Signal Room` is outside that managed desktop-configuration
   rule. It is the canonical remote APK asset consumed only by
   `funk chuchu-theme`, which must prove the built application ID is
@@ -204,7 +206,10 @@ Do not install or synchronize a separate `funk` skill.
 
 Configuration another program writes is overlaid, never adopted. The llm CLI
 and its model configuration are AgentStart's (`config/llm/`, and the formula
-left the Brewfile with them). Adopt a file only when Funk is its sole writer.
+left the Brewfile with them). Herdr's live `config.toml` is also AgentStart's:
+it composes tracked behavior with the generated Base16 Chalk palette, while
+Funk's `herdr` package retains only the machine-owned `agent-mem.sh` helper.
+Adopt a file only when Funk is its sole writer.
 
 Prove a configuration file is read before adopting it. A directory under
 `~/.config` named for a program is not evidence that the program loads it —
