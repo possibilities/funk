@@ -1,0 +1,9 @@
+#!/bin/bash
+
+set -euo pipefail
+
+[ "${1:-}" = --print-serial ] && [ "$#" -eq 1 ] || exit 64
+printf 'ADB_SERVER_SOCKET=%s\nADB_USB=%s\nADB_MDNS_AUTO_CONNECT=%s\n' \
+    "${ADB_SERVER_SOCKET-<unset>}" "${ADB_USB-<unset>}" \
+    "${ADB_MDNS_AUTO_CONNECT-<unset>}" >"${FUNK_TEST_CONNECT_LOG:?}"
+printf '%s\n' "${FUNK_TEST_WIRELESS_SERIAL:-wireless-phone:5555}"

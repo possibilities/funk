@@ -28,6 +28,8 @@ Commands:
   update [--notify]  Install or upgrade packages declared by Funk
   stow [options]     Link Funk's user configuration packages into HOME
   chuchu-theme       Build/reinstall Chuchu Lab with the Signal Room theme
+  install-android-launchers [--check]
+                      Install the four native Android launcher applications
   install-ghostty-terminfo
                       Install Ghostty's terminal definition for remote shells
   ssh-tailnet-config [--check]
@@ -79,6 +81,10 @@ case "$command_name" in
     chuchu-theme)
         shift
         exec "$FUNK_ROOT/libexec/install-chuchu-lab-theme" "$@"
+        ;;
+    install-android-launchers)
+        shift
+        exec "$FUNK_ROOT/libexec/install-android-launchers" "$@"
         ;;
     install-ghostty-terminfo)
         shift

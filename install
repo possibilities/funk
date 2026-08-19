@@ -17,6 +17,7 @@ Default installation:
   - runs the AgentStart installer, which owns the AI command-line toolchain,
     harness configuration, and every globally managed agent skill
   - stows all user configuration packages into the target user's home
+  - installs four native Android launcher applications into ~/Applications
   - installs the window stack and converges Yabai Spaces 1-9
   - links the funk command into the active Homebrew bin directory
   - installs and loads the update and Tailscale recovery LaunchAgents
@@ -142,6 +143,7 @@ fi
 
 FUNK_ROOT="$funk_root" "$funk_root/libexec/converge-brewfile"
 "$funk_command" stow
+"$funk_command" install-android-launchers
 "$funk_root/libexec/initialize-configs"
 "$funk_command" install-ghostty-terminfo
 

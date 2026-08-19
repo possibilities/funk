@@ -1,0 +1,9 @@
+#!/bin/bash
+
+set -euo pipefail
+
+[ "${1:-}" = devices ] && [ "$#" -eq 1 ] || exit 64
+printf 'ADB_SERVER_SOCKET=%s\nADB_USB=%s\nADB_MDNS_AUTO_CONNECT=%s\n' \
+    "${ADB_SERVER_SOCKET-<unset>}" "${ADB_USB-<unset>}" \
+    "${ADB_MDNS_AUTO_CONNECT-<unset>}" >"${FUNK_TEST_ADB_ENV_LOG:?}"
+cat "${FUNK_TEST_ADB_DEVICES_FILE:?}"

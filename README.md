@@ -35,10 +35,16 @@ funk update          # converge Homebrew and the scheduled agents
 funk stow --check    # preview config links
 funk stow            # link config packages into $HOME
 funk chuchu-theme    # build and push Signal Room to Chuchu Lab
+funk install-android-launchers
+                     # converge the four Screen Copy applications
 funk install-ghostty-terminfo
                      # expose Ghostty capabilities to remote shells
 funk help            # everything else
 ```
+
+The Android applications use an authorized USB phone directly when exactly
+one is attached. With none attached they recover the existing wireless ADB
+connection; multiple authorized USB devices are rejected as ambiguous.
 
 ## Test
 

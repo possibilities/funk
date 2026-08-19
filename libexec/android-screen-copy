@@ -1,0 +1,95 @@
+#!/bin/bash
+
+set -euo pipefail
+
+usage() {
+    printf 'Usage: android-screen-copy <audio|no-audio|flex-audio|flex-no-audio>\n' >&2
+}
+
+[ "$#" -eq 1 ] || {
+    usage
+    exit 64
+}
+mode=$1
+mode_args=()
+case "$mode" in
+    audio)
+        mode_args+=(--audio-source=playback)
+        ;;
+    no-audio)
+        mode_args+=(--no-audio)
+        ;;
+    flex-audio)
+        mode_args+=(--audio-source=playback --new-display --flex-display)
+        ;;
+    flex-no-audio)
+        mode_args+=(--no-audio --new-display --flex-display)
+        ;;
+    *)
+        usage
+        exit 64
+        ;;
+esac
+
+# LaunchServices does not inherit the interactive shell's PATH. Keep the
+# Homebrew fallbacks available before locating adb and scrcpy.
+PATH="/opt/homebrew/bin:/usr/local/bin${PATH:+:$PATH}:/usr/bin:/bin:/usr/sbin:/sbin"
+export PATH
+
+connect_helper=${ADB_WIRELESS_CONNECT:-"$HOME/.local/bin/adb-wireless-connect"}
+adb_bin=${ADB:-adb}
+scrcpy_bin=${SCRCPY:-scrcpy}
+command -v "$adb_bin" >/dev/null 2>&1 \
+    || { printf 'Android: adb is unavailable.\n' >&2; exit 127; }
+
+# A directly attached phone is the least surprising target. Query the normal
+# ADB server with all wireless-server overrides removed, accept only authorized
+# devices, and exclude host:port serials. Unauthorized/offline cable entries
+# therefore leave the established wireless recovery path available.
+unset ADB_MDNS_AUTO_CONNECT ADB_USB ADB_SERVER_SOCKET
+usb_serials=()
+if adb_devices=$("$adb_bin" devices 2>/dev/null); then
+    while IFS=$' \t' read -r candidate state _; do
+        [ "$state" = device ] || continue
+        case "$candidate" in
+            *:*) continue ;;
+        esac
+        usb_serials+=("$candidate")
+    done <<<"$adb_devices"
+fi
+
+case "${#usb_serials[@]}" in
+    1)
+        serial=${usb_serials[0]}
+        ;;
+    0)
+        export ADB_MDNS_AUTO_CONNECT=0
+        export ADB_USB=0
+        export ADB_SERVER_SOCKET=tcp:localhost:5038
+        if ! serial=$("$connect_helper" --print-serial); then
+            printf 'Android: connection recovery failed.\n' >&2
+            exit 1
+        fi
+        ;;
+    *)
+        printf 'Android: more than one authorized USB device is attached; disconnect all but one.\n' >&2
+        exit 1
+        ;;
+esac
+case "$serial" in
+    ''|*'
+'*) printf 'Android: connection helper returned an invalid serial.\n' >&2; exit 1 ;;
+esac
+
+scrcpy_args=(
+    -s "$serial"
+    --stay-awake
+    --keep-active
+    --keyboard=uhid
+)
+scrcpy_args+=("${mode_args[@]}")
+
+# The app-bundle principal remains alive while this process runs. Replacing the
+# helper with scrcpy makes it the direct supervised child, so termination and
+# exit status have one unambiguous path.
+exec "$scrcpy_bin" "${scrcpy_args[@]}"

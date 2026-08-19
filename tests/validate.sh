@@ -41,6 +41,8 @@ libexec/reclaim-app-ownership
 libexec/list-unattendable-casks
 libexec/stow-config
 libexec/install-chuchu-lab-theme
+libexec/android-screen-copy
+libexec/install-android-launchers
 libexec/install-ghostty-terminfo
 libexec/initialize-configs
 libexec/install-update-agent
@@ -82,6 +84,7 @@ bin/.local/bin/adb-wireless-connect
 bin/.local/bin/adb-wireless-pair
 bin/.local/bin/raycast/localhost-8789-kiosk.sh
 tests/adb-wireless.sh
+tests/android-launchers.sh
 tests/chuchu-theme.sh
 tests/ghostty-terminfo.sh
 tests/home-awake.sh
@@ -1342,9 +1345,12 @@ fi
 # stat -f, so the suite only means anything on macOS.
 if [ "$(uname -s)" = Darwin ]; then
     "$root/tests/adb-wireless.sh"
+    "$root/tests/android-launchers.sh"
 else
     skip "adb-wireless suite" \
         "needs macOS: /usr/bin/shlock and BSD stat -f"
+    skip "Android launcher application suite" \
+        "needs macOS: AppKit, clang, codesign, and BSD stat -f"
 fi
 "$root/tests/kiosk-launcher.sh"
 kiosk_launcher=bin/.local/bin/raycast/localhost-8789-kiosk.sh

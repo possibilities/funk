@@ -1,0 +1,541 @@
+#!/bin/bash
+
+set -euo pipefail
+
+die() {
+    printf 'funk install-android-launchers: %s\n' "$*" >&2
+    exit 1
+}
+
+usage() {
+    printf 'Usage: funk install-android-launchers [--check]\n' >&2
+}
+
+check_only=0
+case "${1:-}" in
+    "") ;;
+    --check)
+        [ "$#" -eq 1 ] || {
+            usage
+            exit 64
+        }
+        check_only=1
+        ;;
+    *)
+        usage
+        exit 64
+        ;;
+esac
+
+[ "$(uname -s)" = Darwin ] || die "macOS is required"
+[ "$(id -u)" -ne 0 ] || die "run this command as the target user, not root"
+[ -n "${HOME:-}" ] && [ -d "$HOME" ] || die "HOME is not an existing directory"
+
+funk_root=${FUNK_ROOT:?FUNK_ROOT is not set}
+source_file="$funk_root/libexec/android-launcher.m"
+helper="$funk_root/libexec/android-screen-copy"
+applications_dir=${FUNK_ANDROID_APPLICATIONS_DIR:-"$HOME/Applications"}
+lsregister=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
+
+case "$applications_dir" in
+    /*) ;;
+    *) die "applications directory must be an absolute path: $applications_dir" ;;
+esac
+
+if [ -n "${FUNK_CLANG:-}" ]; then
+    clang_bin=$FUNK_CLANG
+else
+    clang_bin=/usr/bin/clang
+fi
+codesign_bin=/usr/bin/codesign
+
+tmpdir=
+lock_file=
+lock_acquired=0
+active_target=
+active_incoming=
+active_backup=
+active_backup_moved=0
+active_transaction=
+active_transaction_marker=
+active_transaction_owner=
+backup_move_critical=0
+deferred_termination_status=0
+
+cleanup() {
+    if [ -n "$active_target" ] && [ -n "$active_backup" ] \
+        && [ "$active_backup_moved" -eq 1 ] && [ -e "$active_backup" ]; then
+        /bin/rm -rf "$active_target"
+        /bin/mv "$active_backup" "$active_target" || true
+    fi
+    if [ -n "$active_incoming" ] \
+        && { [ -e "$active_incoming" ] || [ -L "$active_incoming" ]; }; then
+        /bin/rm -rf "$active_incoming"
+    fi
+    if [ -n "$active_transaction" ] && [ -d "$active_transaction" ] \
+        && [ ! -L "$active_transaction" ] \
+        && [ ! -e "$active_backup" ] && [ ! -L "$active_backup" ] \
+        && [ ! -e "$active_incoming" ] && [ ! -L "$active_incoming" ] \
+        && [ -f "$active_transaction_marker" ] \
+        && [ ! -L "$active_transaction_marker" ] \
+        && [ "$(cat "$active_transaction_marker")" = "$active_transaction_owner" ] \
+        && [ -z "$(/usr/bin/find "$active_transaction" -mindepth 1 -maxdepth 1 ! -name owner -print -quit)" ]; then
+        /bin/rm "$active_transaction_marker"
+        if ! /bin/rmdir "$active_transaction" 2>/dev/null; then
+            printf '%s\n' "$active_transaction_owner" >"$active_transaction_marker"
+            /bin/chmod 0600 "$active_transaction_marker"
+        fi
+    fi
+    if [ -n "$tmpdir" ]; then
+        /bin/rm -rf "$tmpdir"
+    fi
+    if [ "$lock_acquired" -eq 1 ]; then
+        /bin/rm -f "$lock_file"
+    fi
+}
+trap cleanup EXIT
+
+handle_termination() {
+    local status=$1
+
+    if [ "$backup_move_critical" -eq 1 ]; then
+        deferred_termination_status=$status
+        return
+    fi
+    exit "$status"
+}
+
+finish_backup_move_critical_section() {
+    backup_move_critical=0
+    if [ "${FUNK_TEST_ANDROID_BACKUP_MOVE_CLOSE_TERM:-0}" = 1 ] \
+        && [ "$active_backup_moved" -eq 1 ]; then
+        kill -TERM "$$"
+    fi
+    if [ "$deferred_termination_status" -ne 0 ]; then
+        local status=$deferred_termination_status
+        deferred_termination_status=0
+        exit "$status"
+    fi
+}
+
+trap 'handle_termination 129' HUP
+trap 'handle_termination 130' INT
+trap 'handle_termination 131' QUIT
+trap 'handle_termination 143' TERM
+wrapper=
+
+render_bundle() {
+    local name=$1
+    local identifier=$2
+    local mode=$3
+    local bundle="$tmpdir/$name.app"
+    local contents="$bundle/Contents"
+    local plist="$contents/Info.plist"
+
+    /usr/bin/install -d -m 0755 \
+        "$bundle" "$contents" "$contents/MacOS" "$contents/Resources"
+    /usr/bin/install -m 0755 "$wrapper" "$contents/MacOS/FunkAndroidLauncher"
+    /usr/bin/install -m 0755 "$wrapper" "$contents/Resources/FunkAndroidJob"
+    /usr/bin/install -m 0755 "$helper" "$contents/Resources/android-screen-copy"
+    printf '%s\n' "$mode" >"$contents/Resources/launcher-mode"
+
+    /usr/bin/plutil -create xml1 "$plist"
+    /usr/bin/plutil -insert CFBundleDevelopmentRegion -string en "$plist"
+    /usr/bin/plutil -insert CFBundleDisplayName -string "$name" "$plist"
+    /usr/bin/plutil -insert CFBundleExecutable -string FunkAndroidLauncher "$plist"
+    /usr/bin/plutil -insert CFBundleIdentifier -string "$identifier" "$plist"
+    /usr/bin/plutil -insert CFBundleInfoDictionaryVersion -string 6.0 "$plist"
+    /usr/bin/plutil -insert CFBundleName -string "$name" "$plist"
+    /usr/bin/plutil -insert CFBundlePackageType -string APPL "$plist"
+    /usr/bin/plutil -insert CFBundleShortVersionString -string 1.0 "$plist"
+    /usr/bin/plutil -insert CFBundleVersion -string 1 "$plist"
+    /usr/bin/plutil -insert LSMinimumSystemVersion -string 13.0 "$plist"
+    /usr/bin/plutil -insert LSUIElement -bool true "$plist"
+    /usr/bin/plutil -insert NSHighResolutionCapable -bool true "$plist"
+    /bin/chmod 0644 "$plist" "$contents/Resources/launcher-mode"
+    /usr/bin/plutil -lint "$plist" >/dev/null
+
+    [ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleDisplayName' "$plist")" = "$name" ] \
+        || die "rendered application name is incorrect: $name"
+    [ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$plist")" = "$identifier" ] \
+        || die "rendered bundle identifier is incorrect: $name"
+    [ "$(cat "$contents/Resources/launcher-mode")" = "$mode" ] \
+        || die "rendered launcher mode is incorrect: $name"
+
+    # Bind the completed Info.plist and resources to the app's distinct stable
+    # identity. Ad-hoc signing needs no certificate and remains deterministic.
+    "$codesign_bin" --force --sign - --identifier "$identifier" "$bundle" \
+        >/dev/null 2>&1 || die "could not sign rendered application: $name"
+    /bin/chmod 0755 "$contents/_CodeSignature"
+    /bin/chmod 0644 "$contents/_CodeSignature/CodeResources"
+    "$codesign_bin" --verify --deep --strict "$bundle" >/dev/null 2>&1 \
+        || die "rendered application has an invalid signature: $name"
+}
+
+build_rendered_bundles() {
+    [ -f "$source_file" ] || die "native launcher source is missing: $source_file"
+    [ -x "$helper" ] || die "Screen Copy helper is missing or not executable: $helper"
+    [ -x "$clang_bin" ] || die "Apple clang is unavailable: $clang_bin"
+    [ -x "$codesign_bin" ] || die "Apple codesign is unavailable: $codesign_bin"
+    tmpdir=$(mktemp -d "${TMPDIR:-/tmp}/funk-android-launchers.XXXXXX")
+    wrapper="$tmpdir/FunkAndroidLauncher"
+
+    "$clang_bin" \
+        -std=c11 -Os -Wall -Wextra -Werror -fobjc-arc \
+        -mmacosx-version-min=13.0 \
+        -framework AppKit -framework Foundation \
+        "$source_file" -o "$wrapper"
+
+    render_bundle 'Android (audio)' com.arthack.funk.android.audio audio
+    render_bundle 'Android (no audio)' com.arthack.funk.android.noaudio no-audio
+    render_bundle 'Android flex (audio)' com.arthack.funk.android.flex.audio flex-audio
+    render_bundle 'Android flex (no audio)' com.arthack.funk.android.flex.noaudio flex-no-audio
+}
+
+if [ "$check_only" -eq 1 ]; then
+    build_rendered_bundles
+    printf 'Android launcher app bundles render and validate successfully.\n'
+    exit 0
+fi
+
+if [ -L "$applications_dir" ]; then
+    die "refusing to install through a symlink: $applications_dir"
+fi
+mkdir -p "$applications_dir"
+
+lock_file="$applications_dir/.com.arthack.funk.android-launchers.lock"
+shlock_bin=${SHLOCK:-/usr/bin/shlock}
+[ -x "$shlock_bin" ] || die "cannot serialize application installation because shlock is missing"
+
+acquire_install_lock() {
+    local attempts=0
+
+    until "$shlock_bin" -f "$lock_file" -p "$$"; do
+        attempts=$((attempts + 1))
+        [ "$attempts" -lt 10 ] \
+            || die "another Android launcher installer is still running"
+        sleep 1
+    done
+    lock_acquired=1
+}
+
+release_install_lock() {
+    if [ "$lock_acquired" -eq 1 ]; then
+        /bin/rm -f "$lock_file"
+        lock_acquired=0
+    fi
+}
+
+acquire_install_lock
+
+register_bundle() {
+    local target=$1
+
+    if [ "${FUNK_SKIP_LAUNCHSERVICES_REGISTRATION:-0}" = 1 ]; then
+        return 0
+    fi
+    "$lsregister" -f "$target" >/dev/null 2>&1 \
+        || printf 'Warning: could not register %s with Launch Services.\n' "$target" >&2
+}
+
+bundle_matches() {
+    local rendered=$1
+    local target=$2
+    local path
+    local expected_mode
+
+    /usr/bin/diff -qr "$rendered" "$target" >/dev/null || return 1
+    while IFS=' ' read -r expected_mode path; do
+        [ "$(/usr/bin/stat -f '%Lp' "$target/$path" 2>/dev/null || true)" = "$expected_mode" ] \
+            || return 1
+    done <<'EOF'
+755 .
+755 Contents
+755 Contents/MacOS
+755 Contents/Resources
+755 Contents/_CodeSignature
+755 Contents/MacOS/FunkAndroidLauncher
+755 Contents/Resources/FunkAndroidJob
+755 Contents/Resources/android-screen-copy
+644 Contents/Resources/launcher-mode
+644 Contents/Info.plist
+644 Contents/_CodeSignature/CodeResources
+EOF
+}
+
+move_to_backup() {
+    local target=$1
+    local backup=$2
+
+    if [ "${FUNK_TEST_ANDROID_BACKUP_DIRECTORY_COLLISION:-0}" = 1 ]; then
+        /bin/mkdir "$backup"
+        /usr/bin/touch "$backup/foreign-directory-marker"
+    fi
+    /bin/mv "$target" "$backup" || return
+    if [ "${FUNK_TEST_ANDROID_POST_BACKUP_MOVE_TERM:-0}" = 1 ]; then
+        kill -TERM "$$"
+    fi
+}
+
+transaction_is_owned() {
+    local transaction=$1
+    local marker=$2
+    local owner=$3
+
+    [ -d "$transaction" ] && [ ! -L "$transaction" ] \
+        && [ -f "$marker" ] && [ ! -L "$marker" ] \
+        && [ "$(cat "$marker")" = "$owner" ]
+}
+
+finish_owned_transaction() {
+    local transaction=$1
+    local marker=$2
+    local owner=$3
+    local unexpected
+
+    transaction_is_owned "$transaction" "$marker" "$owner" \
+        || die "application transaction ownership changed: $transaction"
+    unexpected=$(
+        /usr/bin/find "$transaction" -mindepth 1 -maxdepth 1 \
+            ! -name owner -print -quit
+    )
+    [ -z "$unexpected" ] \
+        || die "application transaction has an unexpected artifact: $unexpected"
+    /bin/rm "$marker"
+    if [ "${FUNK_TEST_ANDROID_AFTER_TRANSACTION_MARKER_REMOVE_KILL:-0}" = 1 ]; then
+        kill -KILL "$$"
+    fi
+    if ! /bin/rmdir "$transaction"; then
+        printf '%s\n' "$owner" >"$marker"
+        /bin/chmod 0600 "$marker"
+        die "could not finish application transaction: $transaction"
+    fi
+}
+
+recover_transaction() {
+    local name=$1
+    local identifier=$2
+    local target=$3
+    local transaction=$4
+    local marker=$5
+    local owner=$6
+    local incoming="$transaction/incoming.app"
+    local backup="$transaction/backup.app"
+    local backup_identifier
+    local incomplete_owner=0
+    local nested_target="$backup/${target##*/}"
+    local target_identifier
+    local unexpected
+
+    if [ ! -e "$transaction" ] && [ ! -L "$transaction" ]; then
+        return
+    fi
+    if [ -d "$transaction" ] && [ ! -L "$transaction" ]; then
+        unexpected=$(
+            /usr/bin/find "$transaction" -mindepth 1 -maxdepth 1 \
+                ! -name owner -print -quit
+        )
+        if [ -z "$unexpected" ]; then
+            if [ ! -e "$marker" ] && [ ! -L "$marker" ]; then
+                incomplete_owner=1
+            elif [ -f "$marker" ] && [ ! -L "$marker" ] \
+                && [ "$(cat "$marker")" != "$owner" ]; then
+                incomplete_owner=1
+            fi
+        fi
+    fi
+    if [ "$incomplete_owner" -eq 1 ]; then
+        if [ -e "$marker" ]; then
+            /bin/rm "$marker"
+        fi
+        /bin/rmdir "$transaction" \
+            || die "could not recover incomplete application transaction: $transaction"
+        printf 'Recovered incomplete application transaction %s\n' "$transaction"
+        return
+    fi
+    transaction_is_owned "$transaction" "$marker" "$owner" \
+        || die "refusing foreign application transaction: $transaction"
+    [ ! -L "$target" ] || die "refusing to recover over symlink: $target"
+
+    if [ -e "$backup" ] || [ -L "$backup" ]; then
+        [ -d "$backup" ] && [ ! -L "$backup" ] \
+            || die "application transaction has an invalid backup: $backup"
+        backup_identifier=$(
+            /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' \
+                "$backup/Contents/Info.plist" 2>/dev/null || true
+        )
+        if [ "$backup_identifier" != "$identifier" ]; then
+            if [ ! -e "$target" ] && [ ! -L "$target" ] \
+                && [ -d "$nested_target" ] && [ ! -L "$nested_target" ] \
+                && [ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$nested_target/Contents/Info.plist" 2>/dev/null || true)" = "$identifier" ]; then
+                /bin/mv "$nested_target" "$target" \
+                    || die "could not recover nested application backup: $target"
+            fi
+            die "application transaction backup does not belong to $name: $backup"
+        fi
+        if [ -e "$target" ]; then
+            target_identifier=$(
+                /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' \
+                    "$target/Contents/Info.plist" 2>/dev/null || true
+            )
+            [ "$target_identifier" = "$identifier" ] \
+                || die "refusing to discard backup for unrelated application: $target"
+            /bin/rm -rf "$backup"
+        else
+            /bin/mv "$backup" "$target" \
+                || die "could not recover interrupted application backup: $target"
+            printf 'Recovered interrupted application backup %s\n' "$target"
+        fi
+    fi
+    if [ -e "$incoming" ] || [ -L "$incoming" ]; then
+        /bin/rm -rf "$incoming"
+    fi
+    finish_owned_transaction "$transaction" "$marker" "$owner"
+}
+
+recover_bundle_transaction() {
+    local name=$1
+    local identifier=$2
+    local target="$applications_dir/$name.app"
+    local transaction="$applications_dir/.$name.app.funk-transaction"
+    local marker="$transaction/owner"
+    local owner="funk-android-launcher-transaction-v1:$identifier"
+
+    recover_transaction "$name" "$identifier" "$target" \
+        "$transaction" "$marker" "$owner"
+}
+
+install_bundle() {
+    local name=$1
+    local identifier=$2
+    local rendered="$tmpdir/$name.app"
+    local target="$applications_dir/$name.app"
+    local transaction="$applications_dir/.$name.app.funk-transaction"
+    local marker="$transaction/owner"
+    local owner="funk-android-launcher-transaction-v1:$identifier"
+    local incoming="$transaction/incoming.app"
+    local backup="$transaction/backup.app"
+    local backup_inode
+    local existing_identifier
+    local nested_target
+    local target_inode
+
+    case "$target" in
+        "$applications_dir/Android (audio).app"|\
+        "$applications_dir/Android (no audio).app"|\
+        "$applications_dir/Android flex (audio).app"|\
+        "$applications_dir/Android flex (no audio).app") ;;
+        *) die "refusing unexpected application target: $target" ;;
+    esac
+
+    recover_transaction "$name" "$identifier" "$target" \
+        "$transaction" "$marker" "$owner"
+    if [ -L "$target" ]; then
+        die "refusing to replace symlink: $target"
+    fi
+    if [ -e "$target" ]; then
+        existing_identifier=$(
+            /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' \
+                "$target/Contents/Info.plist" 2>/dev/null || true
+        )
+        [ "$existing_identifier" = "$identifier" ] \
+            || die "refusing to replace unrelated application: $target"
+        if bundle_matches "$rendered" "$target"; then
+            printf 'Already installed %s\n' "$target"
+            register_bundle "$target"
+            return 0
+        fi
+    fi
+
+    /bin/mkdir -m 0700 "$transaction" \
+        || die "could not create application transaction: $transaction"
+    if [ "${FUNK_TEST_ANDROID_AFTER_TRANSACTION_MKDIR_KILL:-0}" = 1 ]; then
+        kill -KILL "$$"
+    fi
+    if [ "${FUNK_TEST_ANDROID_DURING_TRANSACTION_MARKER_KILL:-0}" = 1 ]; then
+        printf 'partial owner\n' >"$marker"
+        kill -KILL "$$"
+    fi
+    printf '%s\n' "$owner" >"$marker"
+    /bin/chmod 0600 "$marker"
+    active_target=$target
+    active_incoming=$incoming
+    active_backup=$backup
+    active_transaction=$transaction
+    active_transaction_marker=$marker
+    active_transaction_owner=$owner
+    /bin/cp -Rp "$rendered" "$incoming"
+
+    if [ -e "$target" ]; then
+        target_inode=$(/usr/bin/stat -f '%i' "$target")
+        # Defer catchable termination until the successful move and rollback
+        # ownership assignment are one signal-safe critical section.
+        backup_move_critical=1
+        if move_to_backup "$target" "$backup"; then
+            backup_inode=$(/usr/bin/stat -f '%i' "$backup" 2>/dev/null || true)
+            if [ "$backup_inode" = "$target_inode" ]; then
+                active_backup_moved=1
+                finish_backup_move_critical_section
+            else
+                # A directory created at the destination makes mv nest the app.
+                # Restore that exact inode before allowing a deferred signal.
+                nested_target="$backup/${target##*/}"
+                if [ ! -e "$target" ] \
+                    && [ "$(/usr/bin/stat -f '%i' "$nested_target" 2>/dev/null || true)" = "$target_inode" ]; then
+                    /bin/mv "$nested_target" "$target" || true
+                fi
+                finish_backup_move_critical_section
+                die "application backup destination changed during installation: $backup"
+            fi
+        else
+            finish_backup_move_critical_section
+            die "could not move application to its backup: $target"
+        fi
+        if [ "${FUNK_TEST_ANDROID_POST_BACKUP_MOVE_KILL:-0}" = 1 ]; then
+            kill -KILL "$$"
+        fi
+        if ! /bin/mv "$incoming" "$target"; then
+            /bin/mv "$backup" "$target" || true
+            die "could not replace application: $target"
+        fi
+    else
+        /bin/mv "$incoming" "$target"
+    fi
+
+    if ! bundle_matches "$rendered" "$target"; then
+        if [ -e "$backup" ]; then
+            /bin/rm -rf "$target"
+            /bin/mv "$backup" "$target"
+        else
+            /bin/rm -rf "$target"
+        fi
+        die "installed application did not match its rendered bundle: $target"
+    fi
+    [ ! -e "$backup" ] || /bin/rm -rf "$backup"
+    finish_owned_transaction "$transaction" "$marker" "$owner"
+    active_target=
+    active_incoming=
+    active_backup=
+    active_backup_moved=0
+    active_transaction=
+    active_transaction_marker=
+    active_transaction_owner=
+    register_bundle "$target"
+    printf 'Installed %s\n' "$target"
+}
+
+recover_bundle_transaction 'Android (audio)' com.arthack.funk.android.audio
+recover_bundle_transaction 'Android (no audio)' com.arthack.funk.android.noaudio
+recover_bundle_transaction 'Android flex (audio)' com.arthack.funk.android.flex.audio
+recover_bundle_transaction 'Android flex (no audio)' com.arthack.funk.android.flex.noaudio
+release_install_lock
+build_rendered_bundles
+acquire_install_lock
+recover_bundle_transaction 'Android (audio)' com.arthack.funk.android.audio
+recover_bundle_transaction 'Android (no audio)' com.arthack.funk.android.noaudio
+recover_bundle_transaction 'Android flex (audio)' com.arthack.funk.android.flex.audio
+recover_bundle_transaction 'Android flex (no audio)' com.arthack.funk.android.flex.noaudio
+install_bundle 'Android (audio)' com.arthack.funk.android.audio
+install_bundle 'Android (no audio)' com.arthack.funk.android.noaudio
+install_bundle 'Android flex (audio)' com.arthack.funk.android.flex.audio
+install_bundle 'Android flex (no audio)' com.arthack.funk.android.flex.noaudio
