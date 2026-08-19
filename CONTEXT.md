@@ -46,6 +46,12 @@ theme, and relaunches it. Its application-ID check runs before ADB so the
 official package is outside the command's authority.
 _Avoid_: Chuchu update, official theme install, stable replacement.
 
+**Android launcher application** — One of the per-user macOS application
+bundles under `~/Applications` that starts a Screen Copy mode and is indexed as
+an application by launchers such as Raycast. It replaces the retired Raycast
+script commands and is the only supported Android launch surface.
+_Avoid_: Raycast Android launcher, script command.
+
 **Fork-and-adapt** — what this repository offers a reader who is not the account
 it converges. `./install` is written for one machine and its recorded facts, so
 the useful thing to take is a part of it, not a run of it.

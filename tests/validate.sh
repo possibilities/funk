@@ -80,10 +80,6 @@ bin/.local/bin/transcript-vault
 bin/.local/bin/cass-window-reset
 bin/.local/bin/adb-wireless-connect
 bin/.local/bin/adb-wireless-pair
-bin/.local/bin/raycast/scrcpy.sh
-bin/.local/bin/raycast/scrcpy-no-audio.sh
-bin/.local/bin/raycast/scrcpy-flex.sh
-bin/.local/bin/raycast/scrcpy-no-audio-flex.sh
 bin/.local/bin/raycast/localhost-8789-kiosk.sh
 tests/adb-wireless.sh
 tests/chuchu-theme.sh
@@ -91,7 +87,6 @@ tests/ghostty-terminfo.sh
 tests/home-awake.sh
 tests/ssh-tailnet-config.sh
 tests/kiosk-launcher.sh
-tests/scrcpy-launchers.sh
 tests/tailscale-online.sh
 tests/gog-authed.sh
 tests/funk-notify.sh
@@ -111,7 +106,6 @@ tests/fixtures/gradlew-chuchu
 tests/fixtures/home-awake/security
 tests/fixtures/nc
 tests/fixtures/npx
-tests/fixtures/scrcpy
 tests/fixtures/spctl
 tests/fixtures/systemextensionsctl
 tests/fixtures/tailscale
@@ -972,10 +966,16 @@ grep -F 'path = ~/.config/git/config.local' git/.config/git/config >/dev/null \
     || fail "wireless ADB pairing helper was not stowed as an executable"
 [ -x "$stow_home/.local/bin/tailscale-ensure-online" ] \
     || fail "Tailscale recovery helper was not stowed as an executable"
-[ -L "$stow_home/.local/bin/raycast/scrcpy.sh" ] \
-    || fail "Raycast scrcpy command was not stowed"
 [ -L "$stow_home/.local/bin/raycast/localhost-8789-kiosk.sh" ] \
     || fail "Raycast kiosk command was not stowed"
+for retired_android_command in \
+    scrcpy.sh \
+    scrcpy-no-audio.sh \
+    scrcpy-flex.sh \
+    scrcpy-no-audio-flex.sh; do
+    [ ! -e "$stow_home/.local/bin/raycast/$retired_android_command" ] \
+        || fail "retired Raycast Android command was stowed: $retired_android_command"
+done
 # Operator guidance and AI-tool configuration are AgentStart's, linked by its
 # installer: the home AGENTS.md, extension prompts, AgentVoice doctrine, and
 # llm model configuration. Funk stowing any of them again would be a second
@@ -1338,26 +1338,19 @@ else
     skip "home-awake suite (root helper installability, idle-sleep hold-off)" \
         "needs macOS: BSD stat -f, pmset, caffeinate"
 fi
-# The Android launchers lock with /usr/bin/shlock and check state permissions
-# with BSD stat -f, both macOS-only. The Raycast scripts they drive only exist
-# on the desktop anyway.
+# Wireless ADB locks with /usr/bin/shlock and checks state permissions with BSD
+# stat -f, so the suite only means anything on macOS.
 if [ "$(uname -s)" = Darwin ]; then
     "$root/tests/adb-wireless.sh"
-    "$root/tests/scrcpy-launchers.sh"
 else
-    skip "adb-wireless and scrcpy launcher suites" \
+    skip "adb-wireless suite" \
         "needs macOS: /usr/bin/shlock and BSD stat -f"
 fi
-grep -F '@raycast.title Android (audio)' bin/.local/bin/raycast/scrcpy.sh >/dev/null \
-    || fail "audio scrcpy Raycast command is missing"
-grep -F '@raycast.title Android (no audio)' bin/.local/bin/raycast/scrcpy-no-audio.sh >/dev/null \
-    || fail "no-audio scrcpy Raycast command is missing"
-grep -F '@raycast.title Android flex (audio)' bin/.local/bin/raycast/scrcpy-flex.sh >/dev/null \
-    || fail "flex audio scrcpy Raycast command is missing"
-grep -F '@raycast.title Android flex (no audio)' bin/.local/bin/raycast/scrcpy-no-audio-flex.sh >/dev/null \
-    || fail "flex no-audio scrcpy Raycast command is missing"
 "$root/tests/kiosk-launcher.sh"
 kiosk_launcher=bin/.local/bin/raycast/localhost-8789-kiosk.sh
+if grep -R -F '@raycast.title Android' bin/.local/bin/raycast >/dev/null; then
+    fail "retired Raycast Android command is tracked"
+fi
 grep -F '@raycast.title Localhost 8789 (kiosk)' "$kiosk_launcher" >/dev/null \
     || fail "localhost kiosk Raycast command is missing"
 # Launching through `open` reuses a running Chrome and discards --kiosk, so the
@@ -1371,7 +1364,7 @@ grep -Fx 'cask "google-chrome", greedy: true' Brewfile >/dev/null \
     || fail "Google Chrome is missing from the Brewfile"
 # The mirror window keeps the device aspect ratio and refuses resize, so the
 # stack layout must never hand it a tile. Matching on the application alone
-# covers the plain and --new-display Raycast variants.
+# covers the plain and --new-display native application variants.
 grep -Fx 'yabai -m rule --add app="^scrcpy$" manage=off' \
     yabai/.config/yabai/yabairc >/dev/null \
     || fail "scrcpy is missing its Yabai floating rule"
