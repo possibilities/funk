@@ -37,22 +37,38 @@ PATH="/opt/homebrew/bin:/usr/local/bin${PATH:+:$PATH}:/usr/bin:/bin:/usr/sbin:/s
 export PATH
 
 connect_helper=${ADB_WIRELESS_CONNECT:-"$HOME/.local/bin/adb-wireless-connect"}
+notify_helper=${FUNK_NOTIFY:-"$HOME/.local/bin/funk-notify"}
 adb_bin=${ADB:-adb}
 scrcpy_bin=${SCRCPY:-scrcpy}
-command -v "$adb_bin" >/dev/null 2>&1 \
-    || { printf 'Android: adb is unavailable.\n' >&2; exit 127; }
+
+notify_no_device() {
+    [ -x "$notify_helper" ] || return 0
+    "$notify_helper" \
+        --title 'Android unavailable' \
+        --message 'Connect one phone by USB or make the wireless ADB device reachable.' \
+        --sound default \
+        --group com.arthack.funk.android.connection
+}
+
+if ! command -v "$adb_bin" >/dev/null 2>&1; then
+    notify_no_device
+    printf 'Android: adb is unavailable.\n' >&2
+    exit 127
+fi
 
 # A directly attached phone is the least surprising target. Query the normal
 # ADB server with all wireless-server overrides removed, accept only authorized
-# devices, and exclude host:port serials. Unauthorized/offline cable entries
-# therefore leave the established wireless recovery path available.
+# devices carrying ADB's explicit usb: transport metadata. Emulators and
+# unauthorized/offline cable entries therefore leave the established wireless
+# recovery path available.
 unset ADB_MDNS_AUTO_CONNECT ADB_USB ADB_SERVER_SOCKET
 usb_serials=()
-if adb_devices=$("$adb_bin" devices 2>/dev/null); then
-    while IFS=$' \t' read -r candidate state _; do
+if adb_devices=$("$adb_bin" devices -l 2>/dev/null); then
+    while IFS=$' \t' read -r candidate state details; do
         [ "$state" = device ] || continue
-        case "$candidate" in
-            *:*) continue ;;
+        case " $details " in
+            *' usb:'*) ;;
+            *) continue ;;
         esac
         usb_serials+=("$candidate")
     done <<<"$adb_devices"
@@ -67,6 +83,7 @@ case "${#usb_serials[@]}" in
         export ADB_USB=0
         export ADB_SERVER_SOCKET=tcp:localhost:5038
         if ! serial=$("$connect_helper" --print-serial); then
+            notify_no_device
             printf 'Android: connection recovery failed.\n' >&2
             exit 1
         fi
@@ -78,7 +95,11 @@ case "${#usb_serials[@]}" in
 esac
 case "$serial" in
     ''|*'
-'*) printf 'Android: connection helper returned an invalid serial.\n' >&2; exit 1 ;;
+'*)
+        notify_no_device
+        printf 'Android: connection helper returned an invalid serial.\n' >&2
+        exit 1
+        ;;
 esac
 
 scrcpy_args=(

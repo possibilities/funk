@@ -44,7 +44,9 @@ funk help            # everything else
 
 The Android applications use an authorized USB phone directly when exactly
 one is attached. With none attached they recover the existing wireless ADB
-connection; multiple authorized USB devices are rejected as ambiguous.
+connection; emulators are ignored and multiple authorized USB devices are
+rejected as ambiguous. If neither USB nor wireless is available, the launcher
+posts a macOS notification instead of failing invisibly.
 
 ## Test
 

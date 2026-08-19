@@ -17,18 +17,22 @@ adb_env="$test_dir/adb.env"
 connect_log="$test_dir/connect.log"
 scrcpy_log="$test_dir/scrcpy.log"
 scrcpy_env="$test_dir/scrcpy.env"
+notification_log="$test_dir/notifications.log"
 test_home="$test_dir/home"
 mkdir -p "$test_home"
 
 run_helper() {
-    rm -f "$connect_log" "$scrcpy_log" "$scrcpy_env"
+    rm -f "$connect_log" "$scrcpy_log" "$scrcpy_env" "$notification_log"
     HOME="$test_home" \
         ADB="$root/tests/fixtures/adb-launcher" \
         ADB_WIRELESS_CONNECT="$root/tests/fixtures/android-wireless-connect" \
+        FUNK_NOTIFY="$root/bin/.local/bin/funk-notify" \
+        FUNK_TERMINAL_NOTIFIER_BIN="$root/tests/fixtures/terminal-notifier" \
         SCRCPY="$root/tests/fixtures/scrcpy-launcher" \
         FUNK_TEST_ADB_DEVICES_FILE="$devices" \
         FUNK_TEST_ADB_ENV_LOG="$adb_env" \
         FUNK_TEST_CONNECT_LOG="$connect_log" \
+        FUNK_TEST_NOTIFIER_LOG="$notification_log" \
         FUNK_TEST_SCRCPY_LOG="$scrcpy_log" \
         FUNK_TEST_SCRCPY_ENV_LOG="$scrcpy_env" \
         "$helper" "$1"
@@ -47,8 +51,9 @@ assert_args() {
 
 cat >"$devices" <<'EOF'
 List of devices attached
-USB123 device product:phone
+USB123 device usb:1 product:phone
 wireless-phone:5555 device product:phone
+emulator-5554 device product:sdk_gphone64_arm64
 EOF
 run_helper audio
 assert_args USB123 --audio-source=playback
@@ -61,6 +66,7 @@ grep -Fx 'ADB_SERVER_SOCKET=<unset>' "$scrcpy_env" >/dev/null \
 cat >"$devices" <<'EOF'
 List of devices attached
 wireless-phone:5555 device product:phone
+emulator-5554 device product:sdk_gphone64_arm64
 EOF
 run_helper no-audio
 assert_args wireless-phone:5555 --no-audio
@@ -71,8 +77,9 @@ grep -Fx 'ADB_USB=0' "$scrcpy_env" >/dev/null \
 
 cat >"$devices" <<'EOF'
 List of devices attached
-USB-DENIED unauthorized
-USB-OFFLINE offline
+USB-DENIED unauthorized usb:2
+USB-OFFLINE offline usb:3
+emulator-5554 device product:sdk_gphone64_arm64
 EOF
 run_helper flex-audio
 assert_args wireless-phone:5555 --audio-source=playback --new-display --flex-display
@@ -80,8 +87,9 @@ assert_args wireless-phone:5555 --audio-source=playback --new-display --flex-dis
 
 cat >"$devices" <<'EOF'
 List of devices attached
-USB123 device
-USB456 device
+USB123 device usb:1
+USB456 device usb:2
+emulator-5554 device product:sdk_gphone64_arm64
 EOF
 rm -f "$connect_log" "$scrcpy_log"
 status=0
@@ -94,7 +102,25 @@ grep -F 'more than one authorized USB device' "$test_dir/multiple.err" >/dev/nul
 
 cat >"$devices" <<'EOF'
 List of devices attached
-USB123 device
+emulator-5554 device product:sdk_gphone64_arm64
+EOF
+status=0
+FUNK_TEST_WIRELESS_FAIL=1 run_helper audio \
+    >"$test_dir/unavailable.out" 2>"$test_dir/unavailable.err" || status=$?
+[ "$status" -ne 0 ] || fail "missing USB and wireless device unexpectedly succeeded"
+[ ! -e "$scrcpy_log" ] || fail "missing device started scrcpy"
+grep -F 'connection recovery failed' "$test_dir/unavailable.err" >/dev/null \
+    || fail "missing device did not retain a diagnostic"
+grep -F '<-title> <Android unavailable>' "$notification_log" >/dev/null \
+    || fail "missing device did not post a notification"
+grep -F '<-group> <com.arthack.funk.android.connection>' \
+    "$notification_log" >/dev/null \
+    || fail "missing-device notification was not grouped"
+
+cat >"$devices" <<'EOF'
+List of devices attached
+USB123 device usb:1
+emulator-5554 device product:sdk_gphone64_arm64
 EOF
 for mode in audio no-audio flex-audio flex-no-audio; do
     run_helper "$mode"
