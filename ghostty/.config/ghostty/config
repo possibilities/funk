@@ -4,7 +4,6 @@ window-inherit-working-directory = true
 window-save-state = never
 font-size = 20
 font-family = "0xProto Nerd Font"
-theme = "tinted-theming"
 copy-on-select = clipboard
 window-decoration = none
 window-padding-x = 0

@@ -34,15 +34,13 @@ converge by running `./install`; do not rely on one-off live configuration.
   possible: source tmux's config and restart Yabai/skhd services. Karabiner
   reloads its configuration automatically.
 - Managed configuration carries no raw palette: no hard-coded named color or
-  hex literal. Ghostty's one theme seam names `tinted-theming`, the stable
-  generated file owned by AgentStart's Tinty config at
-  `~/.config/ghostty/themes/tinted-theming`; that rendered file is untracked
-  machine state and must never be Stowed or adopted. Tmux's
-  `tmux/.config/tmux/conf.d/theme.conf` styles against that palette using only
-  ANSI indices (`colour0-15`) plus `default`. `tests/validate.sh` pins the
-  single allowed manager reference, the named-color and hex bans, the tmux
-  file's existence, and its confinement to the ANSI range, so a future theme
-  cleanup cannot sweep the status bar away again the way `24663c1` did.
+  hex literal, and no theme. Ghostty selects none, so it runs its built-in
+  default colors and every other layer follows the terminal. Tmux's
+  `tmux/.config/tmux/conf.d/theme.conf` styles the status bar against that
+  palette using only ANSI indices (`colour0-15`) plus `default`.
+  `tests/validate.sh` pins the theme ban, the named-color and hex bans, the
+  tmux file's existence, and its confinement to the ANSI range, so a future
+  theme cleanup cannot sweep the status bar away again the way `24663c1` did.
 - `assets/chuchu/Signal Room` is outside that managed desktop-configuration
   rule. It is the canonical remote APK asset consumed only by
   `funk chuchu-theme`, which must prove the built application ID is

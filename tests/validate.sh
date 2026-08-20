@@ -1129,20 +1129,18 @@ grep -F -- '--without-windows) with_windows=0' install >/dev/null \
     || fail "default window stack has no explicit opt-out"
 grep -F 'tmux-fzf.git' libexec/initialize-configs >/dev/null \
     || fail "tmux-fzf is not initialized"
-theme_manager_refs=$(grep -R -Eih \
-    'tinty|tinted-theming' \
-    Brewfile README.md libexec ghostty nvim tmux zsh btop git || true)
-[ "$theme_manager_refs" = 'theme = "tinted-theming"' ] \
-    || fail "managed configuration has a theme-manager reference outside Ghostty's generated theme seam"
+# There is no theme manager any more and no theme seam to keep open: Ghostty
+# runs its built-in default colors, and every other layer follows the terminal.
 if grep -R -Eqi \
-    'catppuccin|base16|base24|syntax-theme|color_theme|theme_background' \
+    'tinty|tinted-theming|catppuccin|base16|base24|syntax-theme|color_theme|theme_background' \
     Brewfile README.md libexec ghostty nvim tmux zsh btop git; then
-    fail "managed configuration contains a prohibited hard-coded theme"
+    fail "managed configuration reintroduced a theme"
 fi
-grep -Fqx 'theme = "tinted-theming"' ghostty/.config/ghostty/config \
-    || fail "Ghostty does not select AgentStart's generated Tinty theme"
-[ ! -e ghostty/.config/ghostty/themes/tinted-theming ] \
-    || fail "Ghostty's generated Tinty palette must remain outside Funk"
+if grep -Eq '^theme = ' ghostty/.config/ghostty/config; then
+    fail "Ghostty selects a theme instead of running its own default colors"
+fi
+[ ! -e ghostty/.config/ghostty/themes ] \
+    || fail "Ghostty theme files must not live in Funk"
 if grep -R -Eq \
     "%C\\(|%C[a-z]|%\\(color:|fg=(black|red|green|yellow|blue|magenta|cyan|white)|bg=(black|red|green|yellow|blue|magenta|cyan|white)|style = '(black|red|green|yellow|blue|magenta|cyan|white)'" \
     ghostty nvim tmux zsh btop git; then
