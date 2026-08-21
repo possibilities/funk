@@ -216,7 +216,7 @@ Do not install or synchronize a separate `funk` skill.
 Configuration another program writes is overlaid, never adopted. The llm CLI
 and its model configuration are AgentStart's (`config/llm/`, and the formula
 left the Brewfile with them). Herdr's live `config.toml` is also AgentStart's:
-it composes tracked behavior with the generated Base16 Chalk palette, while
+`scripts/herdr-config` renders it from that checkout's tracked source, while
 Funk's `herdr` package retains only the machine-owned `agent-mem.sh` helper.
 Adopt a file only when Funk is its sole writer.
 
