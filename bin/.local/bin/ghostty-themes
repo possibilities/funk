@@ -1,0 +1,27 @@
+#!/bin/bash
+
+set -euo pipefail
+
+die() {
+    printf 'ghostty-themes: %s\n' "$*" >&2
+    exit 1
+}
+
+root=${FUNK_GHOSTTY_THEMES_ROOT:-$HOME/src/ghostty-themes}
+upstream="$root/ghostty-themes"
+[ -x "$upstream" ] \
+    || die "the picker is not installed; run: funk install-ghostty-themes"
+
+# Funk's tracked Ghostty config selects no theme, and ~/.config/ghostty/config
+# is a Stow link into the checkout: the picker rewrites its target with
+# mktemp + mv, so aiming it there would replace that link with a real file and
+# write a theme into this repository. Ghostty loads the macOS Application
+# Support config after the XDG one, so pin the picker at that machine-local
+# file, which Funk neither tracks nor adopts. Every re-invocation fzf makes
+# inherits the pin.
+support_dir="$HOME/Library/Application Support/com.mitchellh.ghostty"
+mkdir -p "$support_dir"
+GHOSTTY_CONFIG="$support_dir/config"
+export GHOSTTY_CONFIG
+
+exec "$upstream" "$@"

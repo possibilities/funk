@@ -56,3 +56,10 @@ _Avoid_: Raycast Android launcher, script command.
 it converges. `./install` is written for one machine and its recorded facts, so
 the useful thing to take is a part of it, not a run of it.
 _Avoid_: bootstrap, dotfiles framework, general-purpose installer.
+
+**Machine-local theme seam** — the Ghostty theme the operator picks, written by
+`ghostty-themes` to the macOS Application Support config that Ghostty loads
+after the XDG one. It overrides colors for the live terminal while everything
+Funk tracks still selects no theme, so the tracked configuration stays
+palette-free and the picker's writes never reach this checkout.
+_Avoid_: theme manager, managed theme, Funk theme.

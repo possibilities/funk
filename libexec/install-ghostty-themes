@@ -1,0 +1,46 @@
+#!/bin/bash
+
+set -euo pipefail
+
+die() {
+    printf 'funk install-ghostty-themes: %s\n' "$*" >&2
+    exit 1
+}
+
+note() {
+    printf 'funk install-ghostty-themes: %s\n' "$*"
+}
+
+[ "$#" -eq 0 ] || {
+    printf 'Usage: install-ghostty-themes\n' >&2
+    exit 64
+}
+[ "$(id -u)" -ne 0 ] || die "run as the target user, not root"
+[ -n "${HOME:-}" ] && [ -d "$HOME" ] || die "HOME is not an existing directory"
+
+remote=https://github.com/flyerAI2025/ghostty-themes.git
+root=${FUNK_GHOSTTY_THEMES_ROOT:-$HOME/src/ghostty-themes}
+script="$root/ghostty-themes"
+
+if [ ! -d "$root/.git" ]; then
+    [ ! -e "$root" ] || die "$root exists but is not a Git checkout"
+    mkdir -p "$(dirname "$root")"
+    git clone "$remote" "$root" || die "cannot clone $remote"
+    note "cloned $remote into $root"
+else
+    # The picker is someone else's project living in ~/src. Fast-forward it
+    # when it is clean and reachable, and report anything else rather than
+    # resolving it here: a diverged or dirty checkout is the operator's.
+    if ! git -C "$root" fetch --quiet origin 2>/dev/null; then
+        note "Deferred: cannot reach $remote; keeping the checked-out picker"
+    elif [ -n "$(git -C "$root" status --porcelain)" ]; then
+        note "Deferred: $root has local modifications; not updating"
+    elif ! git -C "$root" merge --ff-only --quiet '@{upstream}' 2>/dev/null; then
+        note "Deferred: $root will not fast-forward; resolve it by hand"
+    fi
+fi
+
+[ -f "$script" ] || die "$root does not contain the ghostty-themes picker"
+[ -x "$script" ] || chmod +x "$script"
+
+printf 'Ghostty theme picker is current in %s\n' "$root"

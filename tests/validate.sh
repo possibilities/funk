@@ -1129,8 +1129,9 @@ grep -F -- '--without-windows) with_windows=0' install >/dev/null \
     || fail "default window stack has no explicit opt-out"
 grep -F 'tmux-fzf.git' libexec/initialize-configs >/dev/null \
     || fail "tmux-fzf is not initialized"
-# There is no theme manager any more and no theme seam to keep open: Ghostty
-# runs its built-in default colors, and every other layer follows the terminal.
+# There is no theme manager any more. What Funk tracks selects no theme, so
+# Ghostty runs its built-in default colors and every other layer follows the
+# terminal; a theme the operator picks lives only in machine-local state.
 if grep -R -Eqi \
     'tinty|tinted-theming|catppuccin|base16|base24|syntax-theme|color_theme|theme_background' \
     Brewfile README.md libexec ghostty nvim tmux zsh btop git; then
@@ -1141,6 +1142,21 @@ if grep -Eq '^theme = ' ghostty/.config/ghostty/config; then
 fi
 [ ! -e ghostty/.config/ghostty/themes ] \
     || fail "Ghostty theme files must not live in Funk"
+# The picker is upstream's and writes a theme into whatever GHOSTTY_CONFIG
+# names. Funk's wrapper is the whole safety argument: it pins that at the macOS
+# Application Support config, which Ghostty loads after the XDG one and Funk
+# never tracks. Unpinned, the picker's mktemp + mv would replace the Stow link
+# at ~/.config/ghostty/config with a real file holding a theme.
+grep -F 'com.mitchellh.ghostty' bin/.local/bin/ghostty-themes >/dev/null \
+    && grep -Eq '^GHOSTTY_CONFIG="\$support_dir/config"$' \
+        bin/.local/bin/ghostty-themes \
+    || fail "the theme picker is not pinned outside the managed Ghostty config"
+if grep -v '^ *#' bin/.local/bin/ghostty-themes \
+    | grep -Eq '\.config/ghostty'; then
+    fail "the theme picker wrapper names the Stow-managed Ghostty config"
+fi
+grep -F 'ghostty-themes' install >/dev/null \
+    || fail "the theme picker does not converge from ./install"
 if grep -R -Eq \
     "%C\\(|%C[a-z]|%\\(color:|fg=(black|red|green|yellow|blue|magenta|cyan|white)|bg=(black|red|green|yellow|blue|magenta|cyan|white)|style = '(black|red|green|yellow|blue|magenta|cyan|white)'" \
     ghostty nvim tmux zsh btop git; then

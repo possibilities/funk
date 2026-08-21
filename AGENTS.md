@@ -41,6 +41,17 @@ converge by running `./install`; do not rely on one-off live configuration.
   `tests/validate.sh` pins the theme ban, the named-color and hex bans, the
   tmux file's existence, and its confinement to the ANSI range, so a future
   theme cleanup cannot sweep the status bar away again the way `24663c1` did.
+- The rule above is about what Funk *tracks*, not what the machine may look
+  like. `ghostty-themes` — upstream's picker, cloned to `~/src/ghostty-themes`
+  by `funk install-ghostty-themes` and reached through Funk's wrapper at
+  `bin/.local/bin/ghostty-themes`, bound to `ctrl+cmd+shift-t` in skhd — writes
+  the operator's chosen theme into Ghostty's macOS Application Support config
+  rather than the XDG one. Ghostty loads that file second, so it wins; it is
+  machine-local state like `funk git-identity`'s, never tracked and never
+  adopted back. The wrapper exists to pin `GHOSTTY_CONFIG` there:
+  the picker rewrites its target with `mktemp` + `mv`, so aimed at
+  `~/.config/ghostty/config` it would replace that Stow link with a real file
+  and commit a theme. `tests/validate.sh` pins the wrapper's pin.
 - `assets/chuchu/Signal Room` is outside that managed desktop-configuration
   rule. It is the canonical remote APK asset consumed only by
   `funk chuchu-theme`, which must prove the built application ID is

@@ -60,3 +60,8 @@ ctrl + cmd - escape : ~/.local/bin/dismiss-terminal-notifier
 
 # Raycast Clipboard History.
 cmd + shift - v : /usr/bin/open "raycast://extensions/raycast/clipboard-history/clipboard-history"
+
+# Ghostty theme picker. Summoned with the hands away from the keyboard, so a
+# three-modifier chord is the point: hard to hit by accident, and the same
+# shape as the Yabai rebalance above.
+ctrl + cmd + shift - t : /Applications/Ghostty.app/Contents/MacOS/ghostty -e ~/.local/bin/ghostty-themes

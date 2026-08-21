@@ -32,6 +32,8 @@ Commands:
                       Install the four native Android launcher applications
   install-ghostty-terminfo
                       Install Ghostty's terminal definition for remote shells
+  install-ghostty-themes
+                      Install the interactive Ghostty theme picker
   ssh-tailnet-config [--check]
                       Write ~/.ssh/config.d from live Tailscale state
   git-identity [--status]
@@ -89,6 +91,10 @@ case "$command_name" in
     install-ghostty-terminfo)
         shift
         exec "$FUNK_ROOT/libexec/install-ghostty-terminfo" "$@"
+        ;;
+    install-ghostty-themes)
+        shift
+        exec "$FUNK_ROOT/libexec/install-ghostty-themes" "$@"
         ;;
     ssh-tailnet-config)
         shift
