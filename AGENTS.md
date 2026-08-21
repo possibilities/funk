@@ -34,24 +34,30 @@ converge by running `./install`; do not rely on one-off live configuration.
   possible: source tmux's config and restart Yabai/skhd services. Karabiner
   reloads its configuration automatically.
 - Managed configuration carries no raw palette: no hard-coded named color or
-  hex literal, and no theme. Ghostty selects none, so it runs its built-in
-  default colors and every other layer follows the terminal. Tmux's
+  hex literal, and no generated palette. Colors are named once, by
+  `theme = ` in `ghostty/.config/ghostty/config`, and every other layer
+  follows the terminal that results. Tmux's
   `tmux/.config/tmux/conf.d/theme.conf` styles the status bar against that
   palette using only ANSI indices (`colour0-15`) plus `default`.
-  `tests/validate.sh` pins the theme ban, the named-color and hex bans, the
-  tmux file's existence, and its confinement to the ANSI range, so a future
-  theme cleanup cannot sweep the status bar away again the way `24663c1` did.
-- The rule above is about what Funk *tracks*, not what the machine may look
-  like. `ghostty-themes` — upstream's picker, cloned to `~/src/ghostty-themes`
-  by `funk install-ghostty-themes` and reached through Funk's wrapper at
-  `bin/.local/bin/ghostty-themes`, bound to `ctrl+cmd+shift-t` in skhd — writes
-  the operator's chosen theme into Ghostty's macOS Application Support config
-  rather than the XDG one. Ghostty loads that file second, so it wins; it is
-  machine-local state like `funk git-identity`'s, never tracked and never
-  adopted back. The wrapper exists to pin `GHOSTTY_CONFIG` there:
-  the picker rewrites its target with `mktemp` + `mv`, so aimed at
-  `~/.config/ghostty/config` it would replace that Stow link with a real file
-  and commit a theme. `tests/validate.sh` pins the wrapper's pin.
+  `tests/validate.sh` pins that theme line's presence, the named-color and hex
+  bans, the tmux file's existence, and its confinement to the ANSI range, so a
+  future theme cleanup cannot sweep the status bar away again the way `24663c1`
+  did. Theme *files* still never live here: the Ghostty cask installs all of
+  them under the application's Resources, and Funk names one by string.
+- Picking a theme and tracking one are separate steps, and the seam between
+  them is deliberate. `ghostty-themes` — upstream's picker, cloned to
+  `~/src/ghostty-themes` by `funk install-ghostty-themes` and reached through
+  Funk's wrapper at `bin/.local/bin/ghostty-themes`, bound to
+  `ctrl+cmd+shift-t` in skhd — browses the cask's themes and writes the pick
+  into Ghostty's macOS Application Support config rather than the XDG one.
+  Ghostty loads that file second, so a pick outranks the tracked line until
+  someone promotes it by editing `theme = ` here and deleting the
+  machine-local file. That override is a known footgun, accepted to keep the
+  picker: nothing warns when the machine drifts from the checkout. The wrapper
+  still exists to pin `GHOSTTY_CONFIG` at the machine-local path, because the
+  picker rewrites its target with `mktemp` + `mv` — aimed at
+  `~/.config/ghostty/config` it would replace that Stow link with a real file.
+  `tests/validate.sh` pins the wrapper's pin.
 - `assets/chuchu/Signal Room` is outside that managed desktop-configuration
   rule. It is the canonical remote APK asset consumed only by
   `funk chuchu-theme`, which must prove the built application ID is

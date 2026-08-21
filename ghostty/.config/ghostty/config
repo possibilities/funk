@@ -1,4 +1,10 @@
 auto-update-channel = tip
+# Funk names the theme, so a fresh account converges to these colors and every
+# other layer follows the terminal. Ultra Dark is one of the themes the Ghostty
+# cask installs; the `ghostty-themes` picker browses them and writes its pick
+# to the machine-local Application Support config, which Ghostty loads second
+# and which therefore outranks this line until the pick is promoted here.
+theme = Ultra Dark
 working-directory = home
 window-inherit-working-directory = true
 window-save-state = never

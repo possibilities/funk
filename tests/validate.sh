@@ -1129,16 +1129,20 @@ grep -F -- '--without-windows) with_windows=0' install >/dev/null \
     || fail "default window stack has no explicit opt-out"
 grep -F 'tmux-fzf.git' libexec/initialize-configs >/dev/null \
     || fail "tmux-fzf is not initialized"
-# There is no theme manager any more. What Funk tracks selects no theme, so
-# Ghostty runs its built-in default colors and every other layer follows the
-# terminal; a theme the operator picks lives only in machine-local state.
+# There is no theme manager any more. Funk names the theme outright, in one
+# tracked line, and every other layer follows the terminal that results; a
+# generated palette and the machinery to render one stay gone.
 if grep -R -Eqi \
     'tinty|tinted-theming|catppuccin|base16|base24|syntax-theme|color_theme|theme_background' \
     Brewfile README.md libexec ghostty nvim tmux zsh btop git; then
     fail "managed configuration reintroduced a theme"
 fi
-if grep -Eq '^theme = ' ghostty/.config/ghostty/config; then
-    fail "Ghostty selects a theme instead of running its own default colors"
+# Funk names the theme, so a fresh account converges to known colors. The
+# picker writes its pick to the machine-local Application Support config,
+# which Ghostty loads second and which therefore outranks this line until the
+# operator promotes it here by hand -- the accepted cost of keeping the picker.
+if ! grep -Eq '^theme = .+$' ghostty/.config/ghostty/config; then
+    fail "Ghostty names no theme, so a fresh account converges to no known colors"
 fi
 [ ! -e ghostty/.config/ghostty/themes ] \
     || fail "Ghostty theme files must not live in Funk"
