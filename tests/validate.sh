@@ -1054,6 +1054,24 @@ expected_gh_log=$(printf '%s\n' \
 [ "$(cat "$gh_log")" = "$expected_gh_log" ] \
     || fail "ghinit invoked gh repo create with unexpected arguments"
 
+HOME="$helper_home" \
+    PATH="$root/bin/.local/bin:$root/tests/fixtures:/usr/bin:/bin" \
+    FUNK_TEST_GH_LOG="$gh_log" \
+    GIT_CONFIG_GLOBAL="$helper_home/gitconfig" \
+    GIT_CONFIG_NOSYSTEM=1 \
+    "$root/bin/.local/bin/ghinit" gh-public --description 'Public Funk test' --public \
+    >/dev/null
+gh_public_dir=$(cd -P -- "$helper_home/code/gh-public" && pwd)
+expected_gh_log=$(printf '%s\n' \
+    "cwd=$gh_public_dir" \
+    'arg=--source=.' \
+    'arg=--public' \
+    'arg=--push' \
+    'arg=--description' \
+    'arg=Public Funk test')
+[ "$(cat "$gh_log")" = "$expected_gh_log" ] \
+    || fail "ghinit did not create a public repository when requested"
+
 # A GitHub repository that already exists is not a failure: bind the checkout
 # to it and let the rejected push be the operator's problem, not an abort.
 existing_remote="$helper_home/existing-remote.git"

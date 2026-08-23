@@ -1,11 +1,22 @@
 #!/bin/bash
 
-# Initialize a new Git repository (via ginit), create a matching private
-# GitHub repository, and push the initial commit. With no arguments, the
-# current directory must be directly inside ~/code. With a project name,
-# create and enter ~/code/<name>; any remaining arguments go to gh repo create.
+# Initialize a new Git repository (via ginit), create a matching GitHub
+# repository, and push the initial commit. Repositories are private unless
+# --public is given. With no arguments, the current directory must be directly
+# inside ~/code. With a project name, create and enter ~/code/<name>; any
+# remaining arguments go to gh repo create.
 
 set -euo pipefail
+
+visibility=--private
+args=()
+for arg in "$@"; do
+    case "$arg" in
+        --public) visibility=--public ;;
+        *) args+=("$arg") ;;
+    esac
+done
+set -- "${args[@]}"
 
 if ! code_dir=$(cd -P -- "$HOME/code" 2>/dev/null && pwd); then
     printf 'ghinit: %s does not exist\n' "$HOME/code" >&2
@@ -62,7 +73,7 @@ existing_repo_url() {
 
 if ! git remote get-url origin >/dev/null 2>&1; then
     create_status=0
-    gh repo create --source=. --private --push "$@" || create_status=$?
+    gh repo create --source=. "$visibility" --push "$@" || create_status=$?
     if [ "$create_status" -ne 0 ]; then
         # Creation commonly fails only because the repository already exists.
         # That is not an error worth stopping for: bind this checkout to it.
