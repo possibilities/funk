@@ -1054,6 +1054,25 @@ expected_gh_log=$(printf '%s\n' \
 [ "$(cat "$gh_log")" = "$expected_gh_log" ] \
     || fail "ghinit invoked gh repo create with unexpected arguments"
 
+mkdir "$helper_home/code/gh-current"
+(
+    cd "$helper_home/code/gh-current"
+    HOME="$helper_home" \
+        PATH="$root/bin/.local/bin:$root/tests/fixtures:/usr/bin:/bin" \
+        FUNK_TEST_GH_LOG="$gh_log" \
+        GIT_CONFIG_GLOBAL="$helper_home/gitconfig" \
+        GIT_CONFIG_NOSYSTEM=1 \
+        "$root/bin/.local/bin/ghinit" >/dev/null
+)
+gh_current_dir=$(cd -P -- "$helper_home/code/gh-current" && pwd)
+expected_gh_log=$(printf '%s\n' \
+    "cwd=$gh_current_dir" \
+    'arg=--source=.' \
+    'arg=--private' \
+    'arg=--push')
+[ "$(cat "$gh_log")" = "$expected_gh_log" ] \
+    || fail "ghinit failed when run without arguments from a project directory"
+
 HOME="$helper_home" \
     PATH="$root/bin/.local/bin:$root/tests/fixtures:/usr/bin:/bin" \
     FUNK_TEST_GH_LOG="$gh_log" \

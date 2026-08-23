@@ -16,7 +16,13 @@ for arg in "$@"; do
         *) args+=("$arg") ;;
     esac
 done
-set -- "${args[@]}"
+if [ "${#args[@]}" -gt 0 ]; then
+    set -- "${args[@]}"
+else
+    # Bash 3.2 treats an empty array expansion as an unbound variable when
+    # nounset is enabled, even when the array was explicitly initialized.
+    set --
+fi
 
 if ! code_dir=$(cd -P -- "$HOME/code" 2>/dev/null && pwd); then
     printf 'ghinit: %s does not exist\n' "$HOME/code" >&2
