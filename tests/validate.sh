@@ -1119,6 +1119,40 @@ set -e
 [ "$(git -C "$helper_home/code/gh-existing" remote get-url origin)" = "$existing_remote" ] \
     || fail "ghinit did not bind the existing GitHub repository as origin"
 
+visibility_file="$helper_home/gh-visibility"
+visibility_log="$helper_home/gh-visibility.log"
+printf '%s\n' private >"$visibility_file"
+: >"$visibility_log"
+run_existing_ghinit() {
+    (
+        cd "$helper_home/code/gh-existing"
+        HOME="$helper_home" \
+            PATH="$root/bin/.local/bin:$root/tests/fixtures:/usr/bin:/bin" \
+            FUNK_TEST_GH_LOG="$gh_log" \
+            FUNK_TEST_GH_VISIBILITY_FILE="$visibility_file" \
+            FUNK_TEST_GH_VISIBILITY_LOG="$visibility_log" \
+            GIT_CONFIG_GLOBAL="$helper_home/gitconfig" \
+            GIT_CONFIG_NOSYSTEM=1 \
+            "$root/bin/.local/bin/ghinit" "$@" >/dev/null 2>&1
+    )
+}
+run_existing_ghinit --public
+run_existing_ghinit --public
+[ "$(cat "$visibility_file")" = public ] \
+    || fail "ghinit --public did not make an existing repository public"
+[ "$(cat "$visibility_log")" = public ] \
+    || fail "ghinit --public was not idempotent"
+run_existing_ghinit
+[ "$(cat "$visibility_file")" = public ] \
+    || fail "bare ghinit changed an existing repository's visibility"
+run_existing_ghinit --no-public
+run_existing_ghinit --no-public
+[ "$(cat "$visibility_file")" = private ] \
+    || fail "ghinit --no-public did not make an existing repository private"
+expected_visibility_log=$(printf '%s\n' public private)
+[ "$(cat "$visibility_log")" = "$expected_visibility_log" ] \
+    || fail "ghinit --no-public was not idempotent"
+
 set +e
 HOME="$helper_home" "$root/bin/.local/bin/ghinit" ../outside >/dev/null 2>&1
 ghinit_traversal_status=$?

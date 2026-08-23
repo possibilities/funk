@@ -1,18 +1,28 @@
 #!/bin/bash
 
 # Initialize a new Git repository (via ginit), create a matching GitHub
-# repository, and push the initial commit. Repositories are private unless
-# --public is given. With no arguments, the current directory must be directly
+# repository, and push the initial commit. New repositories are private unless
+# --public is given. On an existing repository, --public and --no-public ensure
+# public and private visibility respectively; without either flag, visibility
+# is left alone. With no arguments, the current directory must be directly
 # inside ~/code. With a project name, create and enter ~/code/<name>; any
 # remaining arguments go to gh repo create.
 
 set -euo pipefail
 
 visibility=--private
+requested_visibility=
 args=()
 for arg in "$@"; do
     case "$arg" in
-        --public) visibility=--public ;;
+        --public)
+            visibility=--public
+            requested_visibility=public
+            ;;
+        --no-public)
+            visibility=--private
+            requested_visibility=private
+            ;;
         *) args+=("$arg") ;;
     esac
 done
@@ -77,10 +87,28 @@ existing_repo_url() {
     gh repo view "$repo" --json "$field" --jq ".$field" 2>/dev/null
 }
 
+ensure_visibility() {
+    current_visibility=$(gh repo view --json visibility --jq .visibility)
+    case "$current_visibility" in
+        PUBLIC) current_visibility=public ;;
+        PRIVATE) current_visibility=private ;;
+        INTERNAL) current_visibility=internal ;;
+    esac
+    if [ "$current_visibility" = "$requested_visibility" ]; then
+        return 0
+    fi
+    gh repo edit \
+        --visibility "$requested_visibility" \
+        --accept-visibility-change-consequences
+}
+
+created_repo=0
 if ! git remote get-url origin >/dev/null 2>&1; then
     create_status=0
     gh repo create --source=. "$visibility" --push "$@" || create_status=$?
-    if [ "$create_status" -ne 0 ]; then
+    if [ "$create_status" -eq 0 ]; then
+        created_repo=1
+    else
         # Creation commonly fails only because the repository already exists.
         # That is not an error worth stopping for: bind this checkout to it.
         if ! remote_url=$(existing_repo_url) || [ -z "$remote_url" ]; then
@@ -92,4 +120,8 @@ if ! git remote get-url origin >/dev/null 2>&1; then
     fi
 elif ! git rev-parse --abbrev-ref '@{upstream}' >/dev/null 2>&1; then
     push_current_branch
+fi
+
+if [ -n "$requested_visibility" ] && [ "$created_repo" -eq 0 ]; then
+    ensure_visibility
 fi
