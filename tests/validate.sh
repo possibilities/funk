@@ -50,6 +50,7 @@ libexec/install-tailscale-agent
 libexec/install-home-awake
 libexec/install-home-awake-agent
 libexec/verify-local-services
+libexec/yaos-recovery
 libexec/install-transcript-vault-agent
 libexec/install-cass-window-reset-agent
 libexec/configure-macos
@@ -88,6 +89,7 @@ tests/android-launchers.sh
 tests/chuchu-theme.sh
 tests/ghostty-terminfo.sh
 tests/home-awake.sh
+tests/yaos-recovery.sh
 tests/ssh-tailnet-config.sh
 tests/kiosk-launcher.sh
 tests/tailscale-online.sh
@@ -102,6 +104,7 @@ tests/fixtures/brew
 tests/fixtures/bun
 tests/fixtures/gog
 tests/fixtures/chrome
+tests/fixtures/codex
 tests/fixtures/dscacheutil
 tests/fixtures/dns-sd
 tests/fixtures/gh
@@ -174,6 +177,17 @@ for probe in agentweb agentbrain; do
     grep -q "command -v $probe" libexec/verify-local-services \
         || fail "verify-local-services must report a missing $probe as missing, not as an unhealthy service"
 done
+
+tests/yaos-recovery.sh
+
+grep -F 'exec "$FUNK_ROOT/libexec/yaos-recovery" "$@"' bin/funk >/dev/null \
+    || fail "funk does not dispatch the YAOS resurrection handoff"
+last_install_command=$(awk 'NF && $1 !~ /^#/ { line=$0 } END { print line }' install)
+[ "$last_install_command" = '"$funk_command" yaos-recovery' ] \
+    || fail "YAOS resurrection handoff is not the final installer command"
+grep -F 'stores no token, vaultId, plugin data.json, Cloudflare account identity' \
+    libexec/yaos-recovery >/dev/null \
+    || fail "YAOS recovery output does not state its secret boundary"
 
 plist_lint launchd/com.arthack.funk.update.plist.in >/dev/null
 plist_lint launchd/com.arthack.funk.tailscale-online.plist.in >/dev/null
@@ -507,9 +521,19 @@ update_npx_log="$update_test_dir/npx.log"
 update_notifier_log="$update_test_dir/notifier.log"
 update_herdr_log="$update_test_dir/update-herdr.log"
 update_code_root="$update_test_dir/code"
+update_capabilities_root="$update_test_dir/capabilities"
 mkdir -p "$update_home" "$update_code_root/agentfixture/skills/fixture"
 printf '%s\n' '---' 'name: fixture' '---' '# Fixture' \
     >"$update_code_root/agentfixture/skills/fixture/SKILL.md"
+# The real AgentStart renderer now follows synchronization by building the
+# common capability projections. The npx fixture records the requested skill
+# copy rather than performing it, so seed the same copied skill and isolate the
+# renderer from the operator's live capability and Codex plugin state.
+mkdir -p "$update_capabilities_root/packs/common/skills/fixture"
+cp "$update_code_root/agentfixture/skills/fixture/SKILL.md" \
+    "$update_capabilities_root/packs/common/skills/fixture/SKILL.md"
+export AGENTSTART_CAPABILITIES_ROOT="$update_capabilities_root"
+export AGENTSTART_CODEX_BIN="$root/tests/fixtures/codex"
 printf '%s\n' $'formula:terminal-notifier\t1.0.0' >"$update_state"
 : >"$update_npx_log"
 set +e
@@ -1064,7 +1088,10 @@ mkdir "$helper_home/code/gh-current"
         GIT_CONFIG_NOSYSTEM=1 \
         "$root/bin/.local/bin/ghinit" >/dev/null
 )
-gh_current_dir=$(cd -P -- "$helper_home/code/gh-current" && pwd)
+# With no project argument ghinit stays in the caller's directory, so gh sees
+# the logical TMPDIR spelling (/var on macOS), not cd -P's canonical
+# /private/var spelling. cd also normalizes TMPDIR's optional trailing slash.
+gh_current_dir=$(cd -- "$helper_home/code/gh-current" && pwd -L)
 expected_gh_log=$(printf '%s\n' \
     "cwd=$gh_current_dir" \
     'arg=--source=.' \

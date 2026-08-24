@@ -63,3 +63,9 @@ after the XDG one. It overrides colors for the live terminal while everything
 Funk tracks still selects no theme, so the tracked configuration stays
 palette-free and the picker's writes never reach this checkout.
 _Avoid_: theme manager, managed theme, Funk theme.
+
+**YAOS resurrection handoff** — The secret-safe status and recovery guide
+printed by `funk yaos-recovery` and at the end of `./install`. It records the
+non-secret deployment identity and recovery order while leaving credentials,
+live Cloudflare state, and Android configuration outside Funk.
+_Avoid_: YAOS installer, YAOS backup.

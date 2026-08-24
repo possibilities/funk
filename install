@@ -257,3 +257,9 @@ Action required: the tailnet ssh host files could not be written. The reason is
 above and ~/.ssh/config.d was left alone. Re-run with: funk ssh-tailnet-config
 EOF
 fi
+
+# End with the durable handoff for the already-deployed YAOS system. The
+# default report is read-only and nonfatal: a missing backup, signed-out CLI,
+# unreachable Worker, or disconnected phone is recovery context, not grounds
+# to turn a successful machine convergence into a failure.
+"$funk_command" yaos-recovery

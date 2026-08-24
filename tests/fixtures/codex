@@ -1,0 +1,9 @@
+#!/bin/bash
+
+set -u
+
+# AgentStart's capability renderer registers its generated compatibility
+# projection after a skill sync. Funk's updater test is about delegation and
+# notifications, so this fixture accepts that downstream registration without
+# reaching the operator's live Codex configuration.
+exit "${FUNK_TEST_CODEX_EXIT:-0}"

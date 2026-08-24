@@ -39,8 +39,15 @@ funk install-android-launchers
                      # converge the four Screen Copy applications
 funk install-ghostty-terminfo
                      # expose Ghostty capabilities to remote shells
+funk yaos-recovery   # inspect YAOS readiness and print resurrection steps
 funk help            # everything else
 ```
+
+Every install ends with the same YAOS resurrection handoff. It records the
+deployed Worker, pinned upstream source, R2 binding, vault roles, and recovery
+order without storing the sync token, vault ID, plugin state, Cloudflare
+identity, or Android configuration. Use `funk yaos-recovery --check` when a
+machine-readable readiness exit code matters.
 
 The Android applications use an authorized USB phone directly when exactly
 one is attached. With none attached they recover the existing wireless ADB
