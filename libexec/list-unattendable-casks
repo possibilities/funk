@@ -32,10 +32,10 @@ Usage: list-unattendable-casks [--brewfile FILE] [CASK ...]
 Print the cask tokens that cannot converge without administrator
 authentication, one per line, for HOMEBREW_BUNDLE_CASK_SKIP.
 
-A cask is unattendable when it installs a pkg, when its removal steps run a
-privileged script, or when its installed application still belongs to another
-local account. The scheduled update LaunchAgent has no terminal, so attempting
-one of these fails the whole run; ./install converges them interactively.
+A cask is unattendable when it installs a pkg, when its removal steps may
+elevate, or when its installed application still belongs to another local
+account. The scheduled update LaunchAgent has no terminal, so attempting one
+of these fails the whole run; ./install converges them interactively.
 
 This helper only reads Homebrew metadata and file ownership. It changes
 nothing and never elevates, so the scheduled path stays unprivileged.
@@ -120,11 +120,27 @@ pkg_casks="$tmpdir/pkg-casks"
 
 {
     /usr/bin/jq -r '
-      def privileged_step($step):
+      def sudo_script($step):
         ($step.script? // null) as $script
         | ($step.early_script? // null) as $early
         | ((($script | type) == "object" and $script.sudo == true)
            or (($early | type) == "object" and $early.sudo == true));
+
+      # Homebrew uninstall always elevates delete, pkgutil,
+      # kext, and the system half of launchctl. rmdir can elevate when a path
+      # is not writable. Any of them makes the scheduled path unsafe even when
+      # the named file is already absent: uninstall_delete still invokes its
+      # elevated command with an empty xargs input.
+      def privileged_uninstall($step):
+        (($step | type) == "object")
+        and (
+          sudo_script($step)
+          or ($step | has("delete"))
+          or ($step | has("pkgutil"))
+          or ($step | has("kext"))
+          or ($step | has("launchctl"))
+          or ($step | has("rmdir"))
+        );
 
       .casks[]
       | select(.token != null and .token != "")
@@ -133,9 +149,16 @@ pkg_casks="$tmpdir/pkg-casks"
           or
           ([
              .artifacts[]?
-             | (.uninstall? // empty), (.zap? // empty)
+             | .uninstall? // empty
              | .[]?
-             | select(privileged_step(.))
+             | select(privileged_uninstall(.))
+           ] | length) > 0
+          or
+          ([
+             .artifacts[]?
+             | .zap? // empty
+             | .[]?
+             | select(sudo_script(.))
            ] | length) > 0
         )
       | .token

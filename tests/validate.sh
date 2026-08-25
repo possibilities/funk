@@ -177,6 +177,14 @@ for probe in agentweb agentbrain; do
     grep -q "command -v $probe" libexec/verify-local-services \
         || fail "verify-local-services must report a missing $probe as missing, not as an unhealthy service"
 done
+for label in agentbrain.worker agentweb.broker agentusage.observer; do
+    grep -F "$label" libexec/verify-local-services >/dev/null \
+        || fail "verify-local-services omits the AgentStart service label $label"
+done
+if grep -E 'agentweb\.daemon|agentusage\.daemon' \
+    libexec/verify-local-services >/dev/null; then
+    fail "verify-local-services still checks a retired AgentStart service label"
+fi
 
 tests/yaos-recovery.sh
 
@@ -522,7 +530,17 @@ update_notifier_log="$update_test_dir/notifier.log"
 update_herdr_log="$update_test_dir/update-herdr.log"
 update_code_root="$update_test_dir/code"
 update_capabilities_root="$update_test_dir/capabilities"
-mkdir -p "$update_home" "$update_code_root/agentfixture/skills/fixture"
+update_brew_prefix="$update_test_dir/prefix"
+update_node_bin=$(command -v node) \
+    || fail "AgentStart's capability renderer requires node for the updater integration test"
+mkdir -p \
+    "$update_home" \
+    "$update_code_root/agentfixture/skills/fixture" \
+    "$update_brew_prefix/bin"
+# funk-update prepends Homebrew's bin directory to launchd's minimal PATH. Seed
+# the fake prefix the same way so AgentStart's Node-based policy renderer tests
+# the production path contract instead of inheriting the invoking shell's PATH.
+ln -s "$update_node_bin" "$update_brew_prefix/bin/node"
 printf '%s\n' '---' 'name: fixture' '---' '# Fixture' \
     >"$update_code_root/agentfixture/skills/fixture/SKILL.md"
 # The real AgentStart renderer now follows synchronization by building the
@@ -544,7 +562,7 @@ update_output=$(
         AGENTSTART_NPX_BIN="$root/tests/fixtures/npx" \
         PATH="$root/tests/fixtures:/usr/bin:/bin:/usr/sbin:/sbin" \
         FUNK_TEST_BREW_EXIT=23 \
-        FUNK_TEST_BREW_PREFIX="$update_test_dir/prefix" \
+        FUNK_TEST_BREW_PREFIX="$update_brew_prefix" \
         FUNK_TEST_BREW_STATE="$update_state" \
         FUNK_TEST_BREW_LOG="$update_brew_log" \
         FUNK_TEST_NPX_LOG="$update_npx_log" \
@@ -572,7 +590,7 @@ HOME="$update_home" \
     AGENTSTART_NPX_BIN="$root/tests/fixtures/npx" \
     PATH="$root/tests/fixtures:/usr/bin:/bin:/usr/sbin:/sbin" \
     FUNK_TEST_BREW_EXIT=0 \
-    FUNK_TEST_BREW_PREFIX="$update_test_dir/prefix" \
+    FUNK_TEST_BREW_PREFIX="$update_brew_prefix" \
     FUNK_TEST_BREW_STATE="$update_state" \
     FUNK_TEST_BREW_LOG="$update_brew_log" \
     FUNK_TEST_FORMULA_NEW=2.0.0 \
@@ -598,7 +616,7 @@ HOME="$update_home" \
     AGENTSTART_NPX_BIN="$root/tests/fixtures/npx" \
     PATH="$root/tests/fixtures:/usr/bin:/bin:/usr/sbin:/sbin" \
     FUNK_TEST_BREW_EXIT=0 \
-    FUNK_TEST_BREW_PREFIX="$update_test_dir/prefix" \
+    FUNK_TEST_BREW_PREFIX="$update_brew_prefix" \
     FUNK_TEST_BREW_STATE="$update_state" \
     FUNK_TEST_BREW_LOG="$update_brew_log" \
     FUNK_TEST_FORMULA_NEW=2.0.0 \
@@ -620,7 +638,7 @@ update_output=$(
         AGENTSTART_CODE_ROOT="$update_code_root" \
         PATH="$root/tests/fixtures:/usr/bin:/bin:/usr/sbin:/sbin" \
         FUNK_TEST_BREW_EXIT=0 \
-        FUNK_TEST_BREW_PREFIX="$update_test_dir/prefix" \
+        FUNK_TEST_BREW_PREFIX="$update_brew_prefix" \
         FUNK_TEST_BREW_STATE="$update_state" \
         FUNK_TEST_BREW_LOG="$update_brew_log" \
         FUNK_TEST_NPX_LOG="$update_npx_log" \
@@ -839,8 +857,8 @@ set -e
     || fail "cask repair helper deleted a backup before rejecting its target"
 
 # The scheduled LaunchAgent has no terminal, so a cask that installs a pkg or
-# runs a sudo uninstall script must be named for HOMEBREW_BUNDLE_CASK_SKIP
-# instead of failing the whole unattended run.
+# has a removal step Homebrew may elevate must be named for
+# HOMEBREW_BUNDLE_CASK_SKIP instead of failing the whole scheduled path.
 unattendable_info="$update_test_dir/unattendable-info.json"
 unattendable_home="$update_test_dir/unattendable-home"
 mkdir -p "$unattendable_home/Applications"
@@ -850,6 +868,19 @@ mkdir -p "$unattendable_home/Applications"
      artifacts:[{uninstall:[{early_script:{executable:"/x",sudo:true}}]}]},
     {token:"funk-zap-sudo",installed:"1.0.0",
      artifacts:[{zap:[{script:{executable:"/x",sudo:true}}]}]},
+    {token:"funk-delete",installed:"1.0.0",
+     artifacts:[{uninstall:[{delete:"/Library/Funk"}]}]},
+    {token:"funk-pkgutil",installed:"1.0.0",
+     artifacts:[{uninstall:[{pkgutil:"com.example.funk"}]}]},
+    {token:"funk-kext",installed:"1.0.0",
+     artifacts:[{uninstall:[{kext:"com.example.funk"}]}]},
+    {token:"funk-launchctl",installed:"1.0.0",
+     artifacts:[{uninstall:[{launchctl:"com.example.funk"}]}]},
+    {token:"funk-rmdir",installed:"1.0.0",
+     artifacts:[{uninstall:[{rmdir:"/Library/Funk"}]}]},
+    {token:"funk-zap-removal",installed:"1.0.0",
+     artifacts:[{zap:[{delete:"/Library/Funk",launchctl:"com.example.funk",
+                       rmdir:"/Library/Funk"}]}]},
     {token:"funk-plain-script",installed:"1.0.0",
      artifacts:[{uninstall:[{script:{executable:"/x"}}]}]},
     {token:"funk-ordinary",installed:"1.0.0",
@@ -862,7 +893,12 @@ unattendable=$(
         FUNK_TEST_CASK_INFO="$unattendable_info" \
         "$root/libexec/list-unattendable-casks" funk-ordinary
 )
-expected_unattendable='funk-pkg
+expected_unattendable='funk-delete
+funk-kext
+funk-launchctl
+funk-pkg
+funk-pkgutil
+funk-rmdir
 funk-sudo-script
 funk-zap-sudo'
 [ "$unattendable" = "$expected_unattendable" ] \

@@ -21,10 +21,10 @@ component that ships its own updater, so the two updaters do not compete.
 _Avoid_: pinning, freezing, skipping.
 
 **Unattendable cask** — a Homebrew cask the scheduled path cannot converge:
-it installs a pkg, its removal steps run a privileged script, its application
-belongs to another local account, or its recorded install directories point
-into another account's home. Named for `HOMEBREW_BUNDLE_CASK_SKIP` and reported
-as `Needs ./install: …`.
+it installs a pkg, its removal steps may elevate, its application belongs to
+another local account, or its recorded install directories point into another
+account's home. Named for `HOMEBREW_BUNDLE_CASK_SKIP` and reported as
+`Needs ./install: …`.
 _Avoid_: broken cask, failed cask.
 
 **Generated host file** — a file under `~/.ssh/config.d/` whose first line is

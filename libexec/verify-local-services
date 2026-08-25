@@ -8,7 +8,7 @@ Usage: verify-local-services
 
 Check that the resident services owned by local checkouts are not merely
 installed but actually working: the Agentbrain worker and share ingress, the
-Agentweb daemon, and the Agentusage daemon.
+Agentweb broker, and the Agentusage observer.
 
 Exits non-zero when any check fails, so it is usable after a converge, after a
 merge, or on its own to answer "is sharing actually working right now".
@@ -41,7 +41,7 @@ service_running() {
 }
 
 printf 'Resident services\n'
-for label in agentbrain.worker agentweb.daemon agentusage.daemon; do
+for label in agentbrain.worker agentweb.broker agentusage.observer; do
     if service_running "$label"; then
         ok "$label is loaded and running"
     else
