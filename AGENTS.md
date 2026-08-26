@@ -116,8 +116,9 @@ a root execution path into this user-writable checkout.
 
 The **YAOS resurrection handoff** is the narrow exception for deployment
 *identity*, not deployment state. Funk may track the public Worker URL, Worker
-and R2 names, binding name, pinned upstream commit, compatible versions, vault
-roles and recovery procedure. It must never track the YAOS plugin `data.json`,
+and R2 names, binding name, upstream and public-fork URLs, carried branch,
+pinned fork commit, compatible versions, vault roles and recovery procedure.
+It must never track the YAOS plugin `data.json`,
 setup token, vault ID, Cloudflare account identity, R2 objects or snapshots,
 Android configuration, or live tailnet identity. `funk yaos-recovery` remains
 read-only: Cloudflare deployment and Android changes require an agent or human

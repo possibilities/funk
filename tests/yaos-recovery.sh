@@ -120,8 +120,10 @@ for fact in \
     "bucket yaos bound as YAOS_BUCKET" \
     "~/obsidian/work" \
     "/sdcard/Documents/obsidian/work" \
-    "1b56897b4d72a51307c4c6e38d621128f4e69cf6" \
-    "55a27e51f344abe3ec8e4d9b88b3cd4d0636019881c15c67b53602de02893bb3" \
+    "https://github.com/kavinsood/yaos.git" \
+    "https://github.com/possibilities/yaos.git" \
+    "integration" \
+    "0e78c54bf7365240988d1d86c04f5385f9ec02c3" \
     "exact line /work" \
     "Recovery order:"; do
     assert_contains "$output" "$fact"

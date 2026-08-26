@@ -64,11 +64,13 @@ Funk tracks still selects no theme, so the tracked configuration stays
 palette-free and the picker's writes never reach this checkout.
 _Avoid_: theme manager, managed theme, Funk theme.
 
-**YAOS managed overlay** — The pinned upstream YAOS checkout, reviewed Funk
-patch, reproducible plugin build, and public-artifact links converged by
-`funk install-yaos`. The linked files are `main.js`, `manifest.json`, and
-`styles.css`; secret `data.json` remains machine-local and untouched.
-_Avoid_: YAOS credentials, YAOS state backup, adopting `data.json`.
+**YAOS managed fork** — The public `possibilities/yaos` fork, its carried
+`integration` branch, pinned commit, reproducible plugin build, and
+public-artifact links converged by `funk install-yaos`. The linked files are
+`main.js`, `manifest.json`, and `styles.css`; secret `data.json` remains
+machine-local and untouched.
+_Avoid_: YAOS managed overlay, YAOS credentials, YAOS state backup, adopting
+`data.json`.
 
 **YAOS resurrection handoff** — The secret-safe status and recovery guide
 printed by `funk yaos-recovery` and at the end of `./install`. It records the

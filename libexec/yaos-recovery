@@ -12,8 +12,9 @@ worker_name=$yaos_worker_name
 r2_bucket=$yaos_r2_bucket
 r2_binding=$yaos_r2_binding
 upstream_url=$yaos_upstream_url
+fork_url=$yaos_fork_url
+carried_branch=$yaos_carried_branch
 pinned_commit=$yaos_pinned_commit
-overlay_sha256=$yaos_overlay_sha256
 plugin_version=$yaos_plugin_version
 server_version=$yaos_server_version
 server_schema=$yaos_server_schema
@@ -148,11 +149,12 @@ fi
 
 if [ -d "$checkout/.git" ] && command -v git >/dev/null 2>&1; then
     checkout_commit=$(git -C "$checkout" rev-parse HEAD 2>/dev/null || true)
-    checkout_diff_sha=$(git -C "$checkout" diff --binary HEAD -- \
-        | shasum -a 256 | awk '{print $1}')
+    checkout_origin=$(git -C "$checkout" remote get-url origin 2>/dev/null || true)
+    checkout_status=$(git -C "$checkout" status --porcelain --untracked-files=normal 2>/dev/null || true)
     if [ "$checkout_commit" = "$pinned_commit" ] \
-        && [ "$checkout_diff_sha" = "$overlay_sha256" ]; then
-        ready "checkout matches the pinned upstream commit plus reviewed Funk overlay"
+        && [ "$checkout_origin" = "$fork_url" ] \
+        && [ -z "$checkout_status" ]; then
+        ready "checkout matches the pinned public fork commit"
     else
         printf '  note: checkout differs from the deployed source identity\n'
     fi
@@ -204,7 +206,9 @@ Deployment facts (safe to retain):
   Worker: $worker_name at $worker_url
   R2: bucket $r2_bucket bound as $r2_binding
   Upstream: $upstream_url
-  Deployed source: upstream commit $pinned_commit plus Funk overlay $overlay_sha256
+  Public fork: $fork_url
+  Carried branch: $carried_branch
+  Deployed source: fork commit $pinned_commit
   Plugin/server/schema: $plugin_version / $server_version / $server_schema
   Attachments and snapshots: enabled through R2; attachment limit 10 MiB
   Authority: greybird at ~/obsidian/work
@@ -239,9 +243,9 @@ Recovery order:
 Guarded Cloudflare reconstruction (does not run automatically):
   funk install-yaos
   funk install-yaos --check
-  # The installer recreates $upstream_url at $pinned_commit, verifies and applies
-  # Funk overlay $overlay_sha256, builds the plugin, and links only its public
-  # artifacts. It never reads or replaces the live plugin data.json.
+  # The installer recreates $fork_url at the pinned $carried_branch commit,
+  # builds the plugin, and links only its public artifacts. It never reads or
+  # replaces the live plugin data.json.
   cd ~/src/yaos/server
   npm ci
   npm exec -- wrangler whoami

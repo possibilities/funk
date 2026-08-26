@@ -16,8 +16,8 @@ usage() {
     cat <<'EOF'
 Usage: funk install-yaos [--check]
 
-Converge Funk's pinned YAOS checkout plus reviewed overlay, build the plugin,
-and link only its public artifacts into the authoritative Obsidian vault.
+Converge Funk's pinned public YAOS fork checkout, build the plugin, and link
+only its public artifacts into the authoritative Obsidian vault.
 Existing data.json state is never read, replaced, linked, or removed.
 EOF
 }
@@ -44,17 +44,15 @@ esac
 [ -n "${HOME:-}" ] && [ -d "$HOME" ] || die "HOME is not an existing directory"
 
 script_dir=$(cd -P -- "$(dirname -- "$0")" && pwd)
-funk_root=$(cd -P -- "$script_dir/.." && pwd)
 # shellcheck source=libexec/yaos-facts
 . "$script_dir/yaos-facts"
 
 # ShellCheck cannot infer assignments from this deliberately non-executable facts fragment.
 # shellcheck disable=SC2154
-remote=${FUNK_YAOS_UPSTREAM_URL:-$yaos_upstream_url}
+remote=${FUNK_YAOS_FORK_URL:-$yaos_fork_url}
+carried_branch=${FUNK_YAOS_CARRIED_BRANCH:-$yaos_carried_branch}
 # shellcheck disable=SC2154
 pinned_commit=${FUNK_YAOS_PINNED_COMMIT:-$yaos_pinned_commit}
-patch_file=${FUNK_YAOS_PATCH_FILE:-$funk_root/$yaos_overlay_patch}
-patch_sha256=${FUNK_YAOS_PATCH_SHA256:-$yaos_overlay_sha256}
 checkout=${FUNK_YAOS_CHECKOUT:-$HOME/src/yaos}
 vault=${FUNK_YAOS_MAC_VAULT:-$HOME/obsidian/work}
 plugin_dir="$vault/.obsidian/plugins/yaos"
@@ -63,51 +61,44 @@ plugin_version=$yaos_plugin_version
 
 command -v git >/dev/null 2>&1 || die "git is required"
 command -v shasum >/dev/null 2>&1 || die "shasum is required"
-[ -f "$patch_file" ] || die "reviewed overlay is missing: $patch_file"
-actual_patch_sha=$(shasum -a 256 "$patch_file" | awk '{print $1}')
-[ "$actual_patch_sha" = "$patch_sha256" ] \
-    || die "reviewed overlay digest mismatch: expected $patch_sha256, got $actual_patch_sha"
 
 if [ ! -d "$checkout/.git" ]; then
     [ "$check_only" -eq 0 ] || die "checkout is missing: $checkout"
     [ ! -e "$checkout" ] || die "$checkout exists but is not a Git checkout"
     mkdir -p "$(dirname -- "$checkout")"
     git clone --filter=blob:none "$remote" "$checkout" \
-        || die "cannot clone $remote"
+        || die "cannot clone public fork $remote"
     git -C "$checkout" switch --detach "$pinned_commit" \
         || die "cannot select pinned commit $pinned_commit"
-    note "cloned pinned YAOS source into $checkout"
+    note "cloned pinned YAOS fork into $checkout"
 fi
 
 origin=$(git -C "$checkout" remote get-url origin 2>/dev/null || true)
 [ "$origin" = "$remote" ] \
     || die "$checkout origin is '$origin', expected '$remote'"
 checkout_commit=$(git -C "$checkout" rev-parse HEAD 2>/dev/null || true)
-[ "$checkout_commit" = "$pinned_commit" ] \
-    || die "$checkout is at ${checkout_commit:-an unknown commit}, expected $pinned_commit"
-
-current_diff=$(mktemp "${TMPDIR:-/tmp}/funk-yaos-diff.XXXXXX")
-trap 'rm -f "$current_diff"' EXIT
-git -C "$checkout" diff --binary HEAD -- >"$current_diff"
-current_diff_sha=$(shasum -a 256 "$current_diff" | awk '{print $1}')
-empty_sha=$(printf '' | shasum -a 256 | awk '{print $1}')
-
-if [ "$current_diff_sha" = "$empty_sha" ]; then
-    [ "$check_only" -eq 0 ] || die "reviewed YAOS overlay is not applied"
-    git -C "$checkout" apply --check "$patch_file" \
-        || die "reviewed overlay no longer applies cleanly to $pinned_commit"
-    git -C "$checkout" apply "$patch_file"
-    note "applied Funk's reviewed YAOS receipt overlay"
-elif [ "$current_diff_sha" != "$patch_sha256" ]; then
-    die "$checkout has tracked changes other than Funk's reviewed YAOS overlay"
+if [ -n "$(git -C "$checkout" status --porcelain --untracked-files=normal)" ]; then
+    die "$checkout has local changes; refusing to replace carried fork state"
 fi
 
-# Re-read the diff after a possible apply. This also catches an incomplete or
-# manually edited overlay before any build or live plugin link is changed.
-git -C "$checkout" diff --binary HEAD -- >"$current_diff"
-current_diff_sha=$(shasum -a 256 "$current_diff" | awk '{print $1}')
-[ "$current_diff_sha" = "$patch_sha256" ] \
-    || die "$checkout does not exactly match the reviewed YAOS overlay"
+carried_ref="refs/remotes/origin/$carried_branch"
+if ! git -C "$checkout" show-ref --verify --quiet "$carried_ref" \
+    || ! git -C "$checkout" merge-base --is-ancestor "$pinned_commit" "$carried_ref"; then
+    [ "$check_only" -eq 0 ] \
+        || die "pinned commit $pinned_commit is not present on origin/$carried_branch"
+    git -C "$checkout" fetch origin "$carried_branch:$carried_ref" \
+        || die "cannot fetch carried branch $carried_branch from $remote"
+    git -C "$checkout" merge-base --is-ancestor "$pinned_commit" "$carried_ref" \
+        || die "pinned commit $pinned_commit is not carried by origin/$carried_branch"
+fi
+
+if [ "$checkout_commit" != "$pinned_commit" ]; then
+    [ "$check_only" -eq 0 ] \
+        || die "$checkout is at ${checkout_commit:-an unknown commit}, expected $pinned_commit"
+    git -C "$checkout" switch --detach "$pinned_commit" \
+        || die "cannot select pinned fork commit $pinned_commit"
+    note "selected pinned YAOS fork commit $pinned_commit"
+fi
 
 artifact_ready=1
 for artifact in main.js manifest.json styles.css; do
@@ -123,7 +114,7 @@ done
 if [ "$check_only" -eq 1 ]; then
     [ "$artifact_ready" -eq 1 ] || die "plugin build artifacts are incomplete in $checkout"
     [ "$links_ready" -eq 1 ] || die "plugin artifacts are not linked from $plugin_dir to $checkout"
-    note "pinned checkout, reviewed overlay, build, and plugin links are current"
+    note "pinned fork checkout, build, and plugin links are current"
     exit 0
 fi
 

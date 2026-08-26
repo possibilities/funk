@@ -191,15 +191,11 @@ fi
 tests/install-yaos.sh
 tests/yaos-recovery.sh
 bash -n libexec/yaos-facts
-(
-    overlay_rel=$(awk -F= '$1 == "yaos_overlay_patch" {print $2}' libexec/yaos-facts)
-    overlay_sha=$(awk -F= '$1 == "yaos_overlay_sha256" {print $2}' libexec/yaos-facts)
-    overlay_path="$PWD/$overlay_rel"
-    [ -f "$overlay_path" ] || fail "YAOS overlay patch is missing: $overlay_path"
-    actual_overlay_sha=$(shasum -a 256 "$overlay_path" | awk '{print $1}')
-    [ "$actual_overlay_sha" = "$overlay_sha" ] \
-        || fail "YAOS overlay digest differs from the pinned recovery facts"
-)
+grep -F 'yaos_fork_url=https://github.com/possibilities/yaos.git' \
+    libexec/yaos-facts >/dev/null \
+    || fail "YAOS facts do not pin the public Funk fork"
+grep -F 'yaos_carried_branch=integration' libexec/yaos-facts >/dev/null \
+    || fail "YAOS facts do not name the carried fork branch"
 
 grep -F 'exec "$FUNK_ROOT/libexec/install-yaos" "$@"' bin/funk >/dev/null \
     || fail "funk does not dispatch the YAOS installer"
