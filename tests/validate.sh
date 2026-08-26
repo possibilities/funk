@@ -484,6 +484,7 @@ brew "gh"
 brew "azure-cli"
 brew "jq"
 brew "docker"
+brew "docker-buildx"
 # pdftotext, required by Agentscrape and Agentbrain to read PDFs.
 brew "poppler"
 brew "terminal-notifier"
@@ -1036,6 +1037,13 @@ grep -F 'path = ~/.config/git/config.local' git/.config/git/config >/dev/null \
     || fail "bin package did not use --no-folding"
 [ -L "$stow_home/.local/bin/focus-address-bar" ] \
     || fail "browser address-bar helper was not stowed"
+[ -d "$stow_home/.docker/cli-plugins" ] \
+    && [ ! -L "$stow_home/.docker" ] \
+    && [ -L "$stow_home/.docker/cli-plugins/docker-buildx" ] \
+    && [ -x "$stow_home/.docker/cli-plugins/docker-buildx" ] \
+    || fail "docker-buildx launcher was not stowed without folding ~/.docker"
+[ ! -e docker/.docker/config.json ] \
+    || fail "Docker's writable config.json must remain machine-local"
 [ -x "$stow_home/.local/bin/ginit" ] \
     || fail "ginit was not stowed as an executable"
 [ -x "$stow_home/.local/bin/ghinit" ] \

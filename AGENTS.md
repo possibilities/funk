@@ -79,12 +79,18 @@ converge by running `./install`; do not rely on one-off live configuration.
 | `bin` | `~/.local/bin/` | yes |
 | `btop` | `~/.config/btop/` | no |
 | `herdr` | `~/.config/herdr/` | yes |
+| `docker` | `~/.docker/cli-plugins/` | yes |
 
 A `--no-folding` package's target directory stays a real directory, so it can
 hold files Funk does not track. That is the whole reason those rows are marked:
 `~/.ssh/config.d` is written by `funk ssh-tailnet-config` and
 `~/.config/git/config.local` by `funk git-identity`, and under normal folding
 both generators would be writing straight back into this checkout.
+
+The `docker` package owns only CLI-plugin launchers. Docker contexts,
+credentials, and generated state remain machine-local under `~/.docker`; in
+particular, never track or Stow `~/.docker/config.json` just to make Homebrew's
+plugin directory discoverable.
 
 Machine-identifying data is generated onto the machine at converge time, never
 tracked and never adopted back. `home-awake --learn-network` records the home

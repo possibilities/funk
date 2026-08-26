@@ -1,0 +1,13 @@
+#!/bin/sh
+set -eu
+
+for docker_buildx_plugin in \
+    /opt/homebrew/lib/docker/cli-plugins/docker-buildx \
+    /usr/local/lib/docker/cli-plugins/docker-buildx; do
+    if [ -x "$docker_buildx_plugin" ]; then
+        exec "$docker_buildx_plugin" "$@"
+    fi
+done
+
+printf '%s\n' 'docker-buildx is missing; run ./install to converge the Funk Brewfile' >&2
+exit 127
