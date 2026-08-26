@@ -1,17 +1,23 @@
 #!/bin/bash
+# shellcheck disable=SC2154 # Variables come from the checked-in yaos-facts fragment.
 
 set -euo pipefail
 
-worker_url=https://yaos.notimpossiblemike.workers.dev
-worker_name=yaos
-r2_bucket=yaos
-r2_binding=YAOS_BUCKET
-upstream_url=https://github.com/kavinsood/yaos.git
-pinned_commit=1b56897b4d72a51307c4c6e38d621128f4e69cf6
-plugin_version=2.1.0
-server_version=0.3.0
-server_schema=3
-max_attachment_bytes=10485760
+script_dir=$(cd -P -- "$(dirname -- "$0")" && pwd)
+# shellcheck source=libexec/yaos-facts
+. "$script_dir/yaos-facts"
+
+worker_url=$yaos_worker_url
+worker_name=$yaos_worker_name
+r2_bucket=$yaos_r2_bucket
+r2_binding=$yaos_r2_binding
+upstream_url=$yaos_upstream_url
+pinned_commit=$yaos_pinned_commit
+overlay_sha256=$yaos_overlay_sha256
+plugin_version=$yaos_plugin_version
+server_version=$yaos_server_version
+server_schema=$yaos_server_schema
+max_attachment_bytes=$yaos_max_attachment_bytes
 
 mac_vault=${FUNK_YAOS_MAC_VAULT:-"$HOME/obsidian/work"}
 checkout=${FUNK_YAOS_CHECKOUT:-"$HOME/src/yaos"}
@@ -142,13 +148,29 @@ fi
 
 if [ -d "$checkout/.git" ] && command -v git >/dev/null 2>&1; then
     checkout_commit=$(git -C "$checkout" rev-parse HEAD 2>/dev/null || true)
-    if [ "$checkout_commit" = "$pinned_commit" ]; then
-        ready "upstream checkout is at the deployed source commit"
+    checkout_diff_sha=$(git -C "$checkout" diff --binary HEAD -- \
+        | shasum -a 256 | awk '{print $1}')
+    if [ "$checkout_commit" = "$pinned_commit" ] \
+        && [ "$checkout_diff_sha" = "$overlay_sha256" ]; then
+        ready "checkout matches the pinned upstream commit plus reviewed Funk overlay"
     else
-        printf '  note: upstream checkout is not at the deployed source commit\n'
+        printf '  note: checkout differs from the deployed source identity\n'
     fi
 else
-    printf '  note: upstream checkout is absent; recreate it only when deployment work is needed\n'
+    printf '  note: checkout is absent; funk install-yaos recreates the pinned source and overlay\n'
+fi
+
+plugin_links_ready=1
+for artifact in main.js manifest.json styles.css; do
+    [ -L "$plugin_dir/$artifact" ] \
+        && [ -e "$checkout/$artifact" ] \
+        && [ "$plugin_dir/$artifact" -ef "$checkout/$artifact" ] \
+        || plugin_links_ready=0
+done
+if [ "$plugin_links_ready" -eq 1 ]; then
+    ready "plugin public artifacts are linked to the Funk-managed checkout"
+else
+    needs_attention "plugin public artifacts are not linked to the Funk-managed checkout; run funk install-yaos"
 fi
 
 capabilities=""
@@ -182,7 +204,7 @@ Deployment facts (safe to retain):
   Worker: $worker_name at $worker_url
   R2: bucket $r2_bucket bound as $r2_binding
   Upstream: $upstream_url
-  Deployed source commit: $pinned_commit
+  Deployed source: upstream commit $pinned_commit plus Funk overlay $overlay_sha256
   Plugin/server/schema: $plugin_version / $server_version / $server_schema
   Attachments and snapshots: enabled through R2; attachment limit 10 MiB
   Authority: greybird at ~/obsidian/work
@@ -215,10 +237,11 @@ Recovery order:
   8. Treat R2 snapshots as recovery support, not authority to trample greybird.
 
 Guarded Cloudflare reconstruction (does not run automatically):
-  git clone $upstream_url ~/src/yaos
-  git -C ~/src/yaos fetch origin $pinned_commit
-  git -C ~/src/yaos switch --detach $pinned_commit
-  git -C ~/src/yaos verify-commit $pinned_commit  # if upstream signs it
+  funk install-yaos
+  funk install-yaos --check
+  # The installer recreates $upstream_url at $pinned_commit, verifies and applies
+  # Funk overlay $overlay_sha256, builds the plugin, and links only its public
+  # artifacts. It never reads or replaces the live plugin data.json.
   cd ~/src/yaos/server
   npm ci
   npm exec -- wrangler whoami

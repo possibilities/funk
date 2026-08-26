@@ -32,10 +32,14 @@ fake_curl="$test_tmp/curl"
 sentinel_token=test-sync-token-never-print-this-4f7d89a1
 mkdir -p "$plugin_dir" "$checkout"
 
-cat >"$plugin_dir/manifest.json" <<'EOF'
+cat >"$checkout/manifest.json" <<'EOF'
 {"id":"yaos","version":"2.1.0"}
 EOF
-: >"$plugin_dir/main.js"
+: >"$checkout/main.js"
+: >"$checkout/styles.css"
+ln -s "$checkout/main.js" "$plugin_dir/main.js"
+ln -s "$checkout/manifest.json" "$plugin_dir/manifest.json"
+ln -s "$checkout/styles.css" "$plugin_dir/styles.css"
 cat >"$plugin_dir/data.json" <<EOF
 {
   "host": "https://yaos.notimpossiblemike.workers.dev",
@@ -72,6 +76,7 @@ output=$(run_guide --check) || fail "complete configuration did not pass --check
 assert_contains "$output" "ready: YAOS plugin 2.1.0 is installed"
 assert_contains "$output" "ready: plugin has a recovery-capable setup token (value withheld)"
 assert_contains "$output" "ready: Worker is claimed"
+assert_contains "$output" "ready: plugin public artifacts are linked"
 assert_not_contains "$output" "$sentinel_token"
 assert_not_contains "$output" "test-vault-id-never-print"
 
@@ -116,6 +121,7 @@ for fact in \
     "~/obsidian/work" \
     "/sdcard/Documents/obsidian/work" \
     "1b56897b4d72a51307c4c6e38d621128f4e69cf6" \
+    "55a27e51f344abe3ec8e4d9b88b3cd4d0636019881c15c67b53602de02893bb3" \
     "exact line /work" \
     "Recovery order:"; do
     assert_contains "$output" "$fact"

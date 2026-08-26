@@ -18,6 +18,7 @@ Default installation:
     harness configuration, and every globally managed agent skill
   - stows all user configuration packages into the target user's home
   - installs four native Android launcher applications into ~/Applications
+  - builds and links Funk's pinned, patched YAOS plugin without touching its secrets
   - installs the window stack and converges Yabai Spaces 1-9
   - links the funk command into the active Homebrew bin directory
   - installs and loads the update and Tailscale recovery LaunchAgents
@@ -147,6 +148,7 @@ FUNK_ROOT="$funk_root" "$funk_root/libexec/converge-brewfile"
 "$funk_root/libexec/initialize-configs"
 "$funk_command" install-ghostty-terminfo
 "$funk_command" install-ghostty-themes
+"$funk_command" install-yaos
 
 # The AI desktop applications are Funk's Homebrew casks and converge here.
 "$funk_root/libexec/converge-brew-casks" claude chatgpt

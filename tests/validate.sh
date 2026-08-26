@@ -50,6 +50,7 @@ libexec/install-tailscale-agent
 libexec/install-home-awake
 libexec/install-home-awake-agent
 libexec/verify-local-services
+libexec/install-yaos
 libexec/yaos-recovery
 libexec/install-transcript-vault-agent
 libexec/install-cass-window-reset-agent
@@ -89,6 +90,7 @@ tests/android-launchers.sh
 tests/chuchu-theme.sh
 tests/ghostty-terminfo.sh
 tests/home-awake.sh
+tests/install-yaos.sh
 tests/yaos-recovery.sh
 tests/ssh-tailnet-config.sh
 tests/kiosk-launcher.sh
@@ -186,8 +188,23 @@ if grep -E 'agentweb\.daemon|agentusage\.daemon' \
     fail "verify-local-services still checks a retired AgentStart service label"
 fi
 
+tests/install-yaos.sh
 tests/yaos-recovery.sh
+bash -n libexec/yaos-facts
+(
+    overlay_rel=$(awk -F= '$1 == "yaos_overlay_patch" {print $2}' libexec/yaos-facts)
+    overlay_sha=$(awk -F= '$1 == "yaos_overlay_sha256" {print $2}' libexec/yaos-facts)
+    overlay_path="$PWD/$overlay_rel"
+    [ -f "$overlay_path" ] || fail "YAOS overlay patch is missing: $overlay_path"
+    actual_overlay_sha=$(shasum -a 256 "$overlay_path" | awk '{print $1}')
+    [ "$actual_overlay_sha" = "$overlay_sha" ] \
+        || fail "YAOS overlay digest differs from the pinned recovery facts"
+)
 
+grep -F 'exec "$FUNK_ROOT/libexec/install-yaos" "$@"' bin/funk >/dev/null \
+    || fail "funk does not dispatch the YAOS installer"
+grep -F '"$funk_command" install-yaos' install >/dev/null \
+    || fail "the default installer does not converge YAOS"
 grep -F 'exec "$FUNK_ROOT/libexec/yaos-recovery" "$@"' bin/funk >/dev/null \
     || fail "funk does not dispatch the YAOS resurrection handoff"
 last_install_command=$(awk 'NF && $1 !~ /^#/ { line=$0 } END { print line }' install)

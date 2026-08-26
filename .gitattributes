@@ -1,0 +1,3 @@
+# A patch stores diff context prefixes verbatim; checking the patch as an added
+# text file otherwise misreads those prefixes as whitespace in Funk's source.
+assets/yaos/server-receipt-durability.patch -whitespace

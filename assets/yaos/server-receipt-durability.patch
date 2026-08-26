@@ -1,0 +1,345 @@
+diff --git a/server/src/server.ts b/server/src/server.ts
+index 4bb021e..802455b 100644
+--- a/server/src/server.ts
++++ b/server/src/server.ts
+@@ -25,7 +25,11 @@ import {
+ 	TraceRateLimiter,
+ 	type TraceEntry as StoredTraceEntry,
+ } from "./traceStore";
+-import { trySendSvEcho, type SvEchoSendResult } from "./svEcho";
++import {
++	trySendSvEcho,
++	trySendSvEchoToConnections,
++	type SvEchoSendResult,
++} from "./svEcho";
+ import { isUpdateBearingSyncMessage } from "./syncMessageClassifier";
+ import { bytesToHex } from "./hex";
+ import { sha256Hex } from "./hex";
+@@ -63,6 +67,7 @@ type ServerTraceEntry = StoredTraceEntry;
+ type SvEchoCounters = {
+ 	baselineSent: number;
+ 	postApplySent: number;
++	postPersistSent: number;
+ 	failed: number;
+ 	bytesTotal: number;
+ 	bytesMax: number;
+@@ -117,9 +122,12 @@ export class VaultSyncServer extends YServer<Env> {
+ 	private snapshotMaybeChain: Promise<void> = Promise.resolve();
+ 	private roomMeta: RoomMeta | null = null;
+ 	private readonly traceRateLimiter = new TraceRateLimiter();
++	/** Connections whose changed updates have not yet received a durable receipt. */
++	private readonly pendingReceiptConnections = new Set<Connection>();
+ 	private readonly svEchoCounters: SvEchoCounters = {
+ 		baselineSent: 0,
+ 		postApplySent: 0,
++		postPersistSent: 0,
+ 		failed: 0,
+ 		bytesTotal: 0,
+ 		bytesMax: 0,
+@@ -185,10 +193,31 @@ export class VaultSyncServer extends YServer<Env> {
+ 		// Throwing here would only produce unhandled rejection noise in the
+ 		// y-partyserver framework without aiding recovery. The coordinator
+ 		// handles retry via immediate checkpoint fallback on the next save.
++		const receiptConnections = new Set(this.pendingReceiptConnections);
++		this.pendingReceiptConnections.clear();
+ 		const coordinator = this.getPersistenceCoordinator();
+ 		const result = await coordinator.enqueueSave();
+ 		if (!result.success) {
++			// The coordinator restores the failed update batch. Keep its senders
++			// pending as well so a later successful retry can receipt the same work.
++			for (const connection of receiptConnections) {
++				this.pendingReceiptConnections.add(connection);
++			}
+ 			console.error(`${LOG_PREFIX} save failed (health: degraded, pendingPersistence: true):`, result.error);
++		} else if (result.method !== "skipped") {
++			// The immediate post-apply echo runs before this asynchronous save, so
++			// it still carries the candidate's baseline generation and cannot prove
++			// durability. Send the advanced generation only to clients whose changed
++			// updates were present when this save began. Broadcasting to unrelated
++			// clients could falsely confirm their still-unsent local candidates.
++			for (const echoResult of trySendSvEchoToConnections(
++				receiptConnections,
++				this.document,
++				"postPersist",
++				this.svEchoDurability(),
++			)) {
++				this.recordSvEchoResult(echoResult);
++			}
+ 		}
+ 		await this.syncRoomMetaFromDocument();
+ 	}
+@@ -257,6 +286,7 @@ export class VaultSyncServer extends YServer<Env> {
+ 			const docChanged =
+ 				this.docUpdateCount !== updatesBefore
+ 				|| (svBefore !== null && !equalBytes(svBefore, svAfter));
++			if (docChanged) this.pendingReceiptConnections.add(connection);
+ 			this.recordSvEchoResult(trySendSvEcho(connection, this.document, "postApply", this.svEchoDurability()));
+ 			// Counted, not traced.
+ 			//
+@@ -421,6 +451,7 @@ export class VaultSyncServer extends YServer<Env> {
+ 		if (result.ok) {
+ 			if (result.kind === "baseline") this.svEchoCounters.baselineSent++;
+ 			if (result.kind === "postApply") this.svEchoCounters.postApplySent++;
++			if (result.kind === "postPersist") this.svEchoCounters.postPersistSent++;
+ 			this.svEchoCounters.bytesTotal += result.bytes;
+ 			this.svEchoCounters.bytesMax = Math.max(this.svEchoCounters.bytesMax, result.bytes);
+ 			return;
+diff --git a/server/src/svEcho.ts b/server/src/svEcho.ts
+index 6b72f47..6054e76 100644
+--- a/server/src/svEcho.ts
++++ b/server/src/svEcho.ts
+@@ -7,7 +7,7 @@ import { MAX_SV_ECHO_BASE64_BYTES, SV_ECHO_SCHEMA, SV_ECHO_TYPE } from "./svEcho
+ const Y_PARTYSERVER_CUSTOM_PREFIX = "__YPS:";
+ const WS_READY_STATE_OPEN = 1;
+ 
+-export type SvEchoKind = "baseline" | "postApply";
++export type SvEchoKind = "baseline" | "postApply" | "postPersist";
+ 
+ /**
+  * Durability marker carried alongside the state vector.
+@@ -127,3 +127,25 @@ export function trySendSvEcho(
+ ): SvEchoSendResult {
+ 	return trySendSvEchoStateVector(connection, Y.encodeStateVector(doc), kind, durability);
+ }
++
++/**
++ * Send one state-vector echo to every supplied connection.
++ *
++ * The post-persist caller supplies only clients whose changed updates belong to
++ * the completed save, so they receive the advanced durability generation that
++ * can confirm their pending local candidates. The immediate post-apply echo
++ * deliberately remains weaker: it reports in-memory receipt while the save is
++ * still outstanding.
++ */
++export function trySendSvEchoToConnections(
++	connections: Iterable<SendableConnection>,
++	doc: Y.Doc,
++	kind: SvEchoKind,
++	durability?: SvEchoDurability,
++): SvEchoSendResult[] {
++	const results: SvEchoSendResult[] = [];
++	for (const connection of connections) {
++		results.push(trySendSvEcho(connection, doc, kind, durability));
++	}
++	return results;
++}
+diff --git a/tests/contracts/server-post-apply-wiring.ts b/tests/contracts/server-post-apply-wiring.ts
+index 6b76897..cb3a3aa 100644
+--- a/tests/contracts/server-post-apply-wiring.ts
++++ b/tests/contracts/server-post-apply-wiring.ts
+@@ -38,6 +38,26 @@ s.check(
+ 	!/const docChanged =\s*svBefore !== null && !equalBytes\(svBefore, svAfter\);/.test(body),
+ 	"docChanged is not the SV-only comparison",
+ );
++s.check(
++	body.includes("if (docChanged) this.pendingReceiptConnections.add(connection);"),
++	"only connections that changed the document become eligible for a durable receipt",
++);
++
++const onSaveMatch = source.match(/async onSave\(\): Promise<void> \{([\s\S]*?)\n\t\}/);
++const onSaveBody = onSaveMatch?.[1] ?? "";
++s.check(onSaveMatch !== null, "server defines onSave override");
++s.check(
++	onSaveBody.includes("new Set(this.pendingReceiptConnections)"),
++	"save snapshots only the senders pending when persistence begins",
++);
++s.check(
++	onSaveBody.includes("trySendSvEchoToConnections(\n\t\t\t\treceiptConnections,"),
++	"postPersist echo targets the saved sender set",
++);
++s.check(
++	!onSaveBody.includes("trySendSvEchoToConnections(\n\t\t\t\tthis.getConnections(),"),
++	"postPersist echo is never broadcast to unrelated clients",
++);
+ 
+ const classifierIndex = body.indexOf("isUpdateBearingSyncMessage(message)");
+ const parentIndex = body.indexOf("super.handleMessage(connection, message)");
+diff --git a/tests/live/provider-manual-connect.ts b/tests/live/provider-manual-connect.ts
+index ff7dce0..c88c147 100644
+--- a/tests/live/provider-manual-connect.ts
++++ b/tests/live/provider-manual-connect.ts
+@@ -17,6 +17,7 @@ if (!TOKEN) {
+ interface SvEchoCounters {
+ 	readonly baselineSent?: number;
+ 	readonly postApplySent?: number;
++	readonly postPersistSent?: number;
+ }
+ 
+ /** The subset of `GET /debug/recent` this suite asserts on. */
+@@ -29,6 +30,8 @@ interface SvEchoFrame {
+ 	readonly type?: string;
+ 	readonly schema?: number;
+ 	readonly sv?: unknown;
++	readonly gen?: unknown;
++	readonly genEpoch?: unknown;
+ }
+ 
+ /** What withProvider() hands to a test body. */
+@@ -37,6 +40,7 @@ interface ProviderContext {
+ 	readonly provider: YSyncProvider;
+ 	readonly getStatusEvents: () => number;
+ 	readonly getSvEchoes: () => Uint8Array[];
++	readonly getDurabilityEchoes: () => Array<{ generation: number; epoch: string }>;
+ }
+ 
+ function wait(ms: number): Promise<void> {
+@@ -183,10 +187,17 @@ async function withProvider(
+ 	let statusEvents = 0;
+ 	let customHandlersReady = false;
+ 	const svEchoes: Uint8Array[] = [];
++	const durabilityEchoes: Array<{ generation: number; epoch: string }> = [];
+ 	provider.on("custom-message", (payload: string) => {
+ 		if (!customHandlersReady) throw new Error(`${label}: custom-message before handler readiness marker`);
+ 		const sv = parseSvEchoMessage(payload);
+-		if (sv) svEchoes.push(sv);
++		if (sv) {
++			svEchoes.push(sv);
++			const frame = JSON.parse(payload) as SvEchoFrame;
++			if (typeof frame.gen === "number" && typeof frame.genEpoch === "string") {
++				durabilityEchoes.push({ generation: frame.gen, epoch: frame.genEpoch });
++			}
++		}
+ 	});
+ 	provider.on("status", () => {
+ 		statusEvents++;
+@@ -194,7 +205,13 @@ async function withProvider(
+ 	customHandlersReady = true;
+ 
+ 	try {
+-		await callback({ ydoc, provider, getStatusEvents: () => statusEvents, getSvEchoes: () => svEchoes.slice() });
++		await callback({
++			ydoc,
++			provider,
++			getStatusEvents: () => statusEvents,
++			getSvEchoes: () => svEchoes.slice(),
++			getDurabilityEchoes: () => durabilityEchoes.slice(),
++		});
+ 	} finally {
+ 		await safeDestroy(provider, ydoc);
+ 	}
+@@ -281,14 +298,34 @@ async function waitForDominatingSvEcho(
+ 	throw new Error(`${label}: timed out waiting for dominating sv-echo custom-message`);
+ }
+ 
++async function waitForPersistedGeneration(
++	getDurabilityEchoes: () => Array<{ generation: number; epoch: string }>,
++	baseline: { generation: number; epoch: string },
++	label: string,
++): Promise<number> {
++	const deadline = Date.now() + 10_000;
++	while (Date.now() < deadline) {
++		const advanced = getDurabilityEchoes().find(
++			(echo) => echo.epoch === baseline.epoch && echo.generation > baseline.generation,
++		);
++		if (advanced) return advanced.generation;
++		await wait(50);
++	}
++	throw new Error(`${label}: timed out waiting for post-persist generation advance`);
++}
++
+ async function main() {
+ 	console.log(`Provider manual-connect smoke room: ${ROOM_ID}`);
+ 	let writtenCandidateSv: Uint8Array | null = null;
+ 
+-	await withProvider("initial connect", async ({ ydoc, provider, getSvEchoes }) => {
++	await withProvider("initial connect", async ({ ydoc, provider, getSvEchoes, getDurabilityEchoes }) => {
+ 		await waitForSync(provider, "initial connect");
+ 		await waitForSvEcho(getSvEchoes, "initial connect baseline echo");
+ 		const baselineEchoCount = getSvEchoes().length;
++		const baselineDurability = getDurabilityEchoes().at(-1);
++		if (!baselineDurability) {
++			throw new Error("initial connect: baseline sv-echo omitted durability generation");
++		}
+ 		const sys = ydoc.getMap("sys");
+ 		sys.set("initialized", true);
+ 		sys.set("schemaVersion", SCHEMA_VERSION);
+@@ -301,6 +338,11 @@ async function main() {
+ 			"initial connect postApply echo",
+ 			baselineEchoCount + 1,
+ 		);
++		const persistedGeneration = await waitForPersistedGeneration(
++			getDurabilityEchoes,
++			baselineDurability,
++			"initial connect",
++		);
+ 		const debug = svEchoCounters(await getDebugPayload());
+ 		if ((debug.baselineSent ?? 0) < 1) {
+ 			throw new Error("initial connect: server debug did not count baseline sv-echo");
+@@ -308,7 +350,38 @@ async function main() {
+ 		if ((debug.postApplySent ?? 0) < 1) {
+ 			throw new Error("initial connect: server debug did not count postApply sv-echo");
+ 		}
+-		console.log("Initial manual connect synced, received baseline sv-echo, wrote state, and received dominating postApply sv-echo");
++		if ((debug.postPersistSent ?? 0) < 1) {
++			throw new Error("initial connect: server debug did not count postPersist sv-echo");
++		}
++		console.log(
++			`Initial manual connect synced and received a durable post-persist receipt ` +
++			`(generation ${baselineDurability.generation} -> ${persistedGeneration})`,
++		);
++	});
++
++	await withProvider("receipt sender", async ({ ydoc, provider, getSvEchoes, getDurabilityEchoes }) => {
++		await waitForSync(provider, "receipt sender");
++		await waitForSvEcho(getSvEchoes, "receipt sender baseline echo");
++		const senderBaseline = getDurabilityEchoes().at(-1);
++		if (!senderBaseline) throw new Error("receipt sender: baseline omitted durability generation");
++
++		await withProvider("unrelated client", async ({ provider: idleProvider, getSvEchoes: getIdleSvEchoes, getDurabilityEchoes: getIdleDurabilityEchoes }) => {
++			await waitForSync(idleProvider, "unrelated client");
++			await waitForSvEcho(getIdleSvEchoes, "unrelated client baseline echo");
++			const idleBaseline = getIdleDurabilityEchoes().at(-1);
++			if (!idleBaseline) throw new Error("unrelated client: baseline omitted durability generation");
++
++			ydoc.getMap("receipt-scope").set("probe", Date.now());
++			await waitForPersistedGeneration(getDurabilityEchoes, senderBaseline, "receipt sender");
++			await wait(500);
++			const idleWasReceipted = getIdleDurabilityEchoes().some(
++				(echo) => echo.epoch === idleBaseline.epoch && echo.generation > idleBaseline.generation,
++			);
++			if (idleWasReceipted) {
++				throw new Error("unrelated client received another connection's post-persist receipt");
++			}
++		});
++		console.log("Post-persist receipt reached the editing client and was withheld from an unrelated client");
+ 	});
+ 
+ 	await withProvider("reconnect", async ({ ydoc, provider, getSvEchoes }) => {
+diff --git a/tests/server/server-sv-echo.ts b/tests/server/server-sv-echo.ts
+index 8cfcf3d..0f2a745 100644
+--- a/tests/server/server-sv-echo.ts
++++ b/tests/server/server-sv-echo.ts
+@@ -4,6 +4,7 @@ import {
+ 	makeSvEchoCustomMessageForDoc,
+ 	trySendSvEcho,
+ 	trySendSvEchoStateVector,
++	trySendSvEchoToConnections,
+ } from "../../server/src/svEcho";
+ import { parseSvEchoMessage } from "../../src/sync/svEchoMessage";
+ import { isStateVectorGe } from "../../src/sync/stateVectorAck";
+@@ -158,4 +159,25 @@ s.section("Test 7: trySendSvEcho reports send failures and oversize drops");
+ 
+ 	doc.destroy();
+ }
++
++s.section("Test 8: post-persist receipt sends the advanced generation to selected recipients");
++{
++	const doc = new Y.Doc();
++	doc.getText("note").insert(0, "durably saved");
++	const first: string[] = [];
++	const second: string[] = [];
++	const results = trySendSvEchoToConnections([
++		{ readyState: 1, send: (message: string) => first.push(message) },
++		{ readyState: 1, send: (message: string) => second.push(message) },
++	], doc, "postPersist", { generation: 4, epoch: "persist-epoch" });
++
++	s.check(results.length === 2 && results.every((result) => result.ok), "all selected recipients receive the post-persist echo");
++	s.check(first.length === 1 && second.length === 1, "one echo is sent per connection");
++	for (const framed of [first[0], second[0]]) {
++		const parsed = JSON.parse((framed ?? "").slice("__YPS:".length)) as Record<string, unknown>;
++		s.check(parsed.gen === 4 && parsed.genEpoch === "persist-epoch", "echo carries the advanced durable generation");
++	}
++
++	doc.destroy();
++}
+ await s.done();
