@@ -10,6 +10,7 @@ brew "nvm"
 brew "gh"
 brew "azure-cli"
 brew "jq"
+brew "docker"
 # pdftotext, required by Agentscrape and Agentbrain to read PDFs.
 brew "poppler"
 brew "terminal-notifier"
