@@ -47,10 +47,6 @@ Commands:
                       Install PATH shims that balance bare claude/codex/pi launches
   verify-local-services
                       Confirm the fleet services are running and reachable
-  install-yaos [--check]
-                      Build and link Funk's pinned, patched YAOS installation
-  yaos-recovery [--check]
-                      Show secret-safe YAOS readiness and resurrection steps
   transcript-vault   Run the transcript preservation pipeline once now
   install-transcript-vault
                       Install the hourly transcript preservation agent
@@ -139,14 +135,6 @@ case "$command_name" in
     verify-local-services)
         shift
         exec "$FUNK_ROOT/libexec/verify-local-services" "$@"
-        ;;
-    install-yaos)
-        shift
-        exec "$FUNK_ROOT/libexec/install-yaos" "$@"
-        ;;
-    yaos-recovery)
-        shift
-        exec "$FUNK_ROOT/libexec/yaos-recovery" "$@"
         ;;
     transcript-vault)
         shift

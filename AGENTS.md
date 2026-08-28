@@ -120,17 +120,6 @@ Do not widen the rule to cover them without also changing those helpers — a ru
 the tree already breaks teaches the next reader to ignore it. Install privileged files through Funk's guarded helpers; never link
 a root execution path into this user-writable checkout.
 
-The **YAOS resurrection handoff** is the narrow exception for deployment
-*identity*, not deployment state. Funk may track the public Worker URL, Worker
-and R2 names, binding name, upstream and public-fork URLs, carried branch,
-pinned fork commit, compatible versions, vault roles and recovery procedure.
-It must never track the YAOS plugin `data.json`,
-setup token, vault ID, Cloudflare account identity, R2 objects or snapshots,
-Android configuration, or live tailnet identity. `funk yaos-recovery` remains
-read-only: Cloudflare deployment and Android changes require an agent or human
-to inspect the live state first. Any deliberate YAOS update or deployment must
-update and validate the pinned recovery facts in Funk in the same change.
-
 An unattended agent that needs root gets a purpose-built helper, not a
 passwordless rule on a general-purpose system binary. `system/funk-home-awake`
 is the model: sudoers names that helper with an enumerated argument list, and

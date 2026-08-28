@@ -50,8 +50,6 @@ libexec/install-tailscale-agent
 libexec/install-home-awake
 libexec/install-home-awake-agent
 libexec/verify-local-services
-libexec/install-yaos
-libexec/yaos-recovery
 libexec/install-transcript-vault-agent
 libexec/install-cass-window-reset-agent
 libexec/configure-macos
@@ -90,8 +88,6 @@ tests/android-launchers.sh
 tests/chuchu-theme.sh
 tests/ghostty-terminfo.sh
 tests/home-awake.sh
-tests/install-yaos.sh
-tests/yaos-recovery.sh
 tests/ssh-tailnet-config.sh
 tests/kiosk-launcher.sh
 tests/tailscale-online.sh
@@ -187,28 +183,6 @@ if grep -E 'agentweb\.daemon|agentusage\.daemon' \
     libexec/verify-local-services >/dev/null; then
     fail "verify-local-services still checks a retired AgentStart service label"
 fi
-
-tests/install-yaos.sh
-tests/yaos-recovery.sh
-bash -n libexec/yaos-facts
-grep -F 'yaos_fork_url=https://github.com/possibilities/yaos.git' \
-    libexec/yaos-facts >/dev/null \
-    || fail "YAOS facts do not pin the public Funk fork"
-grep -F 'yaos_carried_branch=integration' libexec/yaos-facts >/dev/null \
-    || fail "YAOS facts do not name the carried fork branch"
-
-grep -F 'exec "$FUNK_ROOT/libexec/install-yaos" "$@"' bin/funk >/dev/null \
-    || fail "funk does not dispatch the YAOS installer"
-grep -F '"$funk_command" install-yaos' install >/dev/null \
-    || fail "the default installer does not converge YAOS"
-grep -F 'exec "$FUNK_ROOT/libexec/yaos-recovery" "$@"' bin/funk >/dev/null \
-    || fail "funk does not dispatch the YAOS resurrection handoff"
-last_install_command=$(awk 'NF && $1 !~ /^#/ { line=$0 } END { print line }' install)
-[ "$last_install_command" = '"$funk_command" yaos-recovery' ] \
-    || fail "YAOS resurrection handoff is not the final installer command"
-grep -F 'stores no token, vaultId, plugin data.json, Cloudflare account identity' \
-    libexec/yaos-recovery >/dev/null \
-    || fail "YAOS recovery output does not state its secret boundary"
 
 plist_lint launchd/com.arthack.funk.update.plist.in >/dev/null
 plist_lint launchd/com.arthack.funk.tailscale-online.plist.in >/dev/null
