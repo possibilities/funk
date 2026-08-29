@@ -1014,15 +1014,13 @@ for retired_android_command in \
         || fail "retired Raycast Android command was stowed: $retired_android_command"
 done
 # Operator guidance and AI-tool configuration are AgentStart's, linked by its
-# installer: the home AGENTS.md, extension prompts, AgentVoice doctrine, and
-# llm model configuration. Funk stowing any of them again would be a second
-# writer for the same paths.
+# installer: the home AGENTS.md, extension prompts, and llm model
+# configuration. Funk stowing any of them again would be a second writer for
+# the same paths.
 [ ! -e "$stow_home/AGENTS.md" ] \
     || fail "the home guidance is AgentStart's; nothing in Funk may stow ~/AGENTS.md"
 [ ! -e "$stow_home/.config/arthack" ] \
     || fail "the extension prompts are AgentStart's; nothing in Funk may stow ~/.config/arthack"
-[ ! -e "$stow_home/.config/agentvoice" ] \
-    || fail "the AgentVoice doctrine is AgentStart's; nothing in Funk may stow ~/.config/agentvoice"
 [ ! -e "$stow_home/Library/Application Support/io.datasette.llm" ] \
     || fail "the llm configuration is AgentStart's; nothing in Funk may stow into io.datasette.llm"
 [ -L "$stow_home/.config/herdr/agent-mem.sh" ] \

@@ -213,14 +213,12 @@ if that checkout is missing; the scheduled updater calls
 installer or skill-synchronization path in this repository — a new AI tool,
 skill, or harness configuration belongs in AgentStart.
 
-Every operator guidance file the harnesses and the voice orchestrator read
-is AgentStart's, linked by its installer rather than stowed here: the
-deliberately empty `~/AGENTS.md` (with `~/.claude/CLAUDE.md` and
-`~/.codex/AGENTS.md` linked at it), the extension prompts at
-`~/.config/agentguidance/`, and the AgentVoice doctrine at
-`~/.config/agentvoice/`. The `agents`, `arthack`, `agentvoice`, and `llm`
-Stow packages are all gone; do not recreate one — edit
-`~/code/agentstart/prompts/` or `~/code/agentstart/config/` instead.
+Every operator guidance file the harnesses read is AgentStart's, linked by its
+installer rather than stowed here: the deliberately empty `~/AGENTS.md` (with
+`~/.claude/CLAUDE.md` and `~/.codex/AGENTS.md` linked at it) and the extension
+prompts at `~/.config/agentguidance/`. The retired operator-guidance and
+AI-tool Stow packages must not be recreated — edit `~/code/agentstart/prompts/`
+or `~/code/agentstart/config/` instead.
 
 Funk's repository guidance lives in this `AGENTS.md`, not in a priming skill.
 Do not install or synchronize a separate `funk` skill.
