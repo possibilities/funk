@@ -520,9 +520,8 @@ update_state="$update_test_dir/brew-state"
 update_brew_log="$update_test_dir/brew.log"
 update_npx_log="$update_test_dir/npx.log"
 update_notifier_log="$update_test_dir/notifier.log"
-update_herdr_log="$update_test_dir/update-herdr.log"
 update_code_root="$update_test_dir/code"
-update_capabilities_root="$update_test_dir/capabilities"
+update_resources_root="$update_test_dir/resources"
 update_brew_prefix="$update_test_dir/prefix"
 update_node_bin=$(command -v node) \
     || fail "AgentStart's capability renderer requires node for the updater integration test"
@@ -537,13 +536,13 @@ ln -s "$update_node_bin" "$update_brew_prefix/bin/node"
 printf '%s\n' '---' 'name: fixture' '---' '# Fixture' \
     >"$update_code_root/agentfixture/skills/fixture/SKILL.md"
 # The real AgentStart renderer now follows synchronization by building the
-# common capability projections. The npx fixture records the requested skill
-# copy rather than performing it, so seed the same copied skill and isolate the
-# renderer from the operator's live capability and Codex plugin state.
-mkdir -p "$update_capabilities_root/packs/common/skills/fixture"
+# fixed private resource set. The npx fixture records the requested skill copy
+# rather than performing it, so seed the same copied skill and isolate the
+# renderer from the operator's live resources and Codex plugin state.
+mkdir -p "$update_resources_root/skills/fixture"
 cp "$update_code_root/agentfixture/skills/fixture/SKILL.md" \
-    "$update_capabilities_root/packs/common/skills/fixture/SKILL.md"
-export AGENTSTART_CAPABILITIES_ROOT="$update_capabilities_root"
+    "$update_resources_root/skills/fixture/SKILL.md"
+export AGENTSTART_RESOURCES_ROOT="$update_resources_root"
 export AGENTSTART_CODEX_BIN="$root/tests/fixtures/codex"
 printf '%s\n' $'formula:terminal-notifier\t1.0.0' >"$update_state"
 : >"$update_npx_log"
@@ -559,8 +558,6 @@ update_output=$(
         FUNK_TEST_BREW_STATE="$update_state" \
         FUNK_TEST_BREW_LOG="$update_brew_log" \
         FUNK_TEST_NPX_LOG="$update_npx_log" \
-        FUNK_HERDR_UPDATER_BIN="$root/tests/fixtures/update-herdr" \
-        FUNK_TEST_HERDR_LOG="$update_herdr_log" \
         FUNK_SPCTL_BIN="$root/tests/fixtures/spctl" \
         "$root/bin/funk" update 2>&1
 )
@@ -574,9 +571,6 @@ printf '%s\n' "$update_output" | grep -F 'FAILED with exit status 23' >/dev/null
     || fail "funk update did not log failure"
 [ ! -s "$update_npx_log" ] \
     || fail "funk update ran skill synchronization after a Brewfile failure"
-[ ! -s "$update_herdr_log" ] \
-    || fail "funk update ran the herdr updater after a Brewfile failure"
-
 HOME="$update_home" \
     FUNK_AGENTSTART_ROOT="$update_agentstart_root" \
     AGENTSTART_CODE_ROOT="$update_code_root" \
@@ -590,8 +584,6 @@ HOME="$update_home" \
     FUNK_TEST_NPX_LOG="$update_npx_log" \
     FUNK_TEST_NOTIFIER_LOG="$update_notifier_log" \
     FUNK_TERMINAL_NOTIFIER_BIN="$root/tests/fixtures/terminal-notifier" \
-    FUNK_HERDR_UPDATER_BIN="$root/tests/fixtures/update-herdr" \
-    FUNK_TEST_HERDR_LOG="$update_herdr_log" \
     FUNK_SPCTL_BIN="$root/tests/fixtures/spctl" \
     "$root/bin/funk" update --notify >/dev/null
 notification=$(grep -F '<Funk Update>' "$update_notifier_log" | tail -n 1)
@@ -599,9 +591,6 @@ printf '%s\n' "$notification" | grep -F 'terminal-notifier 1.0.0 → 2.0.0' >/de
     || fail "change-aware notification omitted the upgraded formula"
 grep -F 'npx-stub <--yes> <skills> <add>' "$update_npx_log" >/dev/null \
     || fail "scheduled update did not synchronize fleet skills"
-grep -F 'update-herdr-stub' "$update_herdr_log" >/dev/null \
-    || fail "scheduled update did not run the herdr updater"
-
 : >"$update_notifier_log"
 HOME="$update_home" \
     FUNK_AGENTSTART_ROOT="$update_agentstart_root" \
@@ -616,8 +605,6 @@ HOME="$update_home" \
     FUNK_TEST_NPX_LOG="$update_npx_log" \
     FUNK_TEST_NOTIFIER_LOG="$update_notifier_log" \
     FUNK_TERMINAL_NOTIFIER_BIN="$root/tests/fixtures/terminal-notifier" \
-    FUNK_HERDR_UPDATER_BIN="$root/tests/fixtures/update-herdr" \
-    FUNK_TEST_HERDR_LOG="$update_herdr_log" \
     FUNK_SPCTL_BIN="$root/tests/fixtures/spctl" \
     "$root/bin/funk" update --notify >/dev/null
 grep -F '<-message> <Installer ran; no updates.>' "$update_notifier_log" >/dev/null \
@@ -639,8 +626,6 @@ update_output=$(
         FUNK_TEST_NOTIFIER_LOG="$update_notifier_log" \
         AGENTSTART_NPX_BIN="$root/tests/fixtures/npx" \
         FUNK_TERMINAL_NOTIFIER_BIN="$root/tests/fixtures/terminal-notifier" \
-        FUNK_HERDR_UPDATER_BIN="$root/tests/fixtures/update-herdr" \
-        FUNK_TEST_HERDR_LOG="$update_herdr_log" \
         FUNK_SPCTL_BIN="$root/tests/fixtures/spctl" \
         "$root/bin/funk" update --notify 2>&1
 )
@@ -678,18 +663,6 @@ grep -F 'agentstart_root="${FUNK_AGENTSTART_ROOT:-$HOME/code/agentstart}"' \
 # shellcheck disable=SC2016 # Match the literal helper invocation in the script.
 grep -F '"$skill_sync" || status=$?' libexec/funk-update >/dev/null \
     || fail "scheduled updater does not synchronize the globally managed skills"
-# The herdr build behavior is AgentStart's and is asserted by its own
-# validate; Funk asserts only the wiring, and that a blocked herdr checkout
-# is triaged through update-herdr's own notification instead of failing the
-# whole scheduled run.
-# shellcheck disable=SC2016 # Match the literal declaration in the script.
-grep -F 'herdr_updater="${FUNK_HERDR_UPDATER_BIN:-$agentstart_root/scripts/update-herdr}"' \
-    libexec/funk-update >/dev/null \
-    || fail "scheduled updater does not resolve the AgentStart herdr updater"
-# shellcheck disable=SC2016 # Match the literal helper invocation in the script.
-grep -F '"$herdr_updater" || log' libexec/funk-update >/dev/null \
-    || fail "scheduled updater does not run the herdr updater as triaged, non-fatal work"
-
 # Gatekeeper quarantine is a macOS kernel feature: these assertions write and
 # read real com.apple.quarantine xattrs, so there is nothing to port. On any
 # other platform the block is skipped out loud rather than silently.
