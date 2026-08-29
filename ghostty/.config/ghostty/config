@@ -17,6 +17,19 @@ window-padding-y = 0
 window-padding-balance = true
 unfocused-split-opacity = 1
 bell-features = no-attention,no-title,no-system,no-audio,no-border
+# Native Ghostty splits mirror the directional pane controls used in tmux and
+# Herdr, without capturing their unmodified Option bindings.
+keybind = cmd+alt+\=new_split:right
+keybind = cmd+alt+-=new_split:down
+keybind = cmd+alt+h=goto_split:left
+keybind = cmd+alt+j=goto_split:down
+keybind = cmd+alt+k=goto_split:up
+keybind = cmd+alt+l=goto_split:right
+keybind = ctrl+cmd+h=resize_split:left,10
+keybind = ctrl+cmd+j=resize_split:down,10
+keybind = ctrl+cmd+k=resize_split:up,10
+keybind = ctrl+cmd+l=resize_split:right,10
+keybind = ctrl+cmd+e=equalize_splits
 # Send an unambiguous CSI-u Shift+Enter. Legacy ESC+CR is also Alt+Enter
 # in tmux, which pi reserves for follow-up messages.
 keybind = shift+enter=text:\x1b[13;2u
