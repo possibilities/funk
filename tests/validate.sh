@@ -34,6 +34,7 @@ bin/funk
 libexec/funk-update
 libexec/converge-brewfile
 libexec/converge-brew-casks
+libexec/install-apple-container
 libexec/release-cask-quarantine
 libexec/repair-cask-artifacts
 libexec/repair-cask-user-dirs
@@ -84,6 +85,7 @@ bin/.local/bin/adb-wireless-connect
 bin/.local/bin/adb-wireless-pair
 bin/.local/bin/raycast/localhost-8789-kiosk.sh
 tests/adb-wireless.sh
+tests/apple-container-install.sh
 tests/android-launchers.sh
 tests/chuchu-theme.sh
 tests/ghostty-terminfo.sh
@@ -153,6 +155,8 @@ if command -v shellcheck >/dev/null 2>&1; then
 else
     skip "shellcheck static analysis of every shell file" "shellcheck is not installed"
 fi
+
+tests/apple-container-install.sh
 
 # A suite that reaches tailscale-ensure-online without pinning the notifier
 # posts the fixture's fictional tailnet into the operator's real Notification
@@ -1229,6 +1233,24 @@ grep -F "\"\$funk_root/libexec/initialize-configs\"" install >/dev/null \
 # shellcheck disable=SC2016 # Match the literal cask converge in ./install.
 grep -F '"$funk_root/libexec/converge-brew-casks" claude chatgpt' install >/dev/null \
     || fail "default install does not converge the AI desktop applications"
+grep -F '"$funk_root/libexec/install-apple-container"' install >/dev/null \
+    || fail "default install does not converge the Apple container package"
+grep -F "package_id='com.apple.container-installer'" libexec/install-apple-container >/dev/null \
+    || fail "Apple container helper lost its exact package identity"
+grep -F "package_version='0.8.0'" libexec/install-apple-container >/dev/null \
+    || fail "Apple container helper lost its acquisition version"
+grep -F "package_sha256='6603d430d20f6f799215f729a4350bcf79cba371d96cb9d66fcefae46f05472f'" \
+    libexec/install-apple-container >/dev/null \
+    || fail "Apple container helper lost its pinned package checksum"
+grep -F "team_id='UPBK2H6LZM'" libexec/install-apple-container >/dev/null \
+    || fail "Apple container helper lost its expected Apple team identity"
+if grep -F 'install-apple-container' libexec/funk-update >/dev/null; then
+    fail "scheduled path attempts the privileged Apple container installation"
+fi
+if grep -Eq 'container system (start|restart)|container image pull|container (kernel|system) install' \
+    libexec/install-apple-container tests/apple-container-install.sh; then
+    fail "Apple container package convergence reaches runtime initialization"
+fi
 grep -F '"$funk_command" install-ghostty-terminfo' install >/dev/null \
     || fail "default install does not install Ghostty terminfo for SSH sessions"
 grep -F '"$terminfo_installer" || status=$?' libexec/funk-update >/dev/null \
@@ -1238,6 +1260,11 @@ grep -F '"$agentstart_root/scripts/install.sh" --install' install >/dev/null \
     || fail "default install does not run the AgentStart installer"
 grep -F 'AgentStart owns the AI toolchain and is missing' install >/dev/null \
     || fail "default install does not stop loudly without the AgentStart checkout"
+apple_container_line=$(grep -n '^"$funk_root/libexec/install-apple-container"$' install | cut -d: -f1)
+agentstart_line=$(grep -n '^"$agentstart_root/scripts/install.sh" --install$' install | cut -d: -f1)
+[ -n "$apple_container_line" ] && [ -n "$agentstart_line" ] \
+    && [ "$apple_container_line" -lt "$agentstart_line" ] \
+    || fail "Apple container package must converge before AgentStart"
 grep -F "\"\$funk_command\" install-tailscale-recovery" install >/dev/null \
     || fail "default install does not load Tailscale recovery"
 # Unattended health checks report through terminal-notifier, so an installation

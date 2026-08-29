@@ -1,0 +1,132 @@
+#!/bin/bash
+
+set -euo pipefail
+
+package_id='com.apple.container-installer'
+package_version='0.8.0'
+package_url='https://github.com/apple/container/releases/download/0.8.0/container-installer-signed.pkg'
+package_sha256='6603d430d20f6f799215f729a4350bcf79cba371d96cb9d66fcefae46f05472f'
+team_id='UPBK2H6LZM'
+
+pkgutil_bin=${FUNK_CONTAINER_PKGUTIL_BIN:-/usr/sbin/pkgutil}
+codesign_bin=${FUNK_CONTAINER_CODESIGN_BIN:-/usr/bin/codesign}
+curl_bin=${FUNK_CONTAINER_CURL_BIN:-/usr/bin/curl}
+shasum_bin=${FUNK_CONTAINER_SHASUM_BIN:-/usr/bin/shasum}
+sudo_bin=${FUNK_CONTAINER_SUDO_BIN:-/usr/bin/sudo}
+installer_bin=${FUNK_CONTAINER_INSTALLER_BIN:-/usr/sbin/installer}
+container_bin=${FUNK_CONTAINER_BIN:-/usr/local/bin/container}
+apple_container_work_dir=''
+
+die() {
+    printf 'Apple container installer: %s\n' "$*" >&2
+    exit 1
+}
+
+cleanup() {
+    [ -n "$apple_container_work_dir" ] || return 0
+    case "$apple_container_work_dir" in
+        /*/funk-apple-container.*) rm -rf -- "$apple_container_work_dir" ;;
+        *) die "refusing to clean unexpected temporary path: $apple_container_work_dir" ;;
+    esac
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+receipt_version() {
+    local receipt version
+    receipt=$("$pkgutil_bin" --pkg-info "$package_id" 2>/dev/null) || return 1
+    version=$(printf '%s\n' "$receipt" | /usr/bin/awk -F': ' '$1 == "version" {print $2; found=1} END {exit !found}') \
+        || die "package receipt is malformed: $package_id"
+    case "$version" in
+        ''|*[!0-9A-Za-z._-]*) die "package receipt has an invalid version: $package_id" ;;
+    esac
+    printf '%s\n' "$version"
+}
+
+verify_binary() {
+    local details
+    [ -f "$container_bin" ] && [ -x "$container_bin" ] && [ ! -L "$container_bin" ] \
+        || die "installed command is missing, non-executable, or a link: $container_bin"
+    "$codesign_bin" --verify --strict "$container_bin" >/dev/null 2>&1 \
+        || die "installed command has an invalid code signature: $container_bin"
+    details=$("$codesign_bin" -dv --verbose=4 "$container_bin" 2>&1) \
+        || die "could not inspect the installed command signature: $container_bin"
+    printf '%s\n' "$details" | /usr/bin/grep -F "TeamIdentifier=$team_id" >/dev/null \
+        || die "installed command is not signed by Apple team $team_id: $container_bin"
+}
+
+runtime_state() {
+    local output result
+    result=0
+    output=$("$container_bin" system status 2>&1) || result=$?
+    case "$output" in
+        *'apiserver is running'*) printf 'running\n' ;;
+        *'apiserver is not running and not registered with launchd'*) printf 'stopped\n' ;;
+        *) die "could not classify Apple container service state (exit $result)" ;;
+    esac
+}
+
+verify_installed_noop() {
+    local installed_version=$1 before after
+    verify_binary
+    before=$(runtime_state)
+    after=$(runtime_state)
+    [ "$before" = "$after" ] \
+        || die "checking the installed package changed Apple container service state"
+    printf 'Apple container %s is already installed; service remained %s.\n' \
+        "$installed_version" "$after"
+}
+
+verify_package() {
+    local archive=$1 actual signature
+    actual=$("$shasum_bin" -a 256 "$archive") || die "could not checksum downloaded package"
+    actual=${actual%% *}
+    [ "$actual" = "$package_sha256" ] \
+        || die "downloaded package checksum does not match Apple container $package_version"
+    signature=$("$pkgutil_bin" --check-signature "$archive" 2>&1) \
+        || die "downloaded package signature is invalid"
+    printf '%s\n' "$signature" \
+        | /usr/bin/grep -F 'Status: signed by a certificate trusted by Mac OS X' >/dev/null \
+        || die "downloaded package is not signed by a trusted installer certificate"
+    printf '%s\n' "$signature" \
+        | /usr/bin/grep -F "Developer ID Installer: Apple Inc. - Containerization ($team_id)" >/dev/null \
+        || die "downloaded package is not signed by the expected Apple installer identity"
+}
+
+main() {
+    local installed_version archive post_version post_state
+
+    if installed_version=$(receipt_version); then
+        verify_installed_noop "$installed_version"
+        return 0
+    fi
+    if [ -e "$container_bin" ] || [ -L "$container_bin" ]; then
+        die "refusing to install over a command without the $package_id receipt: $container_bin"
+    fi
+
+    apple_container_work_dir=$(mktemp -d "${TMPDIR:-/tmp}/funk-apple-container.XXXXXX")
+    chmod 700 "$apple_container_work_dir"
+    archive="$apple_container_work_dir/container-installer-signed.pkg"
+    "$curl_bin" --fail --location --proto '=https' --tlsv1.2 \
+        --output "$archive" "$package_url" \
+        || die "could not download Apple container $package_version"
+    [ -f "$archive" ] && [ ! -L "$archive" ] \
+        || die "download did not create a regular package"
+    verify_package "$archive"
+
+    printf 'Installing Apple container %s. sudo prompts once for the signed system package.\n' \
+        "$package_version"
+    "$sudo_bin" "$installer_bin" -pkg "$archive" -target / \
+        || die "Apple container package installation failed"
+    post_version=$(receipt_version) \
+        || die "Apple container installer did not create the expected package receipt"
+    verify_binary
+    post_state=$(runtime_state)
+    [ "$post_state" = stopped ] \
+        || die "Apple container package installation unexpectedly started its service"
+    printf 'Installed Apple container %s; service remains stopped.\n' "$post_version"
+}
+
+[ "$#" -eq 0 ] || die "takes no arguments"
+main

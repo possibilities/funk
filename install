@@ -151,6 +151,11 @@ FUNK_ROOT="$funk_root" "$funk_root/libexec/converge-brewfile"
 # The AI desktop applications are Funk's Homebrew casks and converge here.
 "$funk_root/libexec/converge-brew-casks" claude chatgpt
 
+# Apple container is machine software. This install-only step leaves any valid
+# installed version alone and never enables its service; agentbrowse-infra owns
+# the separate, explicit runtime lifecycle through AgentStart.
+"$funk_root/libexec/install-apple-container"
+
 # Everything the agent fleet depends on — harness CLIs, pinned npm globals,
 # MCP registration, guidance links, and every globally managed skill — is
 # owned by the AgentStart checkout, and this machine is not converged without

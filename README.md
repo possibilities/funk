@@ -28,6 +28,12 @@ The first run on a new account asks for a git commit name and address, and
 writes `~/.ssh/config.d` from whatever tailnet Tailscale is reporting. Neither
 is stored here.
 
+The interactive installer also installs Apple's signed `container` package
+when it is missing. This is install-only convergence: an existing valid
+version is left alone, and neither installation nor `funk update` starts the
+service or acquires images. AgentStart installs the separate
+`agentbrowse-infra` command for that explicit runtime lifecycle.
+
 ## Use
 
 ```sh
