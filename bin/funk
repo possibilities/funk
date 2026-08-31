@@ -44,7 +44,7 @@ Commands:
   home-awake [option] Converge or report home-network sleep and screen lock
   install-home-awake  Install the home-network sleep and screen-lock agent
   install-agentlaunch-shims
-                      Install PATH shims that balance bare claude/codex/pi launches
+                      Install PATH shims that balance bare claude/codex launches
   verify-local-services
                       Confirm the fleet services are running and reachable
   transcript-vault   Run the transcript preservation pipeline once now

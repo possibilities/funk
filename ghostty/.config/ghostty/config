@@ -31,7 +31,7 @@ keybind = ctrl+cmd+k=resize_split:up,10
 keybind = ctrl+cmd+l=resize_split:right,10
 keybind = ctrl+cmd+e=equalize_splits
 # Send an unambiguous CSI-u Shift+Enter. Legacy ESC+CR is also Alt+Enter
-# in tmux, which pi reserves for follow-up messages.
+# in tmux and can collide with application shortcuts.
 keybind = shift+enter=text:\x1b[13;2u
 macos-option-as-alt = true
 keybind = alt+1=text:\x1b\x31

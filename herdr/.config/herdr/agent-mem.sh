@@ -28,7 +28,7 @@ awk '
             for (d = 0; d < 64 && p != "" && !(p in root); d++) p = ppid[p]
             if (p in root) kb[root[p]] += rss[pid]
         }
-        short["claude"] = "cc"; short["codex"] = "co"; short["pi"] = "pi"
+        short["claude"] = "cc"; short["codex"] = "co"
         short["gemini"] = "gm"; short["cursor"] = "cu"; short["opencode"] = "oc"
         for (k in kb) {
             lbl = (k in short) ? short[k] : substr(k, 1, 2)

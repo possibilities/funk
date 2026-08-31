@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # Open a new Herdr tab in the active workspace and start an agent harness in it.
-# Usage: herdr-agent-tab claude|codex|pi|<kind>
+# Usage: herdr-agent-tab claude|codex|<kind>
 #
 # Herdr 0.8.0 has no keybind action for "new tab running an agent": `tab create`
 # makes the topology and `agent start` adopts an idle shell pane, but nothing
