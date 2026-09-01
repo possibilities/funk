@@ -47,9 +47,6 @@ domain="gui/$(id -u)"
     || printf 'note: %s/.config/restic/silverbird.env is missing; restic uploads will be skipped until it exists\n' "$HOME"
 [ -d /Volumes/Scratch/claude-archive ] \
     || printf 'note: /Volumes/Scratch/claude-archive is not mounted; runs will no-op until it is\n'
-command -v cass >/dev/null 2>&1 || [ -x "$HOME/.local/bin/cass" ] \
-    || printf 'note: cass is not installed; search indexing will be skipped\n'
-
 tmpdir=$(mktemp -d "${TMPDIR:-/tmp}/funk-transcript-vault.XXXXXX")
 trap 'rm -rf "$tmpdir"' EXIT
 rendered="$tmpdir/$label.plist"

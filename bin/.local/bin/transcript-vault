@@ -1,5 +1,5 @@
 #!/bin/bash
-# transcript-vault -- preserve and index Claude Code transcripts.
+# transcript-vault -- preserve Claude Code transcripts.
 #
 # Claude Code deletes transcripts older than cleanupPeriodDays from
 # ~/.claude/projects. This pipeline makes that pruning survivable:
@@ -11,12 +11,6 @@
 #      prune anywhere: repository snapshots are kept forever. (B2 was
 #      deliberately dropped as a transcript target — the operator does not
 #      want long-term session data there.)
-#   3. cass index so coding-agent-session-search stays current over the live
-#      agent stores under $HOME. The archive is deliberately not indexed:
-#      search is a rolling window over live sessions, kept rolling by
-#      cass-window-reset, while the archive and restic stages preserve
-#      everything forever.
-#
 # Stages degrade independently. The exit status reflects preservation only:
 # nonzero when the live sync failed, or when silverbird was reachable and
 # its backup failed. An unreachable silverbird is a clean skip.
@@ -35,10 +29,6 @@ ARCHIVE_ROOT=/Volumes/Scratch/claude-archive
 ARCHIVE_HOME="$ARCHIVE_ROOT/home"
 CANON="$ARCHIVE_HOME/.claude/projects"
 LIVE="$HOME/.claude/projects"
-# An incremental pass over the live stores is seconds to minutes; this bound
-# only ever fires on a wedge, and it must stay well under the hourly interval
-# so a stopped pass cannot delay the next firing.
-INDEX_TIMEOUT=${TRANSCRIPT_VAULT_INDEX_TIMEOUT:-1500}
 CREDS_DIR="$HOME/.config/restic"
 export RESTIC_CACHE_DIR=/Volumes/Scratch/cache/restic
 
@@ -46,8 +36,8 @@ log() {
     printf '[%s] %s\n' "$(date '+%Y-%m-%dT%H:%M:%S')" "$*"
 }
 
-# Single instance: an hourly firing while a long run (initial upload, window
-# reset) is still working must skip, not stack.
+# Single instance: an hourly firing while a long run (such as an initial
+# upload) is still working must skip, not stack.
 LOCK_DIR="/tmp/transcript-vault.$(id -u).lock"
 if ! mkdir "$LOCK_DIR" 2>/dev/null; then
     other=$(cat "$LOCK_DIR/pid" 2>/dev/null || true)
@@ -134,73 +124,6 @@ if [ -f "$CREDS_DIR/silverbird.env" ]; then
     fi
 else
     log "SKIP silverbird: $CREDS_DIR/silverbird.env missing"
-fi
-
-# --- 3. cass search index --------------------------------------------------
-# One incremental pass over the live agent stores — cass's default per-agent
-# discovery under $HOME; no local sources are configured, so the archive tree
-# stays out of the index by construction. The index is held to a rolling
-# window by cass-window-reset, which rebuilds it from the live stores.
-#
-# The pass has a deadline. cass can wedge — its indexing thread spins without
-# posting progress (its issues #244/#258/#400) — and an unbounded stage holds
-# this script's single-instance lock for as long as the wedge lasts, so every
-# later hourly firing skips and preservation stops with it. That happened on
-# 2026-08-12: a wedged index blocked the lock for hours and the rsync and
-# restic stages never ran again until it was killed by hand. Indexing is the
-# one stage this pipeline can lose without losing data, so it gets a deadline
-# and the preservation stages keep their schedule.
-#
-# The deadline reads the clock instead of counting sleep iterations: a
-# counted deadline freezes while the machine sleeps, and one wedged pass held
-# the database and this lock for five hours that way.
-if command -v cass >/dev/null 2>&1; then
-    index_rc=0
-    index_out_file=$(mktemp "${TMPDIR:-/tmp}/transcript-vault-index.XXXXXX")
-    index_rc_file=$(mktemp "${TMPDIR:-/tmp}/transcript-vault-index-rc.XXXXXX")
-    # The child records its own status so this shell never needs `wait`, and
-    # the job is disowned: bash announces a signalled background job it still
-    # owns ("Terminated: 15") on stderr, which lands in this log looking like a
-    # failure rather than the deadline working as designed.
-    {
-        nice -n 20 cass index --json --no-progress-events \
-            >"$index_out_file" 2>&1
-        printf '%s\n' "$?" >"$index_rc_file"
-    } &
-    index_pid=$!
-    disown "$index_pid" 2>/dev/null || true
-    deadline=$(($(date +%s) + INDEX_TIMEOUT))
-    while kill -0 "$index_pid" 2>/dev/null; do
-        if [ "$(date +%s)" -ge "$deadline" ]; then
-            # Kill the indexer itself, not just the subshell wrapping it.
-            # Signalling only the wrapper leaves cass running, still holding
-            # the database, while this log claims the pass was stopped.
-            pkill -P "$index_pid" 2>/dev/null
-            kill "$index_pid" 2>/dev/null
-            sleep 2
-            pkill -9 -P "$index_pid" 2>/dev/null
-            kill -9 "$index_pid" 2>/dev/null
-            index_rc=124
-            break
-        fi
-        sleep 5
-    done
-    if [ "$index_rc" -eq 0 ]; then
-        index_rc=$(cat "$index_rc_file" 2>/dev/null)
-        index_rc=${index_rc:-1}
-    fi
-    index_out=$(cat "$index_out_file" 2>/dev/null)
-    rm -f "$index_out_file" "$index_rc_file"
-    if [ "$index_rc" -eq 0 ]; then
-        log "cass index done: $(printf '%s' "$index_out" | tr -d '\n' | cut -c 1-300)"
-    elif [ "$index_rc" -eq 124 ]; then
-        log "cass index exceeded ${INDEX_TIMEOUT}s and was stopped (non-fatal); \
-preservation stages already completed"
-    else
-        log "cass index failed or busy, exit $index_rc (non-fatal)"
-    fi
-else
-    log "SKIP cass: not installed"
 fi
 
 if [ "$sync_rc" -eq 0 ] && [ "$sb_rc" -eq 0 ]; then
