@@ -6,7 +6,9 @@
 #
 #   1. rsync the live ~/.claude/projects into the canonical archive on
 #      /Volumes/Scratch (additive: files are added and grown, never deleted).
-#   2. restic backup of the archive plus the live ~/.claude to the
+#   2. refresh the agentchats session-search index over the live agent
+#      stores, so `agentchats search` sees today's conversations.
+#   3. restic backup of the archive plus the live ~/.claude to the
 #      silverbird repository whenever that host is reachable. No forget or
 #      prune anywhere: repository snapshots are kept forever. (B2 was
 #      deliberately dropped as a transcript target — the operator does not
@@ -51,6 +53,74 @@ fi
 printf '%s\n' $$ >"$LOCK_DIR/pid"
 trap 'rm -rf "$LOCK_DIR"' EXIT
 log "vault run starting (pid $$)"
+
+# --- session search index ---------------------------------------------------
+# One incremental pass so `agentchats search` is current. Roughly 40
+# transcripts are written an hour on this machine and a no-op pass costs about
+# eight seconds, so the alternative to running it here is an index quietly a
+# day behind. Agents can still refresh it themselves — `agentchats status`
+# reports `stale` and `pending` in half a second, and the chats skill tells
+# them to — this only means they rarely have to.
+#
+# Deliberately before the archive check: the index reads ~/.claude/projects and
+# ~/.codex/sessions on the internal disk, so it has work to do even when
+# /Volumes/Scratch is absent and preservation has nothing to preserve.
+#
+# Non-fatal and time-bounded. Search freshness is the one thing this pipeline
+# can lose without losing data, and it must never hold the single-instance lock
+# long enough to delay preservation — that happened in 2026-08 with the tool
+# this replaced, which wedged and blocked the lock for five hours. A full
+# rebuild is about three minutes; the deadline is generous against that and
+# reads the clock rather than counting sleeps, because a counted deadline
+# freezes while the machine is asleep.
+INDEX_TIMEOUT=${TRANSCRIPT_VAULT_INDEX_TIMEOUT:-900}
+if command -v agentchats >/dev/null 2>&1; then
+    index_rc=0
+    index_out_file=$(mktemp "${TMPDIR:-/tmp}/transcript-vault-index.XXXXXX")
+    index_rc_file=$(mktemp "${TMPDIR:-/tmp}/transcript-vault-index-rc.XXXXXX")
+    # The child records its own status so this shell never needs `wait`, and
+    # the job is disowned: bash announces a signalled background job it still
+    # owns ("Terminated: 15") on stderr, which lands in this log looking like a
+    # failure rather than the deadline working as designed.
+    {
+        nice -n 20 agentchats index --json >"$index_out_file" 2>&1
+        printf '%s\n' "$?" >"$index_rc_file"
+    } &
+    index_pid=$!
+    disown "$index_pid" 2>/dev/null || true
+    deadline=$(($(date +%s) + INDEX_TIMEOUT))
+    while kill -0 "$index_pid" 2>/dev/null; do
+        if [ "$(date +%s)" -ge "$deadline" ]; then
+            # Kill the indexer itself, not just the subshell wrapping it:
+            # signalling only the wrapper leaves it running and holding the
+            # database while this log claims the pass was stopped.
+            pkill -P "$index_pid" 2>/dev/null
+            kill "$index_pid" 2>/dev/null
+            sleep 2
+            pkill -9 -P "$index_pid" 2>/dev/null
+            kill -9 "$index_pid" 2>/dev/null
+            index_rc=124
+            break
+        fi
+        sleep 5
+    done
+    if [ "$index_rc" -eq 0 ]; then
+        index_rc=$(cat "$index_rc_file" 2>/dev/null)
+        index_rc=${index_rc:-1}
+    fi
+    index_out=$(cat "$index_out_file" 2>/dev/null)
+    rm -f "$index_out_file" "$index_rc_file"
+    if [ "$index_rc" -eq 0 ]; then
+        log "search index refreshed: $(printf '%s' "$index_out" | tr -d '\n' | cut -c 1-300)"
+    elif [ "$index_rc" -eq 124 ]; then
+        log "search index exceeded ${INDEX_TIMEOUT}s and was stopped (non-fatal)"
+    else
+        log "search index refresh failed (exit $index_rc, non-fatal): \
+$(printf '%s' "$index_out" | tr -d '\n' | cut -c 1-300)"
+    fi
+else
+    log "SKIP search index: agentchats is not installed"
+fi
 
 if [ ! -d "$ARCHIVE_ROOT" ]; then
     log "$ARCHIVE_ROOT is not mounted; nothing to do"
