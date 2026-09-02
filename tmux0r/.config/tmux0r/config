@@ -1,7 +1,7 @@
 prefix = ctrl+space
 
 harness.claude.default-model = opus-1m
-harness.claude.default-effort = high
+harness.claude.default-effort = xhigh
 
 harness.codex.default-model = gpt-5.6-sol
 harness.codex.default-effort = high
