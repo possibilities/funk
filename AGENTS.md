@@ -80,6 +80,7 @@ converge by running `./install`; do not rely on one-off live configuration.
 | `btop` | `~/.config/btop/` | no |
 | `herdr` | `~/.config/herdr/` | yes |
 | `docker` | `~/.docker/cli-plugins/` | yes |
+| `tmux0r` | `~/.config/tmux0r/` | yes |
 
 A `--no-folding` package's target directory stays a real directory, so it can
 hold files Funk does not track. That is the whole reason those rows are marked:

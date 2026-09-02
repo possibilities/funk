@@ -1,0 +1,23 @@
+# tmux0r configuration. Ghostty-shaped: one `key = value` per line, `#` lines
+# are comments, later lines win, an empty value restores the default.
+# Keys: prefix, tray-width, agent-command, theme, mcp-port.
+# Reference: ~/code/tmux0r/README.md and `tmux0r --help`.
+
+# The one chord tmux keeps. `prefix d` detaches; `prefix prefix` sends the
+# chord through to the shown agent. Ghostty key names: ctrl+space, alt+a,
+# shift+tab, f5, or a bare key such as `space` (which would then intercept
+# every space typed to an agent until the next key).
+prefix = ctrl+space
+
+# Tray width in columns at first start; dragging the divider remembers a new
+# width per instance in ~/.local/state/tmux0r/<instance>/ui.json.
+tray-width = 26
+
+# Program started by agent.start; resolved on PATH inside the agent's pane.
+agent-command = claude
+
+# auto asks the terminal for its background on attach; or dark, light.
+theme = auto
+
+# auto derives a stable loopback port from the instance name; or a port.
+mcp-port = auto
