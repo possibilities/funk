@@ -1042,6 +1042,26 @@ git config --file "$helper_home/gitconfig" user.email 'funk-validate@example.inv
 )
 
 gh_log="$helper_home/gh.log"
+ghinit_help=$(
+    HOME="$helper_home" \
+        PATH="$root/bin/.local/bin:$root/tests/fixtures:/usr/bin:/bin" \
+        FUNK_TEST_GH_LOG="$gh_log" \
+        "$root/bin/.local/bin/ghinit" --help
+)
+printf '%s\n' "$ghinit_help" | grep -F 'Usage: ghinit' >/dev/null \
+    || fail "ghinit --help did not print usage"
+[ ! -e "$helper_home/code/--help" ] && [ ! -e "$gh_log" ] \
+    || fail "ghinit --help had repository side effects"
+ghinit_short_help=$(
+    HOME="$helper_home" \
+        PATH="$root/bin/.local/bin:$root/tests/fixtures:/usr/bin:/bin" \
+        FUNK_TEST_GH_LOG="$gh_log" \
+        "$root/bin/.local/bin/ghinit" future-project -h
+)
+[ "$ghinit_short_help" = "$ghinit_help" ] \
+    && [ ! -e "$helper_home/code/future-project" ] && [ ! -e "$gh_log" ] \
+    || fail "ghinit -h did not print help without repository side effects"
+
 HOME="$helper_home" \
     PATH="$root/bin/.local/bin:$root/tests/fixtures:/usr/bin:/bin" \
     FUNK_TEST_GH_LOG="$gh_log" \

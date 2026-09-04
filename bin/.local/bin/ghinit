@@ -10,11 +10,39 @@
 
 set -euo pipefail
 
+usage() {
+    cat <<'EOF'
+Usage: ghinit [PROJECT] [--public|--no-public] [GH-REPO-CREATE-ARGS...]
+       ghinit -h|--help
+
+Initialize a Git repository, create or connect its GitHub repository, and
+push the initial commit. New repositories are private unless --public is used.
+
+With PROJECT, create ~/code/PROJECT and work there. Without PROJECT, work in
+the current directory, which must be directly inside ~/code. Other arguments
+are passed to gh repo create.
+
+Options:
+  --public       Create a public repository, or make an existing one public
+  --no-public    Create a private repository, or make an existing one private
+  -h, --help     Show this help without creating or changing anything
+
+Examples:
+  ghinit my-project
+  ghinit my-project --description 'My project' --public
+  mkdir ~/code/my-project && cd ~/code/my-project && ghinit
+EOF
+}
+
 visibility=--private
 requested_visibility=
 args=()
 for arg in "$@"; do
     case "$arg" in
+        -h|--help)
+            usage
+            exit 0
+            ;;
         --public)
             visibility=--public
             requested_visibility=public
