@@ -7,7 +7,7 @@ die() {
     exit 1
 }
 
-root=${FUNK_GHOSTTY_THEMES_ROOT:-$HOME/src/ghostty-themes}
+root=${FUNK_GHOSTTY_THEMES_ROOT:-$HOME/source/flyerAI2025--ghostty-themes}
 upstream="$root/ghostty-themes"
 [ -x "$upstream" ] \
     || die "the picker is not installed; run: funk install-ghostty-themes"

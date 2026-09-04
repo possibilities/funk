@@ -19,19 +19,19 @@ note() {
 [ -n "${HOME:-}" ] && [ -d "$HOME" ] || die "HOME is not an existing directory"
 
 remote=https://github.com/flyerAI2025/ghostty-themes.git
-root=${FUNK_GHOSTTY_THEMES_ROOT:-$HOME/src/ghostty-themes}
+root=${FUNK_GHOSTTY_THEMES_ROOT:-$HOME/source/flyerAI2025--ghostty-themes}
 script="$root/ghostty-themes"
 
 if [ ! -d "$root/.git" ]; then
     [ ! -e "$root" ] || die "$root exists but is not a Git checkout"
     mkdir -p "$(dirname "$root")"
-    git clone "$remote" "$root" || die "cannot clone $remote"
+    git clone --origin upstream "$remote" "$root" || die "cannot clone $remote"
     note "cloned $remote into $root"
 else
-    # The picker is someone else's project living in ~/src. Fast-forward it
+    # The picker is someone else's project living in ~/source. Fast-forward it
     # when it is clean and reachable, and report anything else rather than
     # resolving it here: a diverged or dirty checkout is the operator's.
-    if ! git -C "$root" fetch --quiet origin 2>/dev/null; then
+    if ! git -C "$root" fetch --quiet upstream 2>/dev/null; then
         note "Deferred: cannot reach $remote; keeping the checked-out picker"
     elif [ -n "$(git -C "$root" status --porcelain)" ]; then
         note "Deferred: $root has local modifications; not updating"

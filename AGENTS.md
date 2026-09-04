@@ -46,7 +46,7 @@ converge by running `./install`; do not rely on one-off live configuration.
   them under the application's Resources, and Funk names one by string.
 - Picking a theme and tracking one are separate steps, and the seam between
   them is deliberate. `ghostty-themes` — upstream's picker, cloned to
-  `~/src/ghostty-themes` by `funk install-ghostty-themes` and reached through
+  `~/source/flyerAI2025--ghostty-themes` by `funk install-ghostty-themes` and reached through
   Funk's wrapper at `bin/.local/bin/ghostty-themes`, bound to
   `ctrl+cmd+shift-t` in skhd — browses the cask's themes and writes the pick
   into Ghostty's macOS Application Support config rather than the XDG one.

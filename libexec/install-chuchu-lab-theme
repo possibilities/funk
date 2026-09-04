@@ -11,7 +11,7 @@ Copy Funk's Signal Room asset into the Chuchu checkout, build the debug APK,
 reinstall only com.arthack.chuchu.lab with its data retained, select Signal
 Room in dark mode, and relaunch the Lab app on Funk's bound Android phone.
 
-FUNK_CHUCHU_ROOT overrides the default checkout at ~/src/chuchu.
+FUNK_CHUCHU_ROOT overrides the default checkout at ~/source/jossephus--chuchu.
 EOF
 }
 
@@ -57,7 +57,7 @@ theme_name='Signal Room'
 lab_package='com.arthack.chuchu.lab'
 lab_activity='com.jossephus.chuchu.MainActivity'
 theme_source="$funk_root/assets/chuchu/$theme_name"
-chuchu_root=${FUNK_CHUCHU_ROOT:-"$HOME/src/chuchu"}
+chuchu_root=${FUNK_CHUCHU_ROOT:-"$HOME/source/jossephus--chuchu"}
 
 [ -f "$theme_source" ] || die "canonical theme is missing: $theme_source"
 [ -d "$chuchu_root" ] || die "Chuchu checkout is missing: $chuchu_root"
