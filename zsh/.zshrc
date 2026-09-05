@@ -48,7 +48,9 @@ zle -N self-insert-backslash
 
 if command -v fzf >/dev/null 2>&1; then
   export FZF_DEFAULT_OPTS="--popup center,60%,40%"
-  source <(fzf --zsh)
+  # fzf's key bindings restore ZLE options, which fails and prints errors in
+  # an interactive shell that has no terminal (tests and tools spawn those).
+  [[ -o interactive && -t 0 ]] && source <(fzf --zsh)
   bindkey '^R' fzf-history-widget
 fi
 
@@ -73,8 +75,8 @@ setopt HIST_NO_STORE
 setopt HIST_EXPIRE_DUPS_FIRST
 
 # Report cwd to terminal via OSC 7 (enables ghostty split-in-same-dir)
-chpwd() { printf '\e]7;file://%s%s\e\\' "$HOST" "$PWD" }
-chpwd  # emit once at shell startup
+chpwd() { [[ -t 1 ]] && printf '\e]7;file://%s%s\e\\' "$HOST" "$PWD" }
+chpwd  # emit once at shell startup (only when stdout is a terminal)
 
 # Allow comments in shell
 setopt interactivecomments
