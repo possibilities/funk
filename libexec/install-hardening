@@ -19,10 +19,51 @@ fi
 
 funk_root=${FUNK_ROOT:?FUNK_ROOT is not set}
 installer="$funk_root/system/install-hardening-root"
+helper_target=/usr/local/libexec/funk-harden
+daemon_label=com.arthack.funk.harden-boot
+daemon_target="/Library/LaunchDaemons/$daemon_label.plist"
+legacy_daemon_plist=/Library/LaunchDaemons/harden-boot.plist
+legacy_helper=/usr/local/sbin/harden-boot
 
 if [ ! -x "$installer" ]; then
     printf 'funk install-hardening: root installer is missing or not executable: %s\n' "$installer" >&2
     exit 1
+fi
+
+# Every check is unprivileged and none can prompt: the helper, daemon, and
+# pf.conf are world-readable, launchd answers for the system domain without
+# root, and sudo -n only asks whether the two granted invocations still exist.
+# When all of it matches this checkout there is nothing for the root installer
+# to change, so ./install runs this by default without a password on a
+# converged machine and prompts only on a machine that actually differs.
+hardening_converged() {
+    local source_digest
+    local installed_digest
+
+    [ -f "$helper_target" ] && [ ! -L "$helper_target" ] || return 1
+    source_digest=$(/usr/bin/shasum -a 256 "$funk_root/system/funk-harden" | /usr/bin/awk '{print $1}')
+    installed_digest=$(/usr/bin/shasum -a 256 "$helper_target" | /usr/bin/awk '{print $1}')
+    [ -n "$source_digest" ] && [ "$source_digest" = "$installed_digest" ] || return 1
+
+    [ -f "$daemon_target" ] && [ ! -L "$daemon_target" ] || return 1
+    /usr/bin/cmp -s "$funk_root/system/$daemon_label.plist" "$daemon_target" || return 1
+    /bin/launchctl print "system/$daemon_label" >/dev/null 2>&1 || return 1
+
+    /usr/bin/sudo -n -l "$helper_target" status >/dev/null 2>&1 || return 1
+    /usr/bin/sudo -n -l "$helper_target" travel >/dev/null 2>&1 || return 1
+
+    grep -Eq '^[[:space:]]*anchor[[:space:]]+"com\.arthack\.funk\.travel"' /etc/pf.conf || return 1
+    ! grep -Eq '^[[:space:]]*anchor[[:space:]]+"travel"[[:space:]]*$' /etc/pf.conf || return 1
+
+    [ ! -e "$legacy_daemon_plist" ] && [ ! -L "$legacy_daemon_plist" ] || return 1
+    [ ! -e "$legacy_helper" ] && [ ! -L "$legacy_helper" ] || return 1
+    ! /bin/launchctl print system/harden.boot >/dev/null 2>&1 || return 1
+}
+
+if hardening_converged; then
+    printf 'Boot-time travel firewall daemon, helper, sudoers grants, and pf.conf anchor\n'
+    printf 'already match this checkout; skipping the privileged step.\n'
+    exit 0
 fi
 
 printf 'This installs and immediately loads a root LaunchDaemon that applies\n'

@@ -1661,6 +1661,21 @@ printf 'anchor "travel"\n' | grep -Eq "$anchor_pattern" \
 
 grep -F 'legacy_daemon_label=harden.boot' system/install-hardening-root >/dev/null \
     || fail "hardening installer no longer retires the pre-Funk harden.boot daemon"
+
+# Hardening is part of the default converge, so the user-side installer must
+# compare the installed state first and elevate only when it differs; otherwise
+# every ./install on a converged machine would ask for a password.
+grep -F 'with_hardening=1' install >/dev/null \
+    || fail "installer no longer installs boot-time hardening by default"
+grep -F -- '--without-hardening) with_hardening=0' install >/dev/null \
+    || fail "installer lost its --without-hardening opt-out"
+grep -F 'if hardening_converged; then' libexec/install-hardening >/dev/null \
+    || fail "install-hardening no longer skips the privileged step when converged"
+# shellcheck disable=SC2016 # The installer's literal source lines are the subject.
+grep -F '/usr/bin/sudo -n -l "$helper_target" travel' libexec/install-hardening >/dev/null \
+    || fail "install-hardening convergence check does not verify the travel grant"
+grep -F '/bin/launchctl print system/harden.boot' libexec/install-hardening >/dev/null \
+    || fail "install-hardening convergence check does not require the legacy daemon to be gone"
 grep -F 'legacy_helper=/usr/local/sbin/harden-boot' system/install-hardening-root >/dev/null \
     || fail "hardening installer no longer removes the pre-Funk harden-boot helper"
 grep -F 'grep -Ev '\''^[[:space:]]*anchor[[:space:]]+"travel"[[:space:]]*$'\'' "$pf_conf"' \

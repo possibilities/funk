@@ -2,13 +2,13 @@
 
 set -euo pipefail
 
-with_hardening=0
+with_hardening=1
 with_windows=1
 with_system_settings=0
 
 usage() {
     cat <<'EOF'
-Usage: ./install [--with-hardening] [--without-windows] [--with-system-settings] [--all]
+Usage: ./install [--without-hardening] [--without-windows] [--with-system-settings] [--all]
 
 Default installation:
   - installs Homebrew when missing
@@ -24,13 +24,17 @@ Default installation:
   - installs the home-network sleep and screen-lock agent
   - installs the hourly transcript preservation agent and the fifteen-minute
     Google credential watch
+  - installs the boot-time travel firewall daemon, prompting for sudo only
+    when the installed daemon, helper, rules, or anchor differ from this
+    checkout
   - verifies the resident services AgentStart installs: the Agentbrain worker
     and share ingress, the Agentweb daemon, and the Agentusage daemon
   - applies Funk's user-level macOS preferences
   - writes ~/.ssh/config.d from the tailnet Tailscale is reporting
 
 Options:
-  --with-hardening  Also install and immediately apply boot-time travel hardening
+  --without-hardening
+                    Skip the boot-time travel firewall daemon
   --without-windows Skip Yabai, skhd, Karabiner startup, and Space convergence
   --with-system-settings
                     Also apply Funk's privileged machine-wide macOS settings
@@ -76,7 +80,9 @@ find_brew() {
 
 while [ "$#" -gt 0 ]; do
     case "$1" in
+        # Retained as a compatibility no-op now that hardening is installed by default.
         --with-hardening) with_hardening=1 ;;
+        --without-hardening) with_hardening=0 ;;
         # Retained as a compatibility no-op now that windows are installed by default.
         --with-windows) with_windows=1 ;;
         --without-windows) with_windows=0 ;;

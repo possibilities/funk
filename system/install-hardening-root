@@ -18,6 +18,7 @@ anchor_line='anchor "com.arthack.funk.travel"'
 legacy_daemon_label=harden.boot
 legacy_daemon_plist=/Library/LaunchDaemons/harden-boot.plist
 legacy_helper=/usr/local/sbin/harden-boot
+legacy_log=/Library/Logs/harden-boot.log
 legacy_anchor=travel
 
 die() {
@@ -62,6 +63,10 @@ retire_legacy_boot_hardening() {
         [ -f "$legacy_helper" ] && [ ! -L "$legacy_helper" ] \
             || die "refusing to remove an unexpected object: $legacy_helper"
         rm -f "$legacy_helper"
+        retired=1
+    fi
+    if [ -f "$legacy_log" ] && [ ! -L "$legacy_log" ]; then
+        rm -f "$legacy_log"
         retired=1
     fi
     # Rules loaded into the old anchor outlive the traversal that used them,

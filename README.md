@@ -21,7 +21,7 @@ cd ~/code/funk
 ./install
 ```
 
-Flags: `--with-hardening`, `--without-windows`, `--with-system-settings`,
+Flags: `--without-hardening`, `--without-windows`, `--with-system-settings`,
 `--all`.
 
 The first run on a new account asks for a git commit name and address, and

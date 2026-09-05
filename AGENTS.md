@@ -188,7 +188,11 @@ by `tests/validate.sh`:
 
 `funk install-home-awake` follows the same rule. It compares the installed root
 helper's digest and its granted sudo invocations first, and elevates only when
-they differ from this checkout. It extends the rule to the login keychain by
+they differ from this checkout. `funk install-hardening` follows it too, which
+is what lets `./install` run it by default: it compares the helper digest, the
+daemon plist, the loaded daemon, the two sudoers grants, the pf.conf anchor
+lines, and the absence of the pre-Funk daemon, and prompts only when one of
+them differs. It extends the rule to the login keychain by
 probing the stored item attribute-only, without `-w`, so the lookup never
 reaches the item's data and never raises a dialog, and by reporting the verdict
 `home-awake` last recorded instead of reading the secret. The prompt belongs to
