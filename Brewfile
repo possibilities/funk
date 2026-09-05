@@ -43,5 +43,5 @@ cask "obsidian", greedy: true
 cask "raycast", greedy: true
 cask "android-platform-tools", greedy: true
 cask "karabiner-elements", greedy: true
-cask "font-0xproto-nerd-font", greedy: true
+cask "font-maple-mono-nf", greedy: true
 cask "finetune", greedy: true
