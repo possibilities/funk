@@ -75,7 +75,10 @@ setopt HIST_NO_STORE
 setopt HIST_EXPIRE_DUPS_FIRST
 
 # Report cwd to terminal via OSC 7 (enables ghostty split-in-same-dir)
-chpwd() { [[ -t 1 ]] && printf '\e]7;file://%s%s\e\\' "$HOST" "$PWD" }
+# Skip it under an agent harness (AI_AGENT is set by Claude Code and peers):
+# the harness runs commands on a pty, so the terminal test alone lets the
+# escape leak into every captured command output.
+chpwd() { [[ -t 1 && -z "$AI_AGENT" ]] && printf '\e]7;file://%s%s\e\\' "$HOST" "$PWD" }
 chpwd  # emit once at shell startup (only when stdout is a terminal)
 
 # Allow comments in shell
