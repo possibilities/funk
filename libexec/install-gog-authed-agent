@@ -5,7 +5,7 @@ set -euo pipefail
 label=com.arthack.funk.gog-authed
 
 die() {
-    printf 'funk install-gog-authed-agent: %s\n' "$*" >&2
+    printf 'funk install-gog-authed: %s\n' "$*" >&2
     exit 1
 }
 
@@ -14,13 +14,13 @@ case "${1:-}" in
     "") ;;
     --check)
         [ "$#" -eq 1 ] || {
-            printf 'Usage: funk install-gog-authed-agent [--check]\n' >&2
+            printf 'Usage: funk install-gog-authed [--check]\n' >&2
             exit 64
         }
         check_only=1
         ;;
     *)
-        printf 'Usage: funk install-gog-authed-agent [--check]\n' >&2
+        printf 'Usage: funk install-gog-authed [--check]\n' >&2
         exit 64
         ;;
 esac
@@ -40,7 +40,7 @@ domain="gui/$(id -u)"
 [ -f "$template" ] || die "template not found: $template"
 [ -x "$helper" ] || die "auth checker is missing or not executable: $helper"
 
-tmpdir=$(mktemp -d "${TMPDIR:-/tmp}/funk-tailscale-agent.XXXXXX")
+tmpdir=$(mktemp -d "${TMPDIR:-/tmp}/funk-gog-authed.XXXXXX")
 trap 'rm -rf "$tmpdir"' EXIT
 rendered="$tmpdir/$label.plist"
 

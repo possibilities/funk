@@ -22,6 +22,8 @@ Default installation:
   - links the funk command into the active Homebrew bin directory
   - installs and loads the update and Tailscale recovery LaunchAgents
   - installs the home-network sleep and screen-lock agent
+  - installs the hourly transcript preservation agent and the fifteen-minute
+    Google credential watch
   - verifies the resident services AgentStart installs: the Agentbrain worker
     and share ingress, the Agentweb daemon, and the Agentusage daemon
   - applies Funk's user-level macOS preferences
@@ -170,6 +172,7 @@ agentstart_root="$HOME/code/agentstart"
 "$funk_command" install-tailscale-recovery
 "$funk_command" install-home-awake
 "$funk_command" install-transcript-vault
+"$funk_command" install-gog-authed
 "$funk_command" configure-macos
 
 # ~/.ssh/config.d is generated from live Tailscale state rather than tracked, so
@@ -224,6 +227,7 @@ Update log: $HOME/Library/Logs/Funk/update.log
 Tailscale recovery log: $HOME/Library/Logs/Funk/tailscale-online.log
 home-awake log: $HOME/Library/Logs/Funk/home-awake.log
 Transcript vault log: $HOME/Library/Logs/Funk/transcript-vault.log
+Google credential watch log: $HOME/Library/Logs/Funk/gog-authed.log
 EOF
 
 if [ "$notifications_blocked" -eq 1 ]; then

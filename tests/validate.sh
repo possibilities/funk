@@ -346,6 +346,16 @@ grep -q -- '--tag claude-transcripts' bin/.local/bin/transcript-vault \
 grep -F '"$funk_command" install-transcript-vault' install >/dev/null \
     || fail "installer does not install the transcript vault agent"
 
+# The credential watch had an installer and a test but no way to be reached:
+# neither funk nor ./install named it, so the agent on the machine had been
+# installed by hand and a fresh account would never get one.
+# shellcheck disable=SC2016 # The installer's literal source line is the subject.
+grep -F '"$funk_command" install-gog-authed' install >/dev/null \
+    || fail "installer does not install the Google credential watch agent"
+# shellcheck disable=SC2016 # Match the literal delegation path in bin/funk.
+grep -F 'exec "$FUNK_ROOT/libexec/install-gog-authed-agent"' bin/funk >/dev/null \
+    || fail "funk does not dispatch install-gog-authed"
+
 if command -v ruby >/dev/null 2>&1; then
     ruby -rjson -e '
       data = JSON.parse(File.read(ARGV.fetch(0)))
@@ -917,6 +927,7 @@ rm -rf "$update_test_dir"
 
 "$root/bin/funk" install-updater --check >/dev/null
 "$root/bin/funk" install-tailscale-recovery --check >/dev/null
+"$root/bin/funk" install-gog-authed --check >/dev/null
 "$root/bin/funk" configure-macos --check
 "$root/bin/funk" verify-notifications --check
 else
