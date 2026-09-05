@@ -127,6 +127,14 @@ the helper validates every argument before touching `pmset` or `sysadminctl`.
 `tests/validate.sh` pins the granted list, so widening it is a deliberate,
 reviewable change rather than a side effect.
 
+The boot firewall is Funk's alone. `system/install-hardening-root` retires the
+pre-Funk `harden.boot` daemon, its helper, and its bare `travel` anchor as it
+installs `com.arthack.funk.harden-boot`, and `tests/validate.sh` pins both the
+retirement and its order: Funk's posture is applied before the old one is torn
+down. The pre-Funk tailnet service fences under `/etc/pf.anchors/` are the one
+piece of that era still untracked, deliberately; see
+`docs/adr/0001-retire-legacy-boot-hardening.md`.
+
 A keychain item's access list is the same argument in another form.
 `bin/.local/bin/home-awake` stores the login password with `-T ""` and has a
 human approve the first read, rather than granting `/usr/bin/security` — a

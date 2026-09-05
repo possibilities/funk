@@ -10,6 +10,16 @@ daemon_target="/Library/LaunchDaemons/$daemon_label.plist"
 pf_conf=/etc/pf.conf
 anchor_line='anchor "com.arthack.funk.travel"'
 
+# The boot hardening that preceded Funk on this machine: a root daemon from the
+# retired dotfiles that loaded a bare "travel" anchor at boot and relied on a
+# login agent, long since gone, to relax it. Funk's daemon replaces it, so the
+# installer retires it in the same run rather than leaving two postures asserted
+# from two anchors.
+legacy_daemon_label=harden.boot
+legacy_daemon_plist=/Library/LaunchDaemons/harden-boot.plist
+legacy_helper=/usr/local/sbin/harden-boot
+legacy_anchor=travel
+
 die() {
     printf 'funk hardening installer: %s\n' "$*" >&2
     exit 1
@@ -26,6 +36,45 @@ guard_root_directory() {
     mode=$(stat -f '%Lp' "$directory")
     [ "$owner" = root ] || die "$directory must be root-owned"
     [ $((8#$mode & 8#022)) -eq 0 ] || die "$directory must not be group/world-writable"
+}
+
+# Runs only after Funk's own posture is on the wire, so the interval between
+# the two postures is never one with neither. Each step is guarded by what it
+# finds: an unrelated file at the legacy path is an error, not a casualty.
+retire_legacy_boot_hardening() {
+    local retired=0
+    local existing_label
+
+    if /bin/launchctl print "system/$legacy_daemon_label" >/dev/null 2>&1; then
+        /bin/launchctl bootout "system/$legacy_daemon_label" 2>/dev/null || true
+        retired=1
+    fi
+    if [ -e "$legacy_daemon_plist" ] || [ -L "$legacy_daemon_plist" ]; then
+        [ -f "$legacy_daemon_plist" ] && [ ! -L "$legacy_daemon_plist" ] \
+            || die "refusing to remove an unexpected object: $legacy_daemon_plist"
+        existing_label=$(/usr/libexec/PlistBuddy -c 'Print :Label' "$legacy_daemon_plist" 2>/dev/null || true)
+        [ "$existing_label" = "$legacy_daemon_label" ] \
+            || die "refusing to remove an unrelated daemon: $legacy_daemon_plist"
+        rm -f "$legacy_daemon_plist"
+        retired=1
+    fi
+    if [ -e "$legacy_helper" ] || [ -L "$legacy_helper" ]; then
+        [ -f "$legacy_helper" ] && [ ! -L "$legacy_helper" ] \
+            || die "refusing to remove an unexpected object: $legacy_helper"
+        rm -f "$legacy_helper"
+        retired=1
+    fi
+    # Rules loaded into the old anchor outlive the traversal that used them,
+    # so they are flushed rather than left as an unreferenced ruleset.
+    if /sbin/pfctl -a "$legacy_anchor" -sr 2>/dev/null | grep -q .; then
+        /sbin/pfctl -a "$legacy_anchor" -F rules >/dev/null 2>&1 || true
+        retired=1
+    fi
+
+    if [ "$retired" -eq 1 ]; then
+        printf 'Retired the pre-Funk %s daemon and its %s anchor\n' \
+            "$legacy_daemon_label" "$legacy_anchor"
+    fi
 }
 
 target_user=
@@ -83,10 +132,15 @@ pf_mode=$(stat -f '%Lp' "$pf_conf")
 tmpdir=$(mktemp -d /private/tmp/funk-hardening-install.XXXXXX)
 trap 'rm -rf "$tmpdir"' EXIT
 
-if ! grep -Eq '^[[:space:]]*anchor[[:space:]]+"com\\.arthack\\.funk\\.travel"' "$pf_conf"; then
-    pf_candidate="$tmpdir/pf.conf"
-    cp "$pf_conf" "$pf_candidate"
+# The main ruleset traverses exactly one travel anchor: Funk's. The legacy
+# traversal leaves as Funk's arrives, so the candidate is written whenever
+# either edit is needed and installed only when it actually differs.
+pf_candidate="$tmpdir/pf.conf"
+grep -Ev '^[[:space:]]*anchor[[:space:]]+"travel"[[:space:]]*$' "$pf_conf" > "$pf_candidate" || true
+if ! grep -Eq '^[[:space:]]*anchor[[:space:]]+"com\.arthack\.funk\.travel"' "$pf_candidate"; then
     printf '\n# Funk fail-closed travel posture\n%s\n' "$anchor_line" >> "$pf_candidate"
+fi
+if ! cmp -s "$pf_candidate" "$pf_conf"; then
     /sbin/pfctl -nf "$pf_candidate" >/dev/null \
         || die "updated $pf_conf failed PF validation"
 
@@ -114,6 +168,11 @@ guard_root_directory /Library/Logs/Funk
 /usr/bin/install -o root -g wheel -m 0644 "$daemon_source" "$daemon_target"
 /bin/launchctl bootout "system/$daemon_label" 2>/dev/null || true
 /bin/launchctl bootstrap system "$daemon_target"
+
+# launchd runs the daemon asynchronously; the posture is applied here as well
+# so it is provably in place before anything older is torn down.
+"$helper_target" travel
+retire_legacy_boot_hardening
 
 printf 'Installed and loaded %s\n' "$daemon_label"
 printf 'Installed narrow sudoers rules for %s: status and travel only\n' "$target_user"

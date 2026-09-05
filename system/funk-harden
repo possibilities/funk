@@ -98,7 +98,7 @@ apply_posture() {
     local rules_file="$1"
 
     validate_rules "$rules_file" || die "generated travel rules failed PF validation"
-    grep -Eq '^[[:space:]]*anchor[[:space:]]+"com\\.arthack\\.funk\\.travel"' "$pf_conf" \
+    grep -Eq '^[[:space:]]*anchor[[:space:]]+"com\.arthack\.funk\.travel"' "$pf_conf" \
         || die "$pf_conf does not traverse the $anchor anchor"
 
     "$pfctl" -f "$pf_conf" >/dev/null \

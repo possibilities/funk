@@ -26,5 +26,6 @@ if [ ! -x "$installer" ]; then
 fi
 
 printf 'This installs and immediately loads a root LaunchDaemon that applies\n'
-printf 'Funk'\''s travel firewall posture. sudo will prompt once for installation.\n'
+printf 'Funk'\''s travel firewall posture, and retires the pre-Funk harden.boot\n'
+printf 'daemon if one is installed. sudo will prompt once for installation.\n'
 exec /usr/bin/sudo "$installer" --user "$(id -un)" --source-root "$funk_root"

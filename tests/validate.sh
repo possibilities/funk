@@ -1622,6 +1622,39 @@ if grep -R -E 'funk-home-awake|home-awake' \
     fail "the travel firewall was coupled to home-awake"
 fi
 
+# The boot hardening that preceded Funk was a root daemon this repository never
+# owned, asserting its own travel anchor. Funk's installer retires it as it
+# installs its own, after applying Funk's posture synchronously, so a machine
+# never asserts two postures and is never briefly asserting none.
+# In single quotes, `\\.` reaches grep -E as a literal backslash plus any
+# character, so the anchor check never matched `anchor "com.arthack.funk.travel"`
+# and every posture apply died claiming pf.conf did not traverse the anchor.
+# Pin the escaped-dot form in both places, and prove it against the line.
+anchor_pattern='^[[:space:]]*anchor[[:space:]]+"com\.arthack\.funk\.travel"'
+grep -F "$anchor_pattern" system/funk-harden >/dev/null \
+    || fail "funk-harden does not check pf.conf with the escaped-dot anchor pattern"
+grep -F "$anchor_pattern" system/install-hardening-root >/dev/null \
+    || fail "hardening installer does not check pf.conf with the escaped-dot anchor pattern"
+printf 'anchor "com.arthack.funk.travel"\n' | grep -Eq "$anchor_pattern" \
+    || fail "the anchor pattern does not match Funk's own anchor line"
+printf 'anchor "travel"\n' | grep -Eq "$anchor_pattern" \
+    && fail "the anchor pattern matches the legacy travel anchor line"
+
+grep -F 'legacy_daemon_label=harden.boot' system/install-hardening-root >/dev/null \
+    || fail "hardening installer no longer retires the pre-Funk harden.boot daemon"
+grep -F 'legacy_helper=/usr/local/sbin/harden-boot' system/install-hardening-root >/dev/null \
+    || fail "hardening installer no longer removes the pre-Funk harden-boot helper"
+grep -F 'grep -Ev '\''^[[:space:]]*anchor[[:space:]]+"travel"[[:space:]]*$'\'' "$pf_conf"' \
+    system/install-hardening-root >/dev/null \
+    || fail "hardening installer leaves the legacy travel anchor traversal in pf.conf"
+hardening_apply_line=$(grep -n -F '"$helper_target" travel' system/install-hardening-root \
+    | head -n 1 | cut -d: -f1)
+hardening_retire_line=$(grep -n -E '^retire_legacy_boot_hardening$' system/install-hardening-root \
+    | head -n 1 | cut -d: -f1)
+[ -n "$hardening_apply_line" ] && [ -n "$hardening_retire_line" ] \
+    && [ "$hardening_apply_line" -lt "$hardening_retire_line" ] \
+    || fail "hardening installer must apply Funk's posture before retiring the legacy one"
+
 # Nothing counts as home until it is recorded on the machine itself. A shipped
 # default would hand a fresh account somebody else's network.
 if grep -R -E '^[^#]*(router_mac|default_router)=[0-9a-fA-F]{2}:' \
