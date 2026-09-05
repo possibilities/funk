@@ -467,7 +467,7 @@ cask "obsidian", greedy: true
 cask "raycast", greedy: true
 cask "android-platform-tools", greedy: true
 cask "karabiner-elements", greedy: true
-cask "font-maple-mono-nf", greedy: true
+cask "font-monaspace-nf", greedy: true
 cask "finetune", greedy: true'
 actual_brewfile=$(grep -Ev '^[[:space:]]*$' Brewfile)
 [ "$actual_brewfile" = "$expected_brewfile" ] \
