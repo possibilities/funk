@@ -38,6 +38,43 @@ karabiner_is_active() {
     /usr/bin/pgrep -x Karabiner-Core-Service >/dev/null 2>&1
 }
 
+# yabai and skhd write their own launchd plists and copy the invoking shell's
+# PATH into them, and --start-service never rewrites a definition that already
+# exists. A service first installed from an agent's shell therefore carries that
+# shell's temporary directories until someone deletes the file. This installer
+# runs both under one fixed PATH and reinstalls a service whose recorded PATH is
+# not that one, so the definition converges instead of recording history.
+service_plist_for() {
+    local binary="$1"
+    local plist
+
+    for plist in "$HOME"/Library/LaunchAgents/*.plist; do
+        [ -f "$plist" ] || continue
+        [ "$(/usr/libexec/PlistBuddy -c 'Print :ProgramArguments:0' "$plist" 2>/dev/null)" = "$binary" ] \
+            || continue
+        printf '%s\n' "$plist"
+        return 0
+    done
+    return 1
+}
+
+# Succeeds when the service definition was stale and has been removed, so the
+# caller knows a start is due; fails when there was nothing to converge.
+reinstall_stale_service() {
+    local binary="$1"
+    local plist
+    local recorded_path
+
+    plist=$(service_plist_for "$binary") || return 1
+    recorded_path=$(/usr/libexec/PlistBuddy -c 'Print :EnvironmentVariables:PATH' "$plist" 2>/dev/null || true)
+    [ "$recorded_path" != "$PATH" ] || return 1
+
+    printf 'Reinstalling the %s service so its definition records this installer'\''s PATH.\n' \
+        "$(basename -- "$binary")"
+    "$binary" --stop-service >/dev/null 2>&1 || true
+    "$binary" --uninstall-service >/dev/null 2>&1 || true
+}
+
 windows_converged() {
     local helper=/usr/local/libexec/funk-yabai-maintain
     local config=/etc/funk/yabai.conf
@@ -102,7 +139,12 @@ else
 fi
 
 export PATH="$brew_prefix/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+reinstall_stale_service "$skhd_bin" || true
 "$skhd_bin" --start-service || printf 'skhd start needs Accessibility approval; retry after granting it.\n' >&2
+if reinstall_stale_service "$yabai_bin"; then
+    "$yabai_bin" --start-service \
+        || printf 'Yabai start needs Accessibility approval; retry after granting it.\n' >&2
+fi
 if karabiner_is_active; then
     printf 'Karabiner-Elements is already running with its permissions granted.\n'
 else

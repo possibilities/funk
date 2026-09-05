@@ -1331,6 +1331,24 @@ grep -F "lab_package='com.arthack.chuchu.lab'" libexec/install-chuchu-lab-theme 
     >/dev/null || fail "Chuchu theme installer lost its Lab package boundary"
 "$root/tests/chuchu-theme.sh"
 "$root/tests/ghostty-terminfo.sh"
+# yabai and skhd copy the invoking shell's PATH into the plists they write and
+# never rewrite an existing one, so the window stack runs them under one fixed
+# PATH and reinstalls a service whose recorded PATH differs from it.
+# shellcheck disable=SC2016 # The installer's literal source lines are the subject.
+grep -F 'export PATH="$brew_prefix/bin:/usr/bin:/bin:/usr/sbin:/sbin"' \
+    libexec/install-window-manager >/dev/null \
+    || fail "window-stack installer does not pin PATH before starting services"
+grep -F "Print :EnvironmentVariables:PATH" libexec/install-window-manager >/dev/null \
+    || fail "window-stack installer does not compare the recorded service PATH"
+grep -F 'reinstall_stale_service "$skhd_bin"' libexec/install-window-manager >/dev/null \
+    || fail "window-stack installer does not converge the skhd service definition"
+grep -F 'reinstall_stale_service "$yabai_bin"' libexec/install-window-manager >/dev/null \
+    || fail "window-stack installer does not converge the Yabai service definition"
+# shellcheck disable=SC2016 # The maintain path's literal source line is the subject.
+grep -F 'PATH="$(dirname -- "$yabai_bin"):/usr/bin:/bin:/usr/sbin:/sbin"' \
+    libexec/funk-yabai >/dev/null \
+    || fail "funk yabai maintain recreates the Yabai service under an unpinned PATH"
+
 # shellcheck disable=SC2016 # Match the literal shell variable in the script.
 grep -F '"$funk_root/bin/funk" yabai maintain' libexec/install-window-manager >/dev/null \
     || fail "window installer does not reconcile the Yabai scripting addition"

@@ -79,7 +79,13 @@ case "$1" in
         /usr/bin/sudo "$helper"
 
         # Homebrew upgrades move the Cellar binary. Recreate Yabai's generated
-        # user service so launchd points at the current version.
+        # user service so launchd points at the current version. Yabai copies
+        # this shell's PATH into that service, so it is pinned to the same PATH
+        # funk install-windows uses; otherwise every maintain from an
+        # interactive shell would record that shell's history in the plist and
+        # the installer would reinstall the service on its next run.
+        PATH="$(dirname -- "$yabai_bin"):/usr/bin:/bin:/usr/sbin:/sbin"
+        export PATH
         "$yabai_bin" --uninstall-service >/dev/null 2>&1 || true
         "$yabai_bin" --start-service
         wait_for_numbered_spaces "$yabai_bin"
