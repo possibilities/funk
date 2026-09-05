@@ -45,3 +45,4 @@ cask "android-platform-tools", greedy: true
 cask "karabiner-elements", greedy: true
 cask "font-geist-mono-nerd-font", greedy: true
 cask "finetune", greedy: true
+cask "executor", greedy: true
