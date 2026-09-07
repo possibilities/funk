@@ -16,7 +16,7 @@
 # Stages degrade independently. The exit status reflects preservation only:
 # nonzero when the live sync failed, or when silverbird was reachable and
 # its backup failed. An unreachable silverbird is a clean skip.
-# Runs hourly (and at login) from com.arthack.funk.transcript-vault.
+# Runs hourly (and at login) from io.arthack.funk.preserve-transcripts.
 
 set -uo pipefail
 

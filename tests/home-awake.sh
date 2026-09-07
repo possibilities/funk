@@ -12,9 +12,9 @@ state_dir="$test_home/.local/state/funk"
 config_file="$test_home/.config/funk/home-awake.conf"
 screenlock_state_file="$state_dir/home-awake-screenlock"
 keychain_state_file="$state_dir/home-awake-keychain"
-caffeinate_plist="$state_dir/com.arthack.funk.home-awake-caffeinate.plist"
+caffeinate_plist="$state_dir/io.arthack.funk.caffeinate.plist"
 mkdir -p "$state_dir" "$test_home/.config/funk"
-cp "$root/launchd/com.arthack.funk.home-awake-caffeinate.plist" "$caffeinate_plist"
+cp "$root/launchd/io.arthack.funk.caffeinate.plist" "$caffeinate_plist"
 
 log="$test_home/actions.log"
 # The keychain states below are announced through terminal-notifier, so the

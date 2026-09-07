@@ -2,8 +2,10 @@
 
 set -euo pipefail
 
-label=com.arthack.funk.home-awake
-caffeinate_label=com.arthack.funk.home-awake-caffeinate
+label=io.arthack.funk.keep-home-awake
+legacy_label=com.arthack.funk.home-awake
+caffeinate_label=io.arthack.funk.caffeinate
+legacy_caffeinate_label=com.arthack.funk.home-awake-caffeinate
 
 die() {
     printf 'funk install-home-awake: %s\n' "$*" >&2
@@ -39,7 +41,6 @@ state_dir="$HOME/.local/state/funk"
 caffeinate_path="$state_dir/$caffeinate_label.plist"
 log_dir="$HOME/Library/Logs/Funk"
 log_path="$log_dir/home-awake.log"
-domain="gui/$(id -u)"
 
 [ -f "$template" ] || die "template not found: $template"
 [ -f "$caffeinate_source" ] || die "template not found: $caffeinate_source"
@@ -84,22 +85,11 @@ if [ "$check_only" -eq 1 ]; then
 fi
 
 mkdir -p "$agent_dir" "$log_dir" "$state_dir"
-if [ -L "$agent_path" ]; then
-    die "refusing to replace symlink: $agent_path"
-fi
-if [ -e "$agent_path" ]; then
-    existing_label=$(/usr/libexec/PlistBuddy -c 'Print :Label' "$agent_path" 2>/dev/null || true)
-    [ "$existing_label" = "$label" ] \
-        || die "refusing to replace unrelated file: $agent_path"
-fi
-if [ -L "$caffeinate_path" ]; then
-    die "refusing to replace symlink: $caffeinate_path"
-fi
-
-/usr/bin/install -m 0644 "$caffeinate_source" "$caffeinate_path"
-/usr/bin/install -m 0644 "$rendered" "$agent_path"
-/bin/launchctl bootout "$domain/$label" 2>/dev/null || true
-/bin/launchctl bootstrap "$domain" "$agent_path"
+"$funk_root/libexec/install-user-launchagent" \
+    "$caffeinate_label" "$legacy_caffeinate_label" "$caffeinate_source" \
+    "$log_dir" "$state_dir" preserve
+"$funk_root/libexec/install-user-launchagent" \
+    "$label" "$legacy_label" "$rendered" "$log_dir"
 
 printf 'Installed %s (at login, on network changes, and every thirty seconds)\n' "$agent_path"
 printf 'Installed the idle-sleep job at %s\n' "$caffeinate_path"

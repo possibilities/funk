@@ -46,7 +46,8 @@ Commands:
   install-agentlaunch-shims
                       Install PATH shims that balance bare claude/codex launches
   verify-local-services
-                      Confirm the fleet services are running and reachable
+                      Show owner-reported Funk and fleet launchd health
+  launchd-status      Show Funk launchd ownership, state, and log sizes
   transcript-vault   Run the transcript preservation pipeline once now
   install-transcript-vault
                       Install the hourly transcript preservation agent
@@ -132,6 +133,10 @@ case "$command_name" in
     verify-local-services)
         shift
         exec "$FUNK_ROOT/libexec/verify-local-services" "$@"
+        ;;
+    launchd-status)
+        shift
+        exec "$FUNK_ROOT/libexec/launchd-status" "$@"
         ;;
     transcript-vault)
         shift

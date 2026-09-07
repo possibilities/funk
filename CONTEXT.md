@@ -3,10 +3,15 @@
 Funk's own vocabulary. Use these terms in code, commits, and documentation.
 
 **Scheduled path** — the work `funk update --notify` does when the
-`com.arthack.funk.update` LaunchAgent runs it, four times a day, with no
+`io.arthack.funk.update` LaunchAgent runs it, four times a day, with no
 terminal and no way to answer a password prompt. Anything that cannot converge
 under those conditions is triaged out and reported rather than attempted.
 _Avoid_: cron job, background update, unattended run.
+
+**Launch service label** — a reverse-DNS launchd identifier in the form
+`io.arthack.<project>.<verb>`. The verb names the work the job performs;
+ownership comes from the plist's exact installer marker, not its namespace.
+_Avoid_: daemon name, bundle identifier, ownership prefix.
 
 **Bundle swap** — replacing an application's bundle on disk while the
 application is running. The process keeps resolving paths into a bundle that is

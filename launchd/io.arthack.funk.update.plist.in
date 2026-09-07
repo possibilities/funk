@@ -1,9 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- funk-installer-owned: io.arthack.funk.update.v1 -->
 <plist version="1.0">
 <dict>
   <key>Label</key>
-  <string>com.arthack.funk.update</string>
+  <string>io.arthack.funk.update</string>
   <key>ProgramArguments</key>
   <array>
     <string>__FUNK_EXECUTABLE__</string>

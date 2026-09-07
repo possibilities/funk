@@ -198,10 +198,9 @@ fi
 notifications_blocked=0
 "$funk_command" verify-notifications || notifications_blocked=1
 
-# Installing a service proves only that a plist was written. These checks prove
-# the daemons answer, which is a different question and the one that matters:
-# an ingress that is loaded but unreachable, or a worker whose conduit wiring an
-# older installer quietly dropped, both look installed and neither works.
+# Each service owner reports its own manifest, ownership marker, loaded state,
+# last exit, and log size. Keeping that knowledge at the owner boundary avoids
+# a second fleet manifest here silently retaining retired labels.
 local_services_degraded=0
 "$funk_command" verify-local-services || local_services_degraded=1
 
@@ -239,9 +238,9 @@ fi
 if [ "$local_services_degraded" -eq 1 ]; then
     cat <<'EOF'
 
-Action required: the resident Agentbrain, Agentweb, and Agentusage services
-installed, but one or more of them is not answering. The failures are listed
-above. Re-check with: funk verify-local-services
+Action required: one or more Funk or agent-fleet launch services has an
+ownership, loaded-state, or last-exit problem. The owner-reported failures are
+listed above. Re-check with: funk verify-local-services
 EOF
 fi
 

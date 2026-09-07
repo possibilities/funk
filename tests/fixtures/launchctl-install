@@ -1,0 +1,41 @@
+#!/bin/bash
+
+set -euo pipefail
+
+state=${FUNK_TEST_LAUNCHD_STATE:?}
+log=${FUNK_TEST_LAUNCHD_LOG:?}
+plist_tool=${FUNK_TEST_PLIST_TOOL:?}
+command_name=${1:?}
+
+label_from_target() {
+    printf '%s\n' "${1##*/}"
+}
+
+case "$command_name" in
+    print)
+        label=$(label_from_target "${2:?}")
+        [ -f "$state/$label" ] || exit 113
+        printf '%s = {\n\tstate = running\n' "$label"
+        if [ "${FUNK_TEST_NEVER_EXITED_LABEL:-}" = "$label" ]; then
+            printf '\tlast exit code = (never exited)\n'
+        fi
+        printf '}\n'
+        ;;
+    bootout)
+        label=$(label_from_target "${2:?}")
+        printf 'bootout %s\n' "$label" >>"$log"
+        [ "${FUNK_TEST_FAIL_BOOTOUT:-}" != "$label" ] || exit 1
+        rm -f "$state/$label"
+        ;;
+    bootstrap)
+        plist=${3:?}
+        label=$("$plist_tool" -c 'Print :Label' "$plist")
+        printf 'bootstrap %s\n' "$label" >>"$log"
+        [ "${FUNK_TEST_FAIL_BOOTSTRAP:-}" != "$label" ] || exit 1
+        : >"$state/$label"
+        ;;
+    *)
+        printf 'unexpected launchctl command: %s\n' "$command_name" >&2
+        exit 64
+        ;;
+esac

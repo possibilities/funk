@@ -2,7 +2,8 @@
 
 set -euo pipefail
 
-label=com.arthack.funk.transcript-vault
+label=io.arthack.funk.preserve-transcripts
+legacy_label=com.arthack.funk.transcript-vault
 
 die() {
     printf 'funk install-transcript-vault-agent: %s\n' "$*" >&2
@@ -35,7 +36,6 @@ agent_dir="$HOME/Library/LaunchAgents"
 agent_path="$agent_dir/$label.plist"
 log_dir="$HOME/Library/Logs/Funk"
 log_path="$log_dir/transcript-vault.log"
-domain="gui/$(id -u)"
 
 [ -f "$template" ] || die "template not found: $template"
 [ -x "$helper" ] || die "vault helper is missing or not executable: $helper"
@@ -77,19 +77,8 @@ if [ "$check_only" -eq 1 ]; then
 fi
 
 mkdir -p "$agent_dir" "$log_dir"
-if [ -L "$agent_path" ]; then
-    die "refusing to replace symlink: $agent_path"
-fi
-
-if [ -e "$agent_path" ]; then
-    existing_label=$(/usr/libexec/PlistBuddy -c 'Print :Label' "$agent_path" 2>/dev/null || true)
-    [ "$existing_label" = "$label" ] \
-        || die "refusing to replace unrelated file: $agent_path"
-fi
-
-/usr/bin/install -m 0644 "$rendered" "$agent_path"
-/bin/launchctl bootout "$domain/$label" 2>/dev/null || true
-/bin/launchctl bootstrap "$domain" "$agent_path"
+"$funk_root/libexec/install-user-launchagent" \
+    "$label" "$legacy_label" "$rendered" "$log_dir"
 
 printf 'Installed %s (at login and hourly)\n' "$agent_path"
 printf 'Logs append to %s\n' "$log_path"

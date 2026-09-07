@@ -20,7 +20,7 @@ export PATH
 
 helper="${FUNK_HOME_AWAKE_HELPER:-/usr/local/libexec/funk-home-awake}"
 keychain_service=funk-home-awake
-caffeinate_label=com.arthack.funk.home-awake-caffeinate
+caffeinate_label=io.arthack.funk.caffeinate
 
 # security reports the Security framework's status in its exit code, and
 # errSecItemNotFound arrives as 44. That one code is the whole difference

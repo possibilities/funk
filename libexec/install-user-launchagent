@@ -1,0 +1,177 @@
+#!/bin/bash
+
+# Publish and reload one rendered Funk LaunchAgent while safely replacing its
+# pre-io.arthack label. Callers render and validate the plist first.
+
+set -euo pipefail
+
+die() {
+    printf 'funk launchd installer: %s\n' "$*" >&2
+    exit 1
+}
+
+[ "$#" -ge 4 ] && [ "$#" -le 6 ] \
+    || die 'expected NEW_LABEL LEGACY_LABEL RENDERED_PLIST LOG_DIRECTORY [PLIST_DIRECTORY [always|preserve]]'
+label="$1"
+legacy_label="$2"
+rendered="$3"
+log_dir="$4"
+agent_dir="${5:-$HOME/Library/LaunchAgents}"
+load_mode="${6:-always}"
+[ "$load_mode" = always ] || [ "$load_mode" = preserve ] \
+    || die "unknown load mode: $load_mode"
+agent_path="$agent_dir/$label.plist"
+legacy_path="$agent_dir/$legacy_label.plist"
+domain="gui/$(id -u)"
+marker="funk-installer-owned: $label.v1"
+launchctl_bin="${FUNK_LAUNCHCTL_BIN:-/bin/launchctl}"
+[ -x "$launchctl_bin" ] || die "launchctl is not executable: $launchctl_bin"
+lock_dir="$HOME/.local/state/funk"
+lock_file="$lock_dir/launchd-install.lock"
+lock_held=0
+tmp_path=
+backup_path=
+
+cleanup() {
+    rm -f -- "$tmp_path" "$backup_path"
+    [ "$lock_held" -eq 0 ] || rm -f -- "$lock_file"
+}
+trap cleanup EXIT
+
+guard_one_directory() {
+    local directory="$1" mode
+    [ -d "$directory" ] && [ ! -L "$directory" ] \
+        || die "refusing unsafe directory: $directory"
+    [ "$(stat -f %u "$directory")" = "$(id -u)" ] \
+        || die "directory is not owned by the target user: $directory"
+    mode=$(stat -f %Lp "$directory")
+    [ $((8#$mode & 8#022)) -eq 0 ] \
+        || die "directory is group/world-writable: $directory"
+}
+
+guard_user_directory() {
+    local directory="$1" relative current component old_ifs
+    case "$directory" in
+        "$HOME") guard_one_directory "$HOME"; return ;;
+        "$HOME"/*) relative=${directory#"$HOME"/} ;;
+        *) die "directory is outside the target home: $directory" ;;
+    esac
+    current="$HOME"
+    guard_one_directory "$current"
+    old_ifs=$IFS
+    IFS=/
+    for component in $relative; do
+        IFS=$old_ifs
+        current="$current/$component"
+        [ ! -L "$current" ] || die "refusing symlink directory: $current"
+        [ -e "$current" ] || mkdir "$current"
+        guard_one_directory "$current"
+        IFS=/
+    done
+    IFS=$old_ifs
+}
+
+for directory in "$agent_dir" "$log_dir" "$lock_dir"; do
+    guard_user_directory "$directory"
+done
+/usr/bin/shlock -p "$$" -f "$lock_file" \
+    || die "another Funk launchd installation is already running"
+lock_held=1
+
+[ -f "$rendered" ] && [ ! -L "$rendered" ] || die "invalid rendered plist: $rendered"
+grep -Fqx "<!-- $marker -->" "$rendered" \
+    || die "rendered plist lacks ownership marker: $marker"
+
+owned_current() {
+    [ -f "$agent_path" ] && [ ! -L "$agent_path" ] || return 1
+    grep -Fqx "<!-- $marker -->" "$agent_path"
+}
+
+owned_legacy() {
+    [ -f "$legacy_path" ] && [ ! -L "$legacy_path" ] || return 1
+    [ "$(stat -f %u "$legacy_path")" = "$(id -u)" ] || return 1
+    /usr/bin/python3 - "$legacy_path" "$rendered" "$label" <<'PYTHON'
+import plistlib
+import sys
+
+legacy_path, rendered_path, new_label = sys.argv[1:]
+with open(legacy_path, "rb") as handle:
+    legacy = plistlib.load(handle)
+with open(rendered_path, "rb") as handle:
+    rendered = plistlib.load(handle)
+legacy["Label"] = new_label
+raise SystemExit(0 if legacy == rendered else 1)
+PYTHON
+}
+
+if [ -e "$agent_path" ] || [ -L "$agent_path" ]; then
+    owned_current || die "refusing to replace a LaunchAgent Funk does not own: $agent_path"
+fi
+if [ -e "$legacy_path" ] || [ -L "$legacy_path" ]; then
+    owned_legacy || die "refusing to replace a legacy LaunchAgent Funk does not own: $legacy_path"
+fi
+current_preloaded=0
+if "$launchctl_bin" print "$domain/$label" >/dev/null 2>&1; then
+    current_preloaded=1
+    [ -f "$agent_path" ] \
+        || die "refusing to replace a loaded LaunchAgent with no owned plist: $domain/$label"
+fi
+legacy_preloaded=0
+if "$launchctl_bin" print "$domain/$legacy_label" >/dev/null 2>&1; then
+    legacy_preloaded=1
+    [ -f "$legacy_path" ] \
+        || die "refusing to replace a loaded legacy LaunchAgent with no owned plist: $domain/$legacy_label"
+fi
+
+tmp_path=$(mktemp "$agent_dir/.$label.plist.XXXXXX")
+/usr/bin/install -m 0600 "$rendered" "$tmp_path"
+if [ -f "$agent_path" ]; then
+    backup_path=$(mktemp "$agent_dir/.$label.backup.XXXXXX")
+    cp -p "$agent_path" "$backup_path"
+fi
+mv -f "$tmp_path" "$agent_path"
+tmp_path=
+
+current_target="$domain/$label"
+legacy_target="$domain/$legacy_label"
+current_was_loaded=0
+legacy_was_loaded=0
+rollback() {
+    rm -f "$agent_path"
+    if [ -n "$backup_path" ]; then
+        mv "$backup_path" "$agent_path"
+        backup_path=
+        [ "$current_was_loaded" -eq 0 ] \
+            || "$launchctl_bin" bootstrap "$domain" "$agent_path" >/dev/null 2>&1 || true
+    fi
+    [ "$legacy_was_loaded" -eq 0 ] \
+        || "$launchctl_bin" bootstrap "$domain" "$legacy_path" >/dev/null 2>&1 || true
+}
+if [ "$current_preloaded" -eq 1 ]; then
+    current_was_loaded=1
+    if ! "$launchctl_bin" bootout "$current_target" >/dev/null 2>&1; then
+        rollback
+        die "failed to stop $label; restored the previous plist"
+    fi
+fi
+if [ "$legacy_preloaded" -eq 1 ]; then
+    legacy_was_loaded=1
+    if ! "$launchctl_bin" bootout "$legacy_target" >/dev/null 2>&1; then
+        rollback
+        die "failed to stop $legacy_label; restored the previous service"
+    fi
+fi
+
+should_load=1
+if [ "$load_mode" = preserve ] && [ "$current_was_loaded" -eq 0 ] && [ "$legacy_was_loaded" -eq 0 ]; then
+    should_load=0
+fi
+if [ "$should_load" -eq 1 ] && ! "$launchctl_bin" bootstrap "$domain" "$agent_path"; then
+    rollback
+    die "failed to load $label; restored the previous service"
+fi
+
+if [ -f "$legacy_path" ]; then
+    rm "$legacy_path"
+    printf 'Replaced %s with %s\n' "$legacy_label" "$label"
+fi

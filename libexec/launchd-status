@@ -1,0 +1,108 @@
+#!/bin/bash
+
+set -euo pipefail
+
+case "${1:-}" in
+    "") ;;
+    -h|--help)
+        printf 'Usage: funk launchd-status\n\nShow ownership, loaded state, process state, and log size for Funk services.\n'
+        exit 0
+        ;;
+    *)
+        printf 'Usage: funk launchd-status\n' >&2
+        exit 64
+        ;;
+esac
+
+uid=$(id -u)
+agent_dir="${FUNK_LAUNCHAGENTS_DIR:-$HOME/Library/LaunchAgents}"
+state_dir="${FUNK_STATE_DIR:-$HOME/.local/state/funk}"
+user_logs="${FUNK_USER_LOG_DIR:-$HOME/Library/Logs/Funk}"
+system_agent_dir="${FUNK_SYSTEM_LAUNCHDAEMONS_DIR:-/Library/LaunchDaemons}"
+system_logs="${FUNK_SYSTEM_LOG_DIR:-/Library/Logs/Funk}"
+launchctl_bin="${FUNK_LAUNCHCTL_BIN:-launchctl}"
+failures=0
+
+file_bytes() {
+    local path="$1"
+    if [ -f "$path" ]; then
+        stat -f %z "$path" 2>/dev/null || stat -c %s "$path" 2>/dev/null || printf '?'
+    else
+        printf '0'
+    fi
+}
+
+report() {
+    local domain="$1" label="$2" plist="$3" log="$4" lifecycle="$5"
+    local ownership=absent state=unloaded pid=- last_exit=- details loaded=no
+    if [ -L "$plist" ]; then
+        ownership=foreign
+    elif [ -f "$plist" ]; then
+        if grep -Fqx "<!-- funk-installer-owned: $label.v1 -->" "$plist"; then
+            ownership=ours
+        else
+            ownership=foreign
+        fi
+    fi
+    details=$("$launchctl_bin" print "$domain/$label" 2>/dev/null || true)
+    if [ -n "$details" ]; then
+        loaded=yes
+        state=$(printf '%s\n' "$details" | sed -n 's/^[[:space:]]*state = //p' | sed -n '1p')
+        [ -n "$state" ] || state=loaded
+        pid=$(printf '%s\n' "$details" | sed -n 's/^[[:space:]]*pid = //p' | sed -n '1p')
+        [ -n "$pid" ] || pid=-
+        last_exit=$(printf '%s\n' "$details" | sed -n 's/^[[:space:]]*last exit code = //p' | sed -n '1p')
+        [ -n "$last_exit" ] || last_exit=-
+    fi
+    printf '  %-40s %-9s ownership=%-7s lifecycle=%-9s pid=%-7s exit=%-4s log=%sB\n' \
+        "$label" "$state" "$ownership" "$lifecycle" "$pid" "$last_exit" "$(file_bytes "$log")"
+    if [ "$ownership" = foreign ] \
+        || { [ "$ownership" = absent ] && { [ "$lifecycle" != optional ] || [ "$loaded" = yes ]; }; } \
+        || { [ "$ownership" = ours ] && [ "$loaded" = no ] && [ "$lifecycle" != on-demand ]; } \
+        || { [ "$last_exit" != - ] && [ "$last_exit" != 0 ] && [ "$last_exit" != '(never exited)' ]; }; then
+        failures=$((failures + 1))
+    fi
+}
+
+report_legacy() {
+    local domain="$1" label="$2" plist="$3"
+    local loaded=no present=no
+    [ ! -e "$plist" ] && [ ! -L "$plist" ] || present=yes
+    "$launchctl_bin" print "$domain/$label" >/dev/null 2>&1 && loaded=yes
+    if [ "$present" = yes ] || [ "$loaded" = yes ]; then
+        printf '  %-40s legacy    plist=%-3s loaded=%s\n' "$label" "$present" "$loaded"
+        failures=$((failures + 1))
+    fi
+}
+
+printf 'Funk launchd services\n'
+report "gui/$uid" io.arthack.funk.update \
+    "$agent_dir/io.arthack.funk.update.plist" "$user_logs/update.log" periodic
+report "gui/$uid" io.arthack.funk.ensure-tailscale-online \
+    "$agent_dir/io.arthack.funk.ensure-tailscale-online.plist" "$user_logs/tailscale-online.log" periodic
+report "gui/$uid" io.arthack.funk.ensure-gog-auth \
+    "$agent_dir/io.arthack.funk.ensure-gog-auth.plist" "$user_logs/gog-authed.log" periodic
+report "gui/$uid" io.arthack.funk.keep-home-awake \
+    "$agent_dir/io.arthack.funk.keep-home-awake.plist" "$user_logs/home-awake.log" periodic
+report "gui/$uid" io.arthack.funk.caffeinate \
+    "$state_dir/io.arthack.funk.caffeinate.plist" /dev/null on-demand
+report "gui/$uid" io.arthack.funk.preserve-transcripts \
+    "$agent_dir/io.arthack.funk.preserve-transcripts.plist" "$user_logs/transcript-vault.log" periodic
+report system io.arthack.funk.harden-boot \
+    "$system_agent_dir/io.arthack.funk.harden-boot.plist" "$system_logs/harden-boot.log" optional
+
+report_legacy "gui/$uid" com.arthack.funk.update "$agent_dir/com.arthack.funk.update.plist"
+report_legacy "gui/$uid" com.arthack.funk.tailscale-online "$agent_dir/com.arthack.funk.tailscale-online.plist"
+report_legacy "gui/$uid" com.arthack.funk.gog-authed "$agent_dir/com.arthack.funk.gog-authed.plist"
+report_legacy "gui/$uid" com.arthack.funk.home-awake "$agent_dir/com.arthack.funk.home-awake.plist"
+report_legacy "gui/$uid" com.arthack.funk.home-awake-caffeinate \
+    "$state_dir/com.arthack.funk.home-awake-caffeinate.plist"
+report_legacy "gui/$uid" com.arthack.funk.transcript-vault \
+    "$agent_dir/com.arthack.funk.transcript-vault.plist"
+report_legacy system com.arthack.funk.harden-boot \
+    "$system_agent_dir/com.arthack.funk.harden-boot.plist"
+
+if [ "$failures" -ne 0 ]; then
+    printf 'funk launchd-status: %s ownership/install problem(s)\n' "$failures" >&2
+    exit 1
+fi

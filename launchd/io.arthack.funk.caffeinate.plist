@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!-- funk-installer-owned: io.arthack.funk.caffeinate.v1 -->
 <!--
   Idle-sleep suppression for home-awake, as its own job rather than a child
   process. launchd reaps the periodic checker's process group when that check
@@ -11,7 +12,7 @@
 <plist version="1.0">
 <dict>
   <key>Label</key>
-  <string>com.arthack.funk.home-awake-caffeinate</string>
+  <string>io.arthack.funk.caffeinate</string>
   <key>ProgramArguments</key>
   <array>
     <string>/usr/bin/caffeinate</string>

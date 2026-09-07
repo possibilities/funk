@@ -1,12 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- funk-installer-owned: io.arthack.funk.ensure-gog-auth.v1 -->
 <plist version="1.0">
 <dict>
   <key>Label</key>
-  <string>com.arthack.funk.home-awake</string>
+  <string>io.arthack.funk.ensure-gog-auth</string>
   <key>ProgramArguments</key>
   <array>
-    <string>__HOME_AWAKE__</string>
+    <string>__GOG_ENSURE_AUTHED__</string>
   </array>
   <key>EnvironmentVariables</key>
   <dict>
@@ -16,11 +17,7 @@
   <key>RunAtLoad</key>
   <true/>
   <key>StartInterval</key>
-  <integer>30</integer>
-  <key>WatchPaths</key>
-  <array>
-    <string>/Library/Preferences/SystemConfiguration</string>
-  </array>
+  <integer>900</integer>
   <key>ProcessType</key>
   <string>Background</string>
   <key>StandardOutPath</key>

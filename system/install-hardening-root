@@ -5,8 +5,10 @@ export PATH=/usr/bin:/bin:/usr/sbin:/sbin
 umask 022
 
 helper_target=/usr/local/libexec/funk-harden
-daemon_label=com.arthack.funk.harden-boot
+daemon_label=io.arthack.funk.harden-boot
+legacy_daemon_label=com.arthack.funk.harden-boot
 daemon_target="/Library/LaunchDaemons/$daemon_label.plist"
+legacy_daemon_target="/Library/LaunchDaemons/$legacy_daemon_label.plist"
 pf_conf=/etc/pf.conf
 anchor_line='anchor "com.arthack.funk.travel"'
 
@@ -55,6 +57,15 @@ printf '%s\n' "$target_user" | grep -Eq '^[A-Za-z_][A-Za-z0-9._-]*$' \
     || die "invalid user name: $target_user"
 target_uid=$(id -u "$target_user" 2>/dev/null) || die "user does not exist: $target_user"
 [ "$target_uid" -ge 500 ] || die "refusing system account: $target_user"
+lock_file=/var/run/funk-hardening-install.lock
+/usr/bin/shlock -p "$$" -f "$lock_file" \
+    || die "another Funk hardening installation is already running"
+tmpdir=
+cleanup() {
+    [ -z "$tmpdir" ] || rm -rf "$tmpdir"
+    rm -f "$lock_file"
+}
+trap cleanup EXIT
 
 source_root=$(cd -P -- "$source_root" && pwd)
 helper_source="$source_root/system/funk-harden"
@@ -65,7 +76,47 @@ daemon_source="$source_root/system/$daemon_label.plist"
     || die "invalid daemon source: $daemon_source"
 /usr/bin/plutil -lint "$daemon_source" >/dev/null \
     || die "invalid LaunchDaemon plist"
+daemon_marker="funk-installer-owned: $daemon_label.v1"
+grep -Fqx "<!-- $daemon_marker -->" "$daemon_source" \
+    || die "LaunchDaemon source lacks ownership marker"
 /bin/bash "$helper_source" validate
+
+if [ -e "$daemon_target" ] || [ -L "$daemon_target" ]; then
+    [ -f "$daemon_target" ] && [ ! -L "$daemon_target" ] \
+        && grep -Fqx "<!-- $daemon_marker -->" "$daemon_target" \
+        || die "refusing to replace a LaunchDaemon Funk does not own: $daemon_target"
+fi
+daemon_preloaded=0
+if /bin/launchctl print "system/$daemon_label" >/dev/null 2>&1; then
+    daemon_preloaded=1
+    [ -f "$daemon_target" ] \
+        || die "refusing to replace a loaded LaunchDaemon with no owned plist: $daemon_label"
+fi
+legacy_daemon_preloaded=0
+if /bin/launchctl print "system/$legacy_daemon_label" >/dev/null 2>&1; then
+    legacy_daemon_preloaded=1
+    [ -f "$legacy_daemon_target" ] \
+        || die "refusing to replace a loaded legacy LaunchDaemon with no owned plist: $legacy_daemon_label"
+fi
+if [ -e "$legacy_daemon_target" ] || [ -L "$legacy_daemon_target" ]; then
+    [ -f "$legacy_daemon_target" ] && [ ! -L "$legacy_daemon_target" ] \
+        || die "refusing invalid legacy LaunchDaemon: $legacy_daemon_target"
+    [ "$(stat -f '%Su' "$legacy_daemon_target")" = root ] \
+        || die "legacy LaunchDaemon must be root-owned"
+    /usr/bin/python3 - "$legacy_daemon_target" "$daemon_source" "$daemon_label" <<'PYTHON' \
+        || die "refusing to replace a legacy LaunchDaemon Funk does not own: $legacy_daemon_target"
+import plistlib
+import sys
+
+legacy_path, source_path, new_label = sys.argv[1:]
+with open(legacy_path, "rb") as handle:
+    legacy = plistlib.load(handle)
+with open(source_path, "rb") as handle:
+    source = plistlib.load(handle)
+legacy["Label"] = new_label
+raise SystemExit(0 if legacy == source else 1)
+PYTHON
+fi
 
 if [ ! -e /usr/local/libexec ]; then
     /usr/bin/install -d -o root -g wheel -m 0755 /usr/local/libexec
@@ -81,7 +132,6 @@ pf_mode=$(stat -f '%Lp' "$pf_conf")
 [ $((8#$pf_mode & 8#022)) -eq 0 ] || die "$pf_conf must not be group/world-writable"
 
 tmpdir=$(mktemp -d /private/tmp/funk-hardening-install.XXXXXX)
-trap 'rm -rf "$tmpdir"' EXIT
 
 if ! grep -Eq '^[[:space:]]*anchor[[:space:]]+"com\\.arthack\\.funk\\.travel"' "$pf_conf"; then
     pf_candidate="$tmpdir/pf.conf"
@@ -111,9 +161,46 @@ if [ ! -e /Library/Logs/Funk ]; then
     /usr/bin/install -d -o root -g wheel -m 0755 /Library/Logs/Funk
 fi
 guard_root_directory /Library/Logs/Funk
+daemon_backup=
+if [ -f "$daemon_target" ]; then
+    daemon_backup="$tmpdir/daemon.plist"
+    cp -p "$daemon_target" "$daemon_backup"
+fi
 /usr/bin/install -o root -g wheel -m 0644 "$daemon_source" "$daemon_target"
-/bin/launchctl bootout "system/$daemon_label" 2>/dev/null || true
-/bin/launchctl bootstrap system "$daemon_target"
+current_was_loaded=0
+legacy_was_loaded=0
+rollback_daemon() {
+    rm -f "$daemon_target"
+    if [ -n "$daemon_backup" ]; then
+        /usr/bin/install -o root -g wheel -m 0644 "$daemon_backup" "$daemon_target"
+        [ "$current_was_loaded" -eq 0 ] \
+            || /bin/launchctl bootstrap system "$daemon_target" >/dev/null 2>&1 || true
+    fi
+    [ "$legacy_was_loaded" -eq 0 ] \
+        || /bin/launchctl bootstrap system "$legacy_daemon_target" >/dev/null 2>&1 || true
+}
+if [ "$daemon_preloaded" -eq 1 ]; then
+    current_was_loaded=1
+    if ! /bin/launchctl bootout "system/$daemon_label" >/dev/null 2>&1; then
+        rollback_daemon
+        die "failed to stop $daemon_label; restored the previous plist"
+    fi
+fi
+if [ "$legacy_daemon_preloaded" -eq 1 ]; then
+    legacy_was_loaded=1
+    if ! /bin/launchctl bootout "system/$legacy_daemon_label" >/dev/null 2>&1; then
+        rollback_daemon
+        die "failed to stop $legacy_daemon_label; restored the previous service"
+    fi
+fi
+if ! /bin/launchctl bootstrap system "$daemon_target"; then
+    rollback_daemon
+    die "failed to load $daemon_label; restored the previous service"
+fi
+if [ -f "$legacy_daemon_target" ]; then
+    rm "$legacy_daemon_target"
+    printf 'Replaced %s with %s\n' "$legacy_daemon_label" "$daemon_label"
+fi
 
 printf 'Installed and loaded %s\n' "$daemon_label"
 printf 'Installed narrow sudoers rules for %s: status and travel only\n' "$target_user"

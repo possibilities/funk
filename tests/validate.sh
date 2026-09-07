@@ -47,10 +47,12 @@ libexec/install-android-launchers
 libexec/install-ghostty-terminfo
 libexec/initialize-configs
 libexec/install-update-agent
+libexec/install-user-launchagent
 libexec/install-tailscale-agent
 libexec/install-home-awake
 libexec/install-home-awake-agent
 libexec/verify-local-services
+libexec/launchd-status
 libexec/install-transcript-vault-agent
 libexec/configure-macos
 libexec/verify-notifications
@@ -167,33 +169,37 @@ for file in tests/*.sh; do
         || fail "$file drives the Tailscale helper without pinning the notifier"
 done
 
-# ./install runs with a deliberately minimal PATH, so a service check that
-# probes Agentweb, Agentbrain, or Tailscale by bare name finds nothing and
-# reports a healthy daemon as not answering — the shape of failure that looks
-# like a broken machine and is really a broken probe.
-grep -q '\.local/bin:/usr/local/bin:' libexec/verify-local-services \
-    || fail "verify-local-services must resolve its CLIs outside the installer's minimal PATH"
-for probe in agentweb agentbrain; do
-    grep -q "command -v $probe" libexec/verify-local-services \
-        || fail "verify-local-services must report a missing $probe as missing, not as an unhealthy service"
-done
-for label in agentbrain.worker agentweb.broker agentusage.observer; do
-    grep -F "$label" libexec/verify-local-services >/dev/null \
-        || fail "verify-local-services omits the AgentStart service label $label"
-done
-if grep -E 'agentweb\.daemon|agentusage\.daemon' \
+# ./install runs with a deliberately minimal PATH, so a service check reaches
+# each owning checkout by path rather than guessing at fleet labels or relying
+# on the interactive shell's PATH.
+grep -F '"$agentstart_status" --status' libexec/verify-local-services >/dev/null \
+    || fail "verify-local-services does not delegate fleet status to AgentStart"
+if grep -E 'agentbrain\.|agentweb\.|agentusage\.|agentscrape\.|agentsource\.|agentwiki\.' \
     libexec/verify-local-services >/dev/null; then
-    fail "verify-local-services still checks a retired AgentStart service label"
+    fail "verify-local-services duplicates AgentStart's fleet service manifest"
 fi
 
-plist_lint launchd/com.arthack.funk.update.plist.in >/dev/null
-plist_lint launchd/com.arthack.funk.tailscale-online.plist.in >/dev/null
-plist_lint launchd/com.arthack.funk.gog-authed.plist.in >/dev/null
-plist_lint launchd/com.arthack.funk.transcript-vault.plist.in >/dev/null
-plist_lint system/com.arthack.funk.harden-boot.plist >/dev/null
-plist_lint launchd/com.arthack.funk.home-awake.plist.in >/dev/null
-plist_lint launchd/com.arthack.funk.home-awake-caffeinate.plist >/dev/null
-update_plist=launchd/com.arthack.funk.update.plist.in
+plist_lint launchd/io.arthack.funk.update.plist.in >/dev/null
+plist_lint launchd/io.arthack.funk.ensure-tailscale-online.plist.in >/dev/null
+plist_lint launchd/io.arthack.funk.ensure-gog-auth.plist.in >/dev/null
+plist_lint launchd/io.arthack.funk.preserve-transcripts.plist.in >/dev/null
+plist_lint system/io.arthack.funk.harden-boot.plist >/dev/null
+plist_lint launchd/io.arthack.funk.keep-home-awake.plist.in >/dev/null
+plist_lint launchd/io.arthack.funk.caffeinate.plist >/dev/null
+for plist in launchd/io.arthack.funk.*.plist* system/io.arthack.funk.*.plist; do
+    label=$(plist_buddy -c 'Print :Label' "$plist")
+    printf '%s\n' "$label" | grep -Eq '^io\.arthack\.funk\.[a-z][a-z0-9-]*$' \
+        || fail "$plist label does not follow io.arthack.<project>.<verb>"
+    grep -Fqx "<!-- funk-installer-owned: $label.v1 -->" "$plist" \
+        || fail "$plist lacks its exact Funk ownership marker"
+done
+grep -F 'legacy_daemon_preloaded' system/install-hardening-root >/dev/null \
+    || fail "hardening migration does not detect cached legacy jobs"
+grep -F 'rollback_daemon' system/install-hardening-root >/dev/null \
+    || fail "hardening migration does not retain rollback"
+grep -F 'bootstrap system "$legacy_daemon_target"' system/install-hardening-root >/dev/null \
+    || fail "hardening migration cannot restore the legacy job"
+update_plist=launchd/io.arthack.funk.update.plist.in
 expected_update_hours='0
 6
 12
@@ -219,7 +225,7 @@ if plist_buddy -c 'Print :RunAtLoad' "$update_plist" >/dev/null 2>&1 \
     fail "scheduled updater has an unapproved extra trigger"
 fi
 
-tailscale_plist=launchd/com.arthack.funk.tailscale-online.plist.in
+tailscale_plist=launchd/io.arthack.funk.ensure-tailscale-online.plist.in
 [ "$(plist_buddy -c 'Print :RunAtLoad' "$tailscale_plist")" = true ] \
     || fail "Tailscale recovery agent does not run at login"
 [ "$(plist_buddy -c 'Print :StartInterval' "$tailscale_plist")" = 300 ] \
@@ -237,7 +243,7 @@ if plist_buddy -c 'Print :ProgramArguments:1' "$tailscale_plist" \
     fail "Tailscale recovery agent has an unapproved argument or trigger"
 fi
 
-home_awake_plist=launchd/com.arthack.funk.home-awake.plist.in
+home_awake_plist=launchd/io.arthack.funk.keep-home-awake.plist.in
 [ "$(plist_buddy -c 'Print :RunAtLoad' "$home_awake_plist")" = true ] \
     || fail "home-awake agent does not run at login"
 [ "$(plist_buddy -c 'Print :StartInterval' "$home_awake_plist")" = 30 ] \
@@ -256,7 +262,7 @@ if plist_buddy -c 'Print :ProgramArguments:1' "$home_awake_plist" \
     fail "home-awake agent has an unapproved argument"
 fi
 
-caffeinate_plist=launchd/com.arthack.funk.home-awake-caffeinate.plist
+caffeinate_plist=launchd/io.arthack.funk.caffeinate.plist
 [ "$(plist_buddy -c 'Print :ProgramArguments:0' "$caffeinate_plist")" \
     = /usr/bin/caffeinate ] \
     || fail "home-awake idle-sleep job does not run caffeinate"
@@ -315,7 +321,7 @@ fi
 grep -F '"$funk_command" install-home-awake' install >/dev/null \
     || fail "installer does not install the trusted-network agent"
 
-transcript_vault_plist=launchd/com.arthack.funk.transcript-vault.plist.in
+transcript_vault_plist=launchd/io.arthack.funk.preserve-transcripts.plist.in
 [ "$(plist_buddy -c 'Print :RunAtLoad' "$transcript_vault_plist")" = true ] \
     || fail "transcript vault agent does not run at login"
 [ "$(plist_buddy -c 'Print :StartInterval' "$transcript_vault_plist")" = 3600 ] \
@@ -1474,10 +1480,12 @@ grep -Fx 'cask "android-platform-tools", greedy: true' Brewfile >/dev/null \
 "$root/tests/gog-authed.sh"
 "$root/tests/funk-notify.sh"
 "$root/tests/dismiss-terminal-notifier.sh"
+"$root/tests/launchd-status.sh"
 # home-awake asserts a root helper's installability through BSD stat -f and
 # drives pmset and caffeinate, so it only means anything on macOS.
 if [ "$(uname -s)" = Darwin ]; then
     "$root/tests/home-awake.sh"
+    "$root/tests/install-user-launchagent.sh"
 else
     skip "home-awake suite (root helper installability, idle-sleep hold-off)" \
         "needs macOS: BSD stat -f, pmset, caffeinate"
@@ -1547,7 +1555,7 @@ if sed 's/^[[:space:]]*#.*$//' \
     libexec/converge-brewfile libexec/converge-brew-casks \
     libexec/repair-cask-artifacts \
     "$update_agentstart_root/scripts/sync-skills" \
-    launchd/com.arthack.funk.update.plist.in \
+    launchd/io.arthack.funk.update.plist.in \
     | grep -Eqi 'bundle cleanup|uninstall|fetch-head|telegram|sudo'; then
     fail "scheduled updater contains a prohibited operation"
 fi
