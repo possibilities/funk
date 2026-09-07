@@ -168,6 +168,7 @@ agentstart_root="$HOME/code/agentstart"
 
 "$funk_command" install-updater
 "$funk_command" install-tailscale-recovery
+"$funk_command" install-gog-auth-check
 "$funk_command" install-home-awake
 "$funk_command" install-transcript-vault
 "$funk_command" configure-macos

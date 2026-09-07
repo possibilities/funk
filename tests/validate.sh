@@ -174,6 +174,8 @@ done
 # on the interactive shell's PATH.
 grep -F '"$agentstart_status" --status' libexec/verify-local-services >/dev/null \
     || fail "verify-local-services does not delegate fleet status to AgentStart"
+grep -F '"$funk_command" install-gog-auth-check' install >/dev/null \
+    || fail "installer does not converge the Google auth LaunchAgent"
 if grep -E 'agentbrain\.|agentweb\.|agentusage\.|agentscrape\.|agentsource\.|agentwiki\.' \
     libexec/verify-local-services >/dev/null; then
     fail "verify-local-services duplicates AgentStart's fleet service manifest"

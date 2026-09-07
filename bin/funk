@@ -41,6 +41,8 @@ Commands:
   install-updater    Install and load Funk's four-times-daily user LaunchAgent
   install-tailscale-recovery
                       Install the login/five-minute Tailscale recovery agent
+  install-gog-auth-check
+                      Install the login/fifteen-minute Google auth check
   home-awake [option] Converge or report home-network sleep and screen lock
   install-home-awake  Install the home-network sleep and screen-lock agent
   install-agentlaunch-shims
@@ -109,6 +111,10 @@ case "$command_name" in
     install-tailscale-recovery)
         shift
         exec "$FUNK_ROOT/libexec/install-tailscale-agent" "$@"
+        ;;
+    install-gog-auth-check)
+        shift
+        exec "$FUNK_ROOT/libexec/install-gog-authed-agent" "$@"
         ;;
     home-awake)
         shift
