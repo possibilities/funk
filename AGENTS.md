@@ -140,9 +140,10 @@ so restoring it is not a convenience fix either.
 *everything* everywhere. The checks that need macOS to mean anything — the
 `pfctl` parse of the travel firewall, Gatekeeper quarantine xattrs, the
 Homebrew cask helpers that read ownership with BSD `stat -f`, the `funk update`
-path through AgentStart's Darwin-gated skill sync, and the home-awake and
-Android launcher suites — skip themselves off Darwin and print what they
-skipped, and the summary line repeats the list. Everything else is portable:
+path through AgentStart's Darwin-gated skill sync, gog auth LaunchAgent
+retirement, and the home-awake and Android launcher suites — skip themselves
+off Darwin and print what they skipped, and the summary line repeats the list.
+Everything else is portable:
 the policy greps, `bash -n` over every shell file, shellcheck, and the launchd
 plist assertions, which read through `tests/lib/plist` (stdlib `plistlib`)
 rather than PlistBuddy and plutil. `tests/ssh-tailnet-config.sh` is portable

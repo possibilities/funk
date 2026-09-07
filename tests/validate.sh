@@ -1485,7 +1485,12 @@ grep -Fx 'cask "android-platform-tools", greedy: true' Brewfile >/dev/null \
 "$root/tests/tailscale-online.sh"
 "$root/tests/ssh-tailnet-config.sh"
 "$root/tests/gog-authed.sh"
-"$root/tests/retire-gog-auth-agent.sh"
+if [ "$(uname -s)" = Darwin ]; then
+    "$root/tests/retire-gog-auth-agent.sh"
+else
+    skip "gog auth LaunchAgent retirement suite" \
+        "needs macOS: retirement is Darwin-gated and checks native plist ownership"
+fi
 "$root/tests/funk-notify.sh"
 "$root/tests/dismiss-terminal-notifier.sh"
 "$root/tests/launchd-status.sh"
