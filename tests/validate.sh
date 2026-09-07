@@ -1487,13 +1487,13 @@ grep -Fx 'cask "android-platform-tools", greedy: true' Brewfile >/dev/null \
 "$root/tests/gog-authed.sh"
 if [ "$(uname -s)" = Darwin ]; then
     "$root/tests/retire-gog-auth-agent.sh"
+    "$root/tests/launchd-status.sh"
 else
-    skip "gog auth LaunchAgent retirement suite" \
-        "needs macOS: retirement is Darwin-gated and checks native plist ownership"
+    skip "LaunchAgent retirement and status suites" \
+        "needs macOS: native plist ownership checks and Darwin-gated retirement"
 fi
 "$root/tests/funk-notify.sh"
 "$root/tests/dismiss-terminal-notifier.sh"
-"$root/tests/launchd-status.sh"
 # home-awake asserts a root helper's installability through BSD stat -f and
 # drives pmset and caffeinate, so it only means anything on macOS.
 if [ "$(uname -s)" = Darwin ]; then
