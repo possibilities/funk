@@ -80,8 +80,6 @@ report "gui/$uid" io.arthack.funk.update \
     "$agent_dir/io.arthack.funk.update.plist" "$user_logs/update.log" periodic
 report "gui/$uid" io.arthack.funk.ensure-tailscale-online \
     "$agent_dir/io.arthack.funk.ensure-tailscale-online.plist" "$user_logs/tailscale-online.log" periodic
-report "gui/$uid" io.arthack.funk.ensure-gog-auth \
-    "$agent_dir/io.arthack.funk.ensure-gog-auth.plist" "$user_logs/gog-authed.log" periodic
 report "gui/$uid" io.arthack.funk.keep-home-awake \
     "$agent_dir/io.arthack.funk.keep-home-awake.plist" "$user_logs/home-awake.log" periodic
 report "gui/$uid" io.arthack.funk.caffeinate \
@@ -93,7 +91,6 @@ report system io.arthack.funk.harden-boot \
 
 report_legacy "gui/$uid" com.arthack.funk.update "$agent_dir/com.arthack.funk.update.plist"
 report_legacy "gui/$uid" com.arthack.funk.tailscale-online "$agent_dir/com.arthack.funk.tailscale-online.plist"
-report_legacy "gui/$uid" com.arthack.funk.gog-authed "$agent_dir/com.arthack.funk.gog-authed.plist"
 report_legacy "gui/$uid" com.arthack.funk.home-awake "$agent_dir/com.arthack.funk.home-awake.plist"
 report_legacy "gui/$uid" com.arthack.funk.home-awake-caffeinate \
     "$state_dir/com.arthack.funk.home-awake-caffeinate.plist"

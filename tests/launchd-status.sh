@@ -18,7 +18,6 @@ mkdir "$agent_dir" "$state_dir" "$logs" "$system_agents" "$system_logs" "$loaded
 
 labels='io.arthack.funk.update
 io.arthack.funk.ensure-tailscale-online
-io.arthack.funk.ensure-gog-auth
 io.arthack.funk.keep-home-awake
 io.arthack.funk.preserve-transcripts'
 for label in $labels; do
