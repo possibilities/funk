@@ -1,0 +1,21 @@
+# Personal defaults. AgentStart copies these into a native invocation profile.
+# Edit here; the next wrapped Codex launch reads the changes.
+# CLI flags and trusted project config can override these defaults.
+model = "gpt-6-astra"
+model_reasoning_effort = "high"
+service_tier = "fast"
+approvals_reviewer = "user"
+
+[agents]
+max_concurrent_threads_per_session = 12
+default_subagent_model = "gpt-5.6-sol"
+default_subagent_reasoning_effort = "medium"
+
+[features]
+hooks = true
+js_repl = false
+memories = false
+chronicle = false
+
+[features.context_management]
+experimental_mode = true

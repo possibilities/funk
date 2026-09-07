@@ -206,7 +206,14 @@ calls `~/code/agentstart/scripts/install.sh --install` and refuses to finish
 if that checkout is missing; the scheduled updater calls
 `~/code/agentstart/scripts/sync-skills` the same way. Do not grow a second
 installer or skill-synchronization path in this repository — a new AI tool,
-skill, or harness configuration belongs in AgentStart.
+skill, or generated harness configuration belongs in AgentStart.
+
+Personal Codex preferences are an authored-source exception, tracked in
+`config/harnesses/codex.toml`. AgentStart's Codex shim copies that file into a
+private native profile for each invocation and adds temporary cwd/project
+trust; it owns the wrapper and its installation. The source is never Stowed
+over the live config, and trust, credentials, generated integrations, and
+session state never belong in it. See `config/harnesses/README.md`.
 
 Every operator guidance file the harnesses read is AgentStart's, linked by its
 installer rather than stowed here: the deliberately empty `~/AGENTS.md` (with
