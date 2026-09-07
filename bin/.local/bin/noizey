@@ -1,0 +1,10 @@
+#!/bin/bash
+
+set -euo pipefail
+
+binary="${FUNK_NOIZEY_DIR:-$HOME/.local/lib/noizey}/noizey"
+if [ ! -x "$binary" ]; then
+    printf 'noizey: not installed; run: funk install-noizey\n' >&2
+    exit 127
+fi
+exec "$binary" "$@"

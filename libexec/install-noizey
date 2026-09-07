@@ -1,0 +1,73 @@
+#!/bin/bash
+
+set -euo pipefail
+
+die() {
+    printf 'funk install-noizey: %s\n' "$*" >&2
+    exit 1
+}
+
+[ "$#" -eq 0 ] || {
+    printf 'Usage: funk install-noizey\n' >&2
+    exit 64
+}
+[ "$(id -u)" -ne 0 ] || die "run as the target user, not root"
+
+funk_root=${FUNK_ROOT:?FUNK_ROOT is not set}
+repo=${FUNK_NOIZEY_ROOT:-$HOME/code/noizey}
+destination=${FUNK_NOIZEY_DIR:-$HOME/.local/lib/noizey}
+go_bin=${FUNK_NOIZEY_GO_BIN:-go}
+case "$destination" in
+    /*) ;;
+    *) die "installation directory must be an absolute path" ;;
+esac
+[ -f "$repo/go.mod" ] && [ -f "$repo/main.go" ] \
+    || die "Noizey TUI source is missing at $repo; clone/update the Noizey checkout first"
+repo=$(cd -P -- "$repo" && pwd)
+[ "$(git -C "$repo" rev-parse --show-toplevel)" = "$repo" ] \
+    || die "Noizey must be the root of its Git checkout"
+[ -z "$(git -C "$repo" status --porcelain)" ] \
+    || die "$repo has local modifications; commit them before installing"
+revision=$(git -C "$repo" rev-parse HEAD)
+command -v "$go_bin" >/dev/null 2>&1 \
+    || die "Go is missing; run ./install to converge the Brewfile"
+
+# GNU Stow owns the command on PATH; it refuses an unrelated existing noizey.
+"$funk_root/bin/funk" stow bin
+
+owner="$destination/.funk-owner"
+if [ -e "$destination" ] || [ -L "$destination" ]; then
+    [ -d "$destination" ] && [ ! -L "$destination" ] \
+        && [ -f "$owner" ] && [ ! -L "$owner" ] \
+        && [ "$(cat "$owner")" = funk-noizey-v1 ] \
+        || die "refusing an installation directory not owned by Funk: $destination"
+else
+    mkdir -p "$destination"
+    printf '%s\n' funk-noizey-v1 >"$owner"
+fi
+binary="$destination/noizey"
+[ ! -L "$binary" ] || die "refusing to replace a symlink: $binary"
+[ ! -e "$binary" ] || [ -f "$binary" ] \
+    || die "refusing a non-file binary destination: $binary"
+
+staged=$(mktemp "$destination/.incoming.XXXXXX")
+cleanup() { if [ -e "$staged" ]; then rm "$staged"; fi; }
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+trap 'exit 129' HUP
+
+# Build outside the source tree and replace only a completed executable. A
+# failed build leaves both the deployed binary and its running processes alone.
+CGO_ENABLED=1 "$go_bin" -C "$repo" build -mod=readonly -trimpath -o "$staged" .
+"$staged" --help >/dev/null 2>&1 || die "built Noizey failed its startup check"
+[ "$(git -C "$repo" rev-parse HEAD)" = "$revision" ] \
+    && [ -z "$(git -C "$repo" status --porcelain)" ] \
+    || die "Noizey source changed during the build; keeping the installed binary"
+if [ -x "$binary" ] && cmp -s "$staged" "$binary"; then
+    printf 'Noizey is current at %s (%s)\n' "$binary" "$revision"
+else
+    chmod 0755 "$staged"
+    mv "$staged" "$binary"
+    printf 'Installed Noizey at %s (%s)\n' "$binary" "$revision"
+fi

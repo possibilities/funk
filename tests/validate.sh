@@ -44,6 +44,7 @@ libexec/install-chuchu-lab-theme
 libexec/android-screen-copy
 libexec/install-android-launchers
 libexec/install-ghostty-terminfo
+libexec/install-noizey
 libexec/initialize-configs
 libexec/install-update-agent
 libexec/install-user-launchagent
@@ -74,6 +75,7 @@ bin/.local/bin/tmux-move-window
 bin/.local/bin/focus-address-bar
 bin/.local/bin/dismiss-terminal-notifier
 bin/.local/bin/ginit
+bin/.local/bin/noizey
 bin/.local/bin/ghinit
 bin/.local/bin/tailscale-ensure-online
 bin/.local/bin/home-awake
@@ -88,6 +90,7 @@ tests/adb-wireless.sh
 tests/android-launchers.sh
 tests/chuchu-theme.sh
 tests/ghostty-terminfo.sh
+tests/noizey.sh
 tests/home-awake.sh
 tests/ssh-tailnet-config.sh
 tests/kiosk-launcher.sh
@@ -122,6 +125,8 @@ tests/fixtures/terminal-notifier
 tests/fixtures/terminal-notifier-remove-limit
 tests/fixtures/unzip-chuchu
 tests/fixtures/zig
+tests/fixtures/go-noizey
+tests/fixtures/stow-noizey
 tests/validate.sh
 "
 
@@ -443,6 +448,8 @@ brew "neovim"
 brew "tmux"
 brew "nvm"
 brew "gh"
+# Native Noizey terminal mixer.
+brew "go"
 brew "azure-cli"
 brew "jq"
 # pdftotext, required by Agentscrape and Agentbrain to read PDFs.
@@ -515,6 +522,13 @@ mkdir -p \
 # the fake prefix the same way so AgentStart's Node-based policy renderer tests
 # the production path contract instead of inheriting the invoking shell's PATH.
 ln -s "$update_node_bin" "$update_brew_prefix/bin/node"
+# Use isolated Noizey source, compiler and Stow fixtures on the real scheduled
+# path; this suite must never replace the operator's deployed audio mixer.
+"$root/tests/noizey.sh" --fixture "$update_code_root/noizey"
+export FUNK_NOIZEY_ROOT="$update_code_root/noizey"
+export FUNK_NOIZEY_DIR="$update_test_dir/noizey-install"
+export FUNK_NOIZEY_GO_BIN="$root/tests/fixtures/go-noizey"
+export FUNK_STOW_BIN="$root/tests/fixtures/stow-noizey"
 printf '%s\n' '---' 'name: fixture' '---' '# Fixture' \
     >"$update_code_root/agentfixture/skills/fixture/SKILL.md"
 # The real AgentStart renderer now follows synchronization by building the
@@ -631,6 +645,7 @@ else
         "needs macOS: AgentStart sync-skills is Darwin-gated"
 fi
 
+unset FUNK_NOIZEY_ROOT FUNK_NOIZEY_DIR FUNK_NOIZEY_GO_BIN FUNK_STOW_BIN
 # The skill synchronization behavior itself is AgentStart's and is asserted by
 # ~/code/agentstart/tests/validate.sh. Funk asserts only its own wiring: the
 # scheduled updater must preflight and invoke the AgentStart sync path.
@@ -1305,6 +1320,14 @@ grep -F "lab_package='com.arthack.chuchu.lab'" libexec/install-chuchu-lab-theme 
     >/dev/null || fail "Chuchu theme installer lost its Lab package boundary"
 "$root/tests/chuchu-theme.sh"
 "$root/tests/ghostty-terminfo.sh"
+"$root/tests/noizey.sh"
+grep -Fx 'brew "go"' Brewfile >/dev/null || fail "Noizey build dependency is missing"
+# shellcheck disable=SC2016 # Check the exact convergence call sites.
+grep -F '"$funk_command" install-noizey' install >/dev/null \
+    || fail "default installation does not converge Noizey"
+# shellcheck disable=SC2016
+grep -F '"$noizey_installer" || status=$?' libexec/funk-update >/dev/null \
+    || fail "scheduled updates do not converge Noizey"
 # shellcheck disable=SC2016 # Match the literal shell variable in the script.
 grep -F '"$funk_root/bin/funk" yabai maintain' libexec/install-window-manager >/dev/null \
     || fail "window installer does not reconcile the Yabai scripting addition"

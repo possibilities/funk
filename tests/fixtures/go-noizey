@@ -1,0 +1,23 @@
+#!/bin/bash
+
+set -euo pipefail
+[ "${FUNK_TEST_NOIZEY_GO_FAIL:-0}" = 0 ] || exit 23
+[ "$1" = -C ] && [ "$3" = build ] || exit 64
+repo=$2
+shift 3
+output=
+while [ "$#" -gt 0 ]; do
+    if [ "$1" = -o ]; then output=$2; shift; fi
+    shift
+done
+[ -n "$output" ] || exit 64
+cat >"$output" <<'EOF'
+#!/bin/bash
+printf 'Noizey fixture\n'
+printf '<%s>\n' "$@"
+exit "${FUNK_TEST_NOIZEY_EXEC_EXIT:-0}"
+EOF
+chmod +x "$output"
+if [ "${FUNK_TEST_NOIZEY_DIRTY_BUILD:-0}" = 1 ]; then
+    printf '// concurrent source edit\n' >>"$repo/main.go"
+fi

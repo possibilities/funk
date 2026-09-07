@@ -1,0 +1,8 @@
+#!/bin/bash
+
+set -euo pipefail
+# The installer tests never write to the invoking account's real Stow target.
+if [ -n "${FUNK_TEST_NOIZEY_STOW_LOG:-}" ]; then
+    printf '<%s>\n' "$@" >>"$FUNK_TEST_NOIZEY_STOW_LOG"
+fi
+exit "${FUNK_TEST_NOIZEY_STOW_EXIT:-0}"

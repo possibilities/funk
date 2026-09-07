@@ -34,6 +34,7 @@ Commands:
                       Install Ghostty's terminal definition for remote shells
   install-ghostty-themes
                       Install the interactive Ghostty theme picker
+  install-noizey      Build and install the global Noizey terminal command
   ssh-tailnet-config [--check]
                       Write ~/.ssh/config.d from live Tailscale state
   git-identity [--status]
@@ -93,6 +94,10 @@ case "$command_name" in
     install-ghostty-themes)
         shift
         exec "$FUNK_ROOT/libexec/install-ghostty-themes" "$@"
+        ;;
+    install-noizey)
+        shift
+        exec "$FUNK_ROOT/libexec/install-noizey" "$@"
         ;;
     ssh-tailnet-config)
         shift

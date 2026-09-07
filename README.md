@@ -84,6 +84,8 @@ funk install-android-launchers
                      # converge the four Screen Copy applications
 funk install-ghostty-terminfo
                      # expose Ghostty capabilities to remote shells
+funk install-noizey  # build and install the global terminal sound mixer
+noizey               # launch from any directory
 funk backup onsite --check
                      # validate Silverbird backup prerequisites
 funk help            # everything else
@@ -94,6 +96,19 @@ one is attached. With none attached they recover the existing wireless ADB
 connection; emulators are ignored and multiple authorized USB devices are
 rejected as ambiguous. If neither USB nor wireless is available, the launcher
 posts a macOS notification instead of failing invisibly.
+
+Noizey's native terminal executable is built from the clean `~/code/noizey`
+checkout into `~/.local/lib/noizey/noizey`. Funk's `bin` Stow package exposes
+`~/.local/bin/noizey` on PATH. Both `./install` and `funk update` refresh it;
+`funk install-noizey` runs just that installation. Go is declared in the
+Brewfile, and building also requires the Xcode command-line tools.
+
+Clone Noizey before the first installation. Funk builds the checked-out
+revision without pulling or moving its branch, refuses dirty source, and
+keeps the previous executable if a build fails. Existing presets/settings
+and running playback are preserved. `FUNK_NOIZEY_ROOT` can select another
+clean checkout; `FUNK_NOIZEY_DIR` changes the native installation directory
+and must also be set when launching through the wrapper.
 
 ## Test
 

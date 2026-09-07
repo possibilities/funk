@@ -8,6 +8,8 @@ brew "neovim"
 brew "tmux"
 brew "nvm"
 brew "gh"
+# Native Noizey terminal mixer.
+brew "go"
 brew "azure-cli"
 brew "jq"
 # pdftotext, required by Agentscrape and Agentbrain to read PDFs.
