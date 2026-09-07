@@ -1,0 +1,47 @@
+#!/usr/bin/env python3
+"""Remove Funk's retired browser CLI packages after profile migration.
+
+Run after AgentBrowse migration from full install or explicitly; never from the scheduled updater.
+The Apple package itself is removed by Apple's administrator-only uninstaller.
+"""
+import json
+import argparse
+import os
+from pathlib import Path
+import subprocess
+import sys
+import shlex
+
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument("--apple", action="store_true", help="also request macOS administrator authorization for the Apple package removal")
+args = parser.parse_args()
+
+home = Path.home()
+source = home / "Library/Application Support/agentbrowse-infra/runtime/volumes"
+receipts = home / ".local/share/ab-hypeman/migration"
+for entity in source.glob("*/entity.json"):
+    name = entity.parent.name
+    receipt = json.loads((receipts / (name + ".json")).read_text())
+    if receipt.get("complete") is not True or receipt["source"]["name"] != name:
+        sys.exit("refusing runtime retirement before verified profile migration")
+
+link = home / ".docker/cli-plugins/docker-buildx"
+if link.is_symlink():
+    target = link.resolve()
+    if str(target).endswith("/docker/.docker/cli-plugins/docker-buildx") and "/funk/" in str(target):
+        link.unlink()
+    elif not link.exists() and "funk" in os.readlink(link):
+        link.unlink()
+    else:
+        sys.exit("refusing a foreign Docker plugin link")
+for package in ("docker-buildx", "docker"):
+    if subprocess.run(["brew", "list", "--versions", package], capture_output=True).returncode == 0:
+        subprocess.run(["brew", "uninstall", package], check=True)
+print("Retired Docker CLI packages; browser profile sources and credentials retained")
+if args.apple and Path("/usr/local/bin/container").exists():
+    status = subprocess.run(["/usr/local/bin/container", "system", "status"], capture_output=True, text=True)
+    if "not running" not in (status.stdout + status.stderr).lower():
+        sys.exit("stop the owned Apple container service before removing its package")
+    helper = Path(__file__).resolve().parent.parent / "system/retire-apple-container"
+    command = "/bin/bash " + shlex.quote(str(helper))
+    subprocess.run(["osascript", "-e", "do shell script " + json.dumps(command) + " with administrator privileges"], check=True)
