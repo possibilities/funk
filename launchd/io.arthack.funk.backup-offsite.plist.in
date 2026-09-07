@@ -1,25 +1,31 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<!-- funk-installer-owned: io.arthack.funk.preserve-transcripts.v1 -->
+<!-- funk-installer-owned: io.arthack.funk.backup-offsite.v1 -->
 <plist version="1.0">
 <dict>
   <key>Label</key>
-  <string>io.arthack.funk.preserve-transcripts</string>
+  <string>io.arthack.funk.backup-offsite</string>
   <key>FunkInstallerOwner</key>
-  <string>io.arthack.funk.preserve-transcripts.v1</string>
+  <string>io.arthack.funk.backup-offsite.v1</string>
   <key>ProgramArguments</key>
   <array>
-    <string>__TRANSCRIPT_VAULT__</string>
+    <string>__FUNK_BACKUP__</string>
+    <string>offsite</string>
   </array>
   <key>EnvironmentVariables</key>
   <dict>
     <key>HOME</key>
     <string>__FUNK_HOME__</string>
+    <key>FUNK_BACKUP_LOG</key>
+    <string>__FUNK_LOG_PATH__</string>
   </dict>
-  <key>RunAtLoad</key>
-  <true/>
-  <key>StartInterval</key>
-  <integer>3600</integer>
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>4</integer>
+    <key>Minute</key>
+    <integer>0</integer>
+  </dict>
   <key>ProcessType</key>
   <string>Background</string>
   <key>LowPriorityIO</key>

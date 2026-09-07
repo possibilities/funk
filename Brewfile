@@ -16,7 +16,7 @@ brew "docker-buildx"
 brew "poppler"
 brew "terminal-notifier"
 brew "yq"
-# Snapshots the Claude Code transcript archive to silverbird (transcript-vault).
+# Encrypted comprehensive onsite and offsite account backups.
 brew "restic"
 brew "ripgrep"
 brew "fzf"

@@ -8,15 +8,10 @@
 #      /Volumes/Scratch (additive: files are added and grown, never deleted).
 #   2. refresh the agentchats session-search index over the live agent
 #      stores, so `agentchats search` sees today's conversations.
-#   3. restic backup of the archive plus the live ~/.claude to the
-#      silverbird repository whenever that host is reachable. No forget or
-#      prune anywhere: repository snapshots are kept forever. (B2 was
-#      deliberately dropped as a transcript target — the operator does not
-#      want long-term session data there.)
-# Stages degrade independently. The exit status reflects preservation only:
-# nonzero when the live sync failed, or when silverbird was reachable and
-# its backup failed. An unreachable silverbird is a clean skip.
-# Runs hourly (and at login) from io.arthack.funk.preserve-transcripts.
+# Restic is deliberately separate. `funk backup onsite` calls this before its
+# comprehensive snapshot, while the offsite job backs up the live agent stores
+# directly. Keeping transcript archiving independent means a search-index or
+# archive problem is visible without blocking unrelated home data.
 
 set -uo pipefail
 
@@ -31,8 +26,6 @@ ARCHIVE_ROOT=/Volumes/Scratch/claude-archive
 ARCHIVE_HOME="$ARCHIVE_ROOT/home"
 CANON="$ARCHIVE_HOME/.claude/projects"
 LIVE="$HOME/.claude/projects"
-CREDS_DIR="$HOME/.config/restic"
-export RESTIC_CACHE_DIR=/Volumes/Scratch/cache/restic
 
 log() {
     printf '[%s] %s\n' "$(date '+%Y-%m-%dT%H:%M:%S')" "$*"
@@ -146,59 +139,9 @@ else
     log "live projects directory missing; sync skipped"
 fi
 
-# --- 2. restic snapshots ---------------------------------------------------
-backup_to() {
-    # Source the repo env in a subshell so repositories cannot leak
-    # credentials or targets into each other.
-    local name="$1"
-    (
-        set -a
-        # shellcheck disable=SC1090
-        . "$CREDS_DIR/$name.env" || exit 90
-        set +a
-        restic unlock >/dev/null 2>&1 || true # removes stale locks only
-        exec restic backup \
-            --quiet \
-            --retry-lock 5m \
-            --tag claude-transcripts \
-            --exclude "$ARCHIVE_ROOT/home/.cache" \
-            --exclude "$HOME/.claude/cache" \
-            --exclude "$HOME/.claude/paste-cache" \
-            --exclude "$HOME/.claude/chrome" \
-            --exclude "$HOME/.claude/daemon" \
-            --exclude "$HOME/.claude/telemetry" \
-            --exclude "$HOME/.claude/session-env" \
-            --exclude "$HOME/.claude/shell-snapshots" \
-            --exclude "$HOME/.claude/downloads" \
-            --exclude "$HOME/.claude/debug" \
-            --exclude '*.merge-tmp' \
-            "$ARCHIVE_ROOT" \
-            "$HOME/.claude" \
-            "$HOME/.claude.json"
-    )
-}
-
-sb_rc=0
-if [ -f "$CREDS_DIR/silverbird.env" ]; then
-    if ssh -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new \
-        silverbird true 2>/dev/null; then
-        log "restic backup to silverbird starting"
-        if backup_to silverbird; then
-            log "silverbird backup complete"
-        else
-            sb_rc=$?
-            log "ERROR: silverbird backup failed (exit $sb_rc)"
-        fi
-    else
-        log "SKIP silverbird: unreachable"
-    fi
-else
-    log "SKIP silverbird: $CREDS_DIR/silverbird.env missing"
-fi
-
-if [ "$sync_rc" -eq 0 ] && [ "$sb_rc" -eq 0 ]; then
+if [ "$sync_rc" -eq 0 ]; then
     log "vault run complete"
     exit 0
 fi
-log "vault run finished with preservation errors (sync=$sync_rc silverbird=$sb_rc)"
+log "vault run finished with preservation errors (sync=$sync_rc)"
 exit 1

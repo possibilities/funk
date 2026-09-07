@@ -1,0 +1,5 @@
+#!/bin/bash
+
+set -euo pipefail
+printf '%s\n' "$*" >>"${FUNK_TEST_RESTIC_LOG:?}"
+exit "${FUNK_TEST_RESTIC_EXIT:-0}"

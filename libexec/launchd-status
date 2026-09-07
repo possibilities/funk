@@ -84,8 +84,10 @@ report "gui/$uid" io.arthack.funk.keep-home-awake \
     "$agent_dir/io.arthack.funk.keep-home-awake.plist" "$user_logs/home-awake.log" periodic
 report "gui/$uid" io.arthack.funk.caffeinate \
     "$state_dir/io.arthack.funk.caffeinate.plist" /dev/null on-demand
-report "gui/$uid" io.arthack.funk.preserve-transcripts \
-    "$agent_dir/io.arthack.funk.preserve-transcripts.plist" "$user_logs/transcript-vault.log" periodic
+report "gui/$uid" io.arthack.funk.backup-onsite \
+    "$agent_dir/io.arthack.funk.backup-onsite.plist" "$user_logs/backup-onsite.log" periodic
+report "gui/$uid" io.arthack.funk.backup-offsite \
+    "$agent_dir/io.arthack.funk.backup-offsite.plist" "$user_logs/backup-offsite.log" periodic
 report system io.arthack.funk.harden-boot \
     "$system_agent_dir/io.arthack.funk.harden-boot.plist" "$system_logs/harden-boot.log" optional
 
@@ -96,6 +98,11 @@ report_legacy "gui/$uid" com.arthack.funk.home-awake-caffeinate \
     "$state_dir/com.arthack.funk.home-awake-caffeinate.plist"
 report_legacy "gui/$uid" com.arthack.funk.transcript-vault \
     "$agent_dir/com.arthack.funk.transcript-vault.plist"
+report_legacy "gui/$uid" io.arthack.funk.preserve-transcripts \
+    "$agent_dir/io.arthack.funk.preserve-transcripts.plist"
+report_legacy "gui/$uid" backup.snapshot-silverbird \
+    "$agent_dir/backup.snapshot-silverbird.plist"
+report_legacy "gui/$uid" backup.snapshot "$agent_dir/backup.snapshot.plist"
 report_legacy system com.arthack.funk.harden-boot \
     "$system_agent_dir/com.arthack.funk.harden-boot.plist"
 

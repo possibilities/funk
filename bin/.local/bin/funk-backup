@@ -1,0 +1,400 @@
+#!/bin/bash
+
+# Comprehensive encrypted Restic backup for this account. Silverbird is the
+# high-frequency, broad recovery copy; B2 carries the smaller disaster-
+# recovery set. Application snapshots degrade independently so one unhealthy
+# database never prevents the remaining home data from reaching Restic.
+
+set -uo pipefail
+umask 077
+
+PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$HOME/.local/bin"
+script_dir=$(cd -P -- "$(dirname -- "$0")" && pwd)
+transcript_helper="${FUNK_TRANSCRIPT_VAULT_BIN:-$script_dir/transcript-vault}"
+
+usage() {
+    printf 'Usage: funk backup onsite|offsite [--check]\n'
+}
+
+case "${1:-}" in
+    onsite) repository_name=silverbird ;;
+    offsite) repository_name=b2 ;;
+    -h|--help) usage; exit 0 ;;
+    *) usage >&2; exit 64 ;;
+esac
+tier=$1
+case "${2:-}" in
+    "") check_only=0 ;;
+    --check) check_only=1 ;;
+    *) usage >&2; exit 64 ;;
+esac
+[ "$#" -le 2 ] || { usage >&2; exit 64; }
+
+credentials="${FUNK_BACKUP_CREDENTIALS:-$HOME/.config/restic/$repository_name.env}"
+state_root="$HOME/.local/state/funk"
+stage_root="$state_root/backup-staging/$tier"
+log_path="${FUNK_BACKUP_LOG:-$HOME/Library/Logs/Funk/backup-$tier.log}"
+lock_dir="/tmp/funk-backup-$tier.$(id -u).lock"
+
+log() {
+    printf '[%s] %s\n' "$(date '+%Y-%m-%dT%H:%M:%S')" "$*"
+}
+
+fail() {
+    log "ERROR: $*" >&2
+    exit 1
+}
+
+defer() {
+    log "DEFERRED: $*" >&2
+    exit 75
+}
+
+# macOS has no timeout(1). Run the network operation in its own process group
+# so the deadline terminates Restic and every transport child together.
+guard() {
+    local seconds="$1"
+    shift
+    /usr/bin/perl -MPOSIX=:sys_wait_h,setpgid -e '
+        my $seconds = shift @ARGV;
+        my $pid = fork();
+        exit 127 unless defined $pid;
+        if ($pid == 0) {
+            setpgid(0, 0);
+            exec { $ARGV[0] } @ARGV or exit 127;
+        }
+        setpgid($pid, $pid);
+        my $timed_out = 0;
+        local $SIG{ALRM} = sub {
+            $timed_out = 1;
+            kill "TERM", -$pid;
+            sleep 2;
+            kill "KILL", -$pid if kill 0, -$pid;
+        };
+        alarm $seconds;
+        my $status;
+        while (1) {
+            my $waited = waitpid($pid, 0);
+            if ($waited == $pid) { $status = $?; last; }
+            next if $!{EINTR};
+            exit 127;
+        }
+        alarm 0;
+        exit 142 if $timed_out;
+        exit WEXITSTATUS($status) if WIFEXITED($status);
+        exit 128 + WTERMSIG($status) if WIFSIGNALED($status);
+        exit 1;
+    ' "$seconds" "$@"
+}
+
+restic_bin="${FUNK_RESTIC_BIN:-$(command -v restic 2>/dev/null || true)}"
+[ -x "$restic_bin" ] || fail 'restic is not installed'
+[ -e "$credentials" ] || [ -L "$credentials" ] \
+    || defer "credentials are not configured yet: $credentials"
+[ -f "$credentials" ] && [ ! -L "$credentials" ] \
+    || fail "credentials are unsafe: $credentials"
+credentials_mode=$(stat -f %Lp "$credentials")
+[ $((8#$credentials_mode & 8#077)) -eq 0 ] \
+    || fail "credentials must not be accessible to group or other: $credentials"
+unset RESTIC_REPOSITORY RESTIC_PASSWORD
+set -a
+# shellcheck disable=SC1090
+. "$credentials"
+set +a
+: "${RESTIC_REPOSITORY:?RESTIC_REPOSITORY is not set in $credentials}"
+: "${RESTIC_PASSWORD:?RESTIC_PASSWORD is not set in $credentials}"
+
+roots=()
+add_root() {
+    [ ! -e "$1" ] && [ ! -L "$1" ] || roots+=("$1")
+}
+
+# Durable work, agent conversations, application state, and recovery material.
+for root in \
+    "$HOME/.local/share" \
+    "$HOME/.local/state" \
+    "$HOME/code" \
+    "$HOME/.config" \
+    "$HOME/.claude" \
+    "$HOME/.claude.json" \
+    "$HOME/.claude-swap-backup" \
+    "$HOME/.codex" \
+    "$HOME/.grok" \
+    "$HOME/.gemini" \
+    "$HOME/.pi" \
+    "$HOME/.opencode" \
+    "$HOME/.ssh" \
+    "$HOME/.gnupg" \
+    "$HOME/.zsh_history" \
+    "$HOME/.bash_history" \
+    "$HOME/wiki" \
+    "$HOME/obsidian" \
+    "$HOME/docs" \
+    "$HOME/handoffs" \
+    "$HOME/workspaces" \
+    "$HOME/sites" \
+    "$HOME/resources" \
+    "$HOME/content/links" \
+    "$HOME/Library/Keychains" \
+    "$HOME/Library/Preferences" \
+    "$HOME/Library/Application Support/Codex" \
+    "$HOME/Library/Application Support/com.openai.codex" \
+    "$HOME/Library/Application Support/codex-swap" \
+    "$HOME/Library/Application Support/com.agentvoice.app" \
+    "$HOME/Library/Application Support/io.datasette.llm" \
+    "$HOME/Library/Application Support/gogcli" \
+    "$HOME/Library/Application Support/obsidian" \
+    "$HOME/Library/Application Support/com.raycast.macos" \
+    "$HOME/Library/Application Support/com.raycast.shared" \
+    "$HOME/Library/Application Support/.com.raycast.macos.backups"; do
+    add_root "$root"
+done
+
+# Large human data and local development recovery stay on roomy Silverbird.
+# B2 retains code, conversations, small authored stores, configuration, and
+# keys, but avoids bulky mirrors, worktrees, downloads, media, browser profiles,
+# and the duplicate transcript archive.
+if [ "$tier" = onsite ]; then
+    for root in \
+        "$HOME/source" \
+        "$HOME/.herdr/worktrees" \
+        "$HOME/Desktop" \
+        "$HOME/Documents" \
+        "$HOME/Downloads" \
+        "$HOME/Pictures" \
+        "$HOME/Music" \
+        "$HOME/Movies" \
+        "$HOME/voice-recordings" \
+        "$HOME/Library/Application Support/BraveSoftware" \
+        "$HOME/Library/Application Support/Google/Chrome" \
+        "$HOME/Library/Application Support/Firefox" \
+        /Volumes/Scratch/claude-archive; do
+        add_root "$root"
+    done
+fi
+
+excludes=(
+    --exclude-caches
+    --exclude 'node_modules'
+    --exclude '.venv'
+    --exclude '__pycache__'
+    --exclude '.pytest_cache'
+    --exclude '.ruff_cache'
+    --exclude '.mypy_cache'
+    --exclude '.next'
+    --exclude '.turbo'
+    --exclude '.zig-cache'
+    --exclude 'target'
+    --exclude 'dist'
+    --exclude 'build'
+    --exclude 'DerivedData'
+    --exclude 'Cache'
+    --exclude 'Caches'
+    --exclude 'Code Cache'
+    --exclude 'GPUCache'
+    --exclude 'CacheStorage'
+    --exclude "$HOME/.local/share/ab-hypeman"
+    --exclude "$HOME/.local/share/agentstart"
+    --exclude "$HOME/.local/share/claude"
+    --exclude "$HOME/.local/share/nvim"
+    --exclude "$HOME/.local/share/uv"
+    --exclude "$HOME/.local/state/agentchats"
+    --exclude "$HOME/.local/state/agentscrape/runtime"
+    --exclude "$HOME/.local/state/agentmux"
+    --exclude "$HOME/.local/state/herdr"
+    --exclude "$HOME/.local/state/agentvoice/runs"
+    --exclude "$HOME/.local/state/funk/chrome-kiosk"
+    --exclude "$HOME/.codex/packages"
+    --exclude "$HOME/.codex/plugins"
+    --exclude "$HOME/.codex/.tmp"
+    --exclude "$HOME/.codex/cache"
+    --exclude "$HOME/.codex/computer-use"
+    --exclude "$HOME/.codex/shell_snapshots"
+    --exclude "$HOME/.codex/multi-auth/runtime-shadow-homes"
+    --exclude "$HOME/.codex/multi-auth/app-server-shims"
+    --exclude "$HOME/.codex/logs_2.sqlite"
+    --exclude "$HOME/.codex/logs_2.sqlite-wal"
+    --exclude "$HOME/.codex/logs_2.sqlite-shm"
+    --exclude "$HOME/.claude/cache"
+    --exclude "$HOME/.claude/paste-cache"
+    --exclude "$HOME/.claude/chrome"
+    --exclude "$HOME/.claude/daemon"
+    --exclude "$HOME/.claude/telemetry"
+    --exclude "$HOME/.claude/session-env"
+    --exclude "$HOME/.claude/shell-snapshots"
+    --exclude "$HOME/.claude/downloads"
+    --exclude "$HOME/.claude/debug"
+    --exclude "$HOME/.config/gcloud/virtenv"
+    --exclude "$HOME/Library/Application Support/agentbrowse-infra"
+    --exclude '*.merge-tmp'
+    --exclude '*.session'
+    --exclude '*.session-journal'
+)
+
+# These live SQLite stores are represented by consistent staged copies below.
+for database in \
+    "$HOME/.local/share/agentbrain/research.db" \
+    "$HOME/.local/share/agentboard/board.sqlite3" \
+    "$HOME/.local/state/agentattention/agentattention.sqlite3" \
+    "$HOME/.local/state/agentweb/control.sqlite3" \
+    "$HOME/.local/state/agenteditor/agenteditor.sqlite3" \
+    "$HOME/.local/share/opencode/opencode.db" \
+    "$HOME/code/jobsearch/jobsearch.db" \
+    "$HOME/Library/Application Support/codex-swap/codex-swap.db"; do
+    excludes+=(--exclude "$database" --exclude "$database-wal" --exclude "$database-shm")
+done
+if [ "$tier" = onsite ]; then
+    excludes+=(--exclude "$state_root/backup-staging/offsite")
+    backup_deadline=${FUNK_BACKUP_DEADLINE_SECONDS:-21600}
+else
+    excludes+=(--exclude "$state_root/backup-staging/onsite")
+    excludes+=(
+        --exclude "$HOME/.codex/sessions"
+        --exclude "$HOME/.codex/archived_sessions"
+        --exclude "$stage_root/thread_history_1.sqlite"
+    )
+    backup_deadline=${FUNK_BACKUP_DEADLINE_SECONDS:-28800}
+fi
+for database in \
+    "$HOME/.local/share/agentwiki/manifest.sqlite3" \
+    "$HOME/wiki/.agentwiki/index.sqlite3" \
+    "$HOME/.codex/state_5.sqlite" \
+    "$HOME/.codex/thread_history_1.sqlite" \
+    "$HOME/.codex/goals_1.sqlite" \
+    "$HOME/.codex/memories_1.sqlite" \
+    "$HOME/.codex/queue_1.sqlite"; do
+    excludes+=(--exclude "$database" --exclude "$database-wal" --exclude "$database-shm")
+done
+
+if [ "$check_only" -eq 1 ]; then
+    printf '%s backup configuration is ready: %s roots, credentials mode %s\n' \
+        "$tier" "${#roots[@]}" "$credentials_mode"
+    exit 0
+fi
+
+mkdir -p "$(dirname "$log_path")"
+if [ -f "$log_path" ] && [ ! -L "$log_path" ]; then
+    log_bytes=$(stat -f %z "$log_path" 2>/dev/null || printf '0')
+    if [ "$log_bytes" -gt 10485760 ]; then
+        : >"$log_path"
+        log "backup log rotated after reaching $log_bytes bytes"
+    fi
+fi
+
+if ! mkdir "$lock_dir" 2>/dev/null; then
+    other=$(cat "$lock_dir/pid" 2>/dev/null || true)
+    if [ -n "$other" ] && kill -0 "$other" 2>/dev/null; then
+        fail "another $tier backup is active as pid $other"
+    fi
+    rm -rf -- "$lock_dir"
+    mkdir "$lock_dir" || fail "could not acquire $tier backup lock"
+fi
+printf '%s\n' "$$" >"$lock_dir/pid"
+trap 'rm -rf -- "$lock_dir"' EXIT
+
+mkdir -p "$stage_root"
+chmod 700 "$state_root/backup-staging" "$stage_root"
+preflight_failures=0
+
+replace_directory_snapshot() {
+    local name="$1" destination="$stage_root/$1" temporary="$stage_root/.$1.$$"
+    shift
+    rm -rf -- "$temporary"
+    if "$@" --output "$temporary" >/dev/null \
+        && { [ "$name" != agentbrain ] \
+            || agentbrain backup verify "$temporary" >/dev/null; }; then
+        rm -rf -- "$destination"
+        mv "$temporary" "$destination"
+        log "$name recovery snapshot refreshed"
+    else
+        rm -rf -- "$temporary"
+        log "WARNING: $name recovery snapshot failed; continuing with other data"
+        preflight_failures=$((preflight_failures + 1))
+    fi
+}
+
+replace_file_snapshot() {
+    local name="$1" source="$2" destination="$stage_root/$3" temporary="$stage_root/.$3.$$"
+    [ -f "$source" ] || return 0
+    rm -f -- "$temporary" "$temporary-wal" "$temporary-shm"
+    if /usr/bin/sqlite3 "$source" ".timeout 10000" ".backup '$temporary'" >/dev/null 2>&1 \
+        && [ "$(/usr/bin/sqlite3 "$temporary" 'PRAGMA quick_check;' 2>/dev/null)" = ok ]; then
+        rm -f -- "$temporary-wal" "$temporary-shm"
+        chmod 600 "$temporary"
+        mv -f "$temporary" "$destination"
+        log "$name database snapshot refreshed"
+    else
+        rm -f -- "$temporary" "$temporary-wal" "$temporary-shm"
+        log "WARNING: $name database snapshot failed; continuing with other data"
+        preflight_failures=$((preflight_failures + 1))
+    fi
+}
+
+if command -v agentbrain >/dev/null 2>&1; then
+    replace_directory_snapshot agentbrain agentbrain backup create
+else
+    log 'WARNING: agentbrain is unavailable; retaining any prior recovery snapshot'
+    preflight_failures=$((preflight_failures + 1))
+fi
+if command -v agentboard >/dev/null 2>&1; then
+    board_tmp="$stage_root/.agentboard.jsonl.$$"
+    if agentboard export --out "$board_tmp" >/dev/null 2>&1; then
+        chmod 600 "$board_tmp"
+        mv -f "$board_tmp" "$stage_root/agentboard.jsonl"
+        log 'agentboard export refreshed'
+    else
+        rm -f -- "$board_tmp"
+        log 'WARNING: agentboard export failed; continuing with other data'
+        preflight_failures=$((preflight_failures + 1))
+    fi
+else
+    log 'WARNING: agentboard is unavailable; retaining any prior export'
+    preflight_failures=$((preflight_failures + 1))
+fi
+replace_file_snapshot agentattention \
+    "$HOME/.local/state/agentattention/agentattention.sqlite3" agentattention.sqlite3
+replace_file_snapshot opencode "$HOME/.local/share/opencode/opencode.db" opencode.sqlite3
+replace_file_snapshot jobsearch "$HOME/code/jobsearch/jobsearch.db" jobsearch.sqlite3
+replace_file_snapshot codex-swap \
+    "$HOME/Library/Application Support/codex-swap/codex-swap.db" codex-swap.sqlite3
+replace_file_snapshot agentwiki \
+    "$HOME/.local/share/agentwiki/manifest.sqlite3" agentwiki-manifest.sqlite3
+replace_file_snapshot agentweb \
+    "$HOME/.local/state/agentweb/control.sqlite3" agentweb.sqlite3
+replace_file_snapshot agenteditor \
+    "$HOME/.local/state/agenteditor/agenteditor.sqlite3" agenteditor.sqlite3
+for codex_database in state_5 thread_history_1 goals_1 memories_1 queue_1; do
+    [ "$tier" = onsite ] || [ "$codex_database" != thread_history_1 ] || continue
+    replace_file_snapshot "codex-$codex_database" \
+        "$HOME/.codex/$codex_database.sqlite" "$codex_database.sqlite"
+done
+
+if [ "$tier" = onsite ] && [ -x "$transcript_helper" ]; then
+    if ! "$transcript_helper"; then
+        log 'WARNING: transcript archive refresh failed; continuing with the comprehensive backup'
+        preflight_failures=$((preflight_failures + 1))
+    fi
+fi
+
+if [ -d /Volumes/Scratch/cache ]; then
+    export RESTIC_CACHE_DIR=/Volumes/Scratch/cache/restic
+else
+    export RESTIC_CACHE_DIR="$HOME/Library/Caches/Funk/restic"
+    mkdir -p "$RESTIC_CACHE_DIR"
+fi
+
+log "starting $tier Restic backup of ${#roots[@]} roots"
+backup_status=0
+guard "$backup_deadline" "$restic_bin" backup --quiet --retry-lock 5m --tag "funk-home-$tier" \
+    "${excludes[@]}" "${roots[@]}" || backup_status=$?
+if [ "$backup_status" -eq 0 ]; then
+    log "$tier Restic backup complete"
+else
+    log "ERROR: $tier Restic backup failed (exit $backup_status)"
+fi
+
+if [ "$backup_status" -ne 0 ]; then
+    exit "$backup_status"
+fi
+[ "$preflight_failures" -eq 0 ] || exit 1
+exit 0

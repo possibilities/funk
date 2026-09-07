@@ -34,6 +34,46 @@ version is left alone, and neither installation nor `funk update` starts the
 service or acquires images. AgentStart installs the separate
 `agentbrowse-infra` command for that explicit runtime lifecycle.
 
+## Backups
+
+Funk installs two encrypted Restic jobs:
+
+- `io.arthack.funk.backup-onsite` runs hourly and at login against Silverbird.
+  It is the comprehensive recovery copy: agent sessions and configuration,
+  repositories including Git objects, authored home directories, selected app
+  state, local worktrees and source mirrors, browser profiles, media, and the
+  additive transcript archive on Scratch when it is mounted.
+- `io.arthack.funk.backup-offsite` runs daily at 04:00 against Backblaze B2.
+  It keeps the smaller irreplaceable core—including Claude sessions, Codex
+  configuration, source repositories, keys, configuration, and authored
+  stores—but omits bulky reproducible or locally mirrored data such as the
+  high-volume Codex session/history corpus, Scratch archives, worktrees,
+  source mirrors, downloads, media, browser profiles, VM images, package
+  caches, and derived search indexes.
+
+Credentials stay machine-local at `~/.config/restic/silverbird.env` and
+`~/.config/restic/b2.env`, mode `0600`. Their secret values and the Silverbird
+SSH bootstrap must also exist in an independent password-manager or offline
+recovery record: a repository cannot provide the password needed to unlock
+itself. A repository without credentials is reported as deferred during
+installation rather than breaking convergence of the rest of the account.
+
+The selected `Library` roots, including the raw login Keychain databases, are
+best-effort recovery material. macOS privacy controls may deny an unattended
+LaunchAgent access, and a raw Keychain copy is not a portable secret export;
+independent credential escrow remains the authoritative disaster-recovery path.
+
+Before Restic reads the filesystem, `funk backup` refreshes verified recovery
+copies of live SQLite data under `~/.local/state/funk/backup-staging`. A failed
+application snapshot is reported after the remaining home data is backed up;
+it never blocks unrelated data as the retired backup pipeline did.
+
+There is deliberately no automatic `forget` or `prune` yet. Inspect real
+growth first, then add a separately reviewed, repository- and tag-scoped
+retention policy. For a restore drill, source the selected repository's env
+file and use `restic snapshots --tag funk-home-onsite` (or
+`funk-home-offsite`), then `restic restore <snapshot> --target <empty-dir>`.
+
 ## Use
 
 ```sh
@@ -45,6 +85,8 @@ funk install-android-launchers
                      # converge the four Screen Copy applications
 funk install-ghostty-terminfo
                      # expose Ghostty capabilities to remote shells
+funk backup onsite --check
+                     # validate Silverbird backup prerequisites
 funk help            # everything else
 ```
 

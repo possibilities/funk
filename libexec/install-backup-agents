@@ -1,0 +1,172 @@
+#!/bin/bash
+
+set -euo pipefail
+
+die() {
+    printf 'funk install-backup-agents: %s\n' "$*" >&2
+    exit 1
+}
+
+check_only=0
+case "${1:-}" in
+    "") ;;
+    --check) [ "$#" -eq 1 ] || die 'usage: funk install-backups [--check]'; check_only=1 ;;
+    *) die 'usage: funk install-backups [--check]' ;;
+esac
+
+[ "$(uname -s)" = Darwin ] || die 'macOS is required'
+[ "$(id -u)" -ne 0 ] || die 'run this command as the target user, not root'
+funk_root=${FUNK_ROOT:?FUNK_ROOT is not set}
+helper="$funk_root/bin/.local/bin/funk-backup"
+agent_dir="${FUNK_LAUNCHAGENTS_DIR:-$HOME/Library/LaunchAgents}"
+log_dir="${FUNK_USER_LOG_DIR:-$HOME/Library/Logs/Funk}"
+launchctl_bin="${FUNK_LAUNCHCTL_BIN:-/bin/launchctl}"
+[ -x "$helper" ] || die "backup helper is missing or not executable: $helper"
+
+render() {
+    local tier="$1" label="io.arthack.funk.backup-$1"
+    local template="$funk_root/launchd/$label.plist.in"
+    local output="$2" log_path="$log_dir/backup-$tier.log"
+    cp "$template" "$output"
+    /usr/bin/plutil -remove ProgramArguments.0 "$output"
+    /usr/bin/plutil -insert ProgramArguments.0 -string "$helper" "$output"
+    /usr/bin/plutil -replace EnvironmentVariables.HOME -string "$HOME" "$output"
+    /usr/bin/plutil -replace EnvironmentVariables.FUNK_BACKUP_LOG -string "$log_path" "$output"
+    /usr/bin/plutil -replace StandardOutPath -string "$log_path" "$output"
+    /usr/bin/plutil -replace StandardErrorPath -string "$log_path" "$output"
+    /usr/bin/plutil -lint "$output" >/dev/null
+    [ "$(/usr/libexec/PlistBuddy -c 'Print :ProgramArguments:0' "$output")" = "$helper" ] \
+        || die "$tier backup helper was not rendered"
+    [ "$(/usr/libexec/PlistBuddy -c 'Print :ProgramArguments:1' "$output")" = "$tier" ] \
+        || die "$tier backup tier was not rendered"
+}
+
+tmpdir=$(mktemp -d "${TMPDIR:-/tmp}/funk-backup-agents.XXXXXX")
+trap 'rm -rf "$tmpdir"' EXIT
+onsite="$tmpdir/io.arthack.funk.backup-onsite.plist"
+offsite="$tmpdir/io.arthack.funk.backup-offsite.plist"
+render onsite "$onsite"
+render offsite "$offsite"
+
+onsite_ready=0
+offsite_ready=0
+check_tier() {
+    local tier="$1" status
+    if "$helper" "$tier" --check; then
+        printf -v "${tier}_ready" '%s' 1
+        return
+    else
+        status=$?
+    fi
+    [ "$status" -eq 75 ] || exit "$status"
+    printf 'Deferred %s backup: configure its protected Restic environment file, then run funk install-backups.\n' "$tier"
+}
+check_tier onsite
+check_tier offsite
+
+if [ "$check_only" -eq 1 ]; then
+    printf 'Comprehensive backup LaunchAgents render successfully; configured repositories validate.\n'
+    exit 0
+fi
+
+mkdir -p "$agent_dir" "$log_dir"
+
+# The pre-Funk backup plists predate ownership markers and differ materially
+# from the current definitions. Recognize their complete historical shape
+# before stopping them; a matching label alone never establishes ownership.
+historical_backup_owned() {
+    local path="$1" label="$2" command_name="$3" interval="$4" timeout="$5"
+    [ -f "$path" ] || return 1
+    [ "$(stat -f %u "$path")" = "$(id -u)" ] || return 1
+    /usr/bin/python3 - "$path" "$label" "$command_name" "$interval" "$timeout" "$HOME" <<'PYTHON'
+import os
+import plistlib
+import sys
+
+path, label, command_name, interval, timeout, current_home = sys.argv[1:]
+with open(path, "rb") as handle:
+    actual = plistlib.load(handle)
+program = actual.get("ProgramArguments")
+if not isinstance(program, list) or len(program) != 1:
+    raise SystemExit(1)
+suffix = "/.local/bin/" + command_name
+if not isinstance(program[0], str) or not program[0].endswith(suffix):
+    raise SystemExit(1)
+historical_home = program[0][:-len(suffix)]
+if historical_home != current_home and (
+    os.path.dirname(historical_home) != "/Users" or not os.path.basename(historical_home)
+):
+    raise SystemExit(1)
+log_name = "launchd-silverbird.log" if label.endswith("-silverbird") else "launchd.log"
+expected = {
+    "Label": label,
+    "ProgramArguments": [program[0]],
+    "HardResourceLimits": {"NumberOfFiles": 65536},
+    "SoftResourceLimits": {"NumberOfFiles": 65536},
+    "StandardErrorPath": historical_home + "/Backups/restic/" + log_name,
+    "StandardOutPath": historical_home + "/Backups/restic/" + log_name,
+    "StartInterval": int(interval),
+    "TimeOut": int(timeout),
+}
+raise SystemExit(0 if actual == expected else 1)
+PYTHON
+}
+
+install_tier() {
+    local tier="$1" new_label="$2" historical_label="$3" command_name="$4"
+    local interval="$5" timeout="$6" rendered="$7" historical_path loaded=0
+    historical_path="$agent_dir/$historical_label.plist"
+    if "$launchctl_bin" print "gui/$(id -u)/$historical_label" >/dev/null 2>&1; then
+        loaded=1
+        [ -f "$historical_path" ] \
+            || die "refusing to replace a loaded historical LaunchAgent with no plist: $historical_label"
+    fi
+    if [ -e "$historical_path" ] || [ -L "$historical_path" ]; then
+        historical_backup_owned "$historical_path" "$historical_label" \
+            "$command_name" "$interval" "$timeout" \
+            || die "refusing to retire an unrecognized historical LaunchAgent: $historical_path"
+    fi
+    if [ "$loaded" -eq 1 ]; then
+        "$launchctl_bin" bootout "gui/$(id -u)/$historical_label" \
+            || die "failed to stop historical backup LaunchAgent: $historical_label"
+    fi
+    if ! "$funk_root/libexec/install-user-launchagent" \
+        "$new_label" "$new_label.pre-marker" "$rendered" "$log_dir" "$agent_dir"; then
+        [ "$loaded" -eq 0 ] \
+            || "$launchctl_bin" bootstrap "gui/$(id -u)" "$historical_path" >/dev/null 2>&1 || true
+        die "failed to install $tier backup LaunchAgent"
+    fi
+    if [ -e "$historical_path" ] || [ -L "$historical_path" ]; then
+        rm -- "$historical_path"
+        printf 'Replaced %s with %s\n' "$historical_label" "$new_label"
+    fi
+}
+
+if [ "$onsite_ready" -eq 1 ]; then
+    install_tier onsite io.arthack.funk.backup-onsite \
+        backup.snapshot-silverbird restic-backup-silverbird 3600 3300 "$onsite"
+fi
+if [ "$offsite_ready" -eq 1 ]; then
+    install_tier offsite io.arthack.funk.backup-offsite \
+        backup.snapshot restic-backup 86400 28800 "$offsite"
+fi
+
+# The onsite job now refreshes the transcript archive before its broader
+# Restic snapshot. Retire the narrower intermediate LaunchAgent only when its
+# durable Funk ownership marker proves it belongs to this installer.
+if [ "$onsite_ready" -eq 1 ]; then
+    retired_label=io.arthack.funk.preserve-transcripts
+    retired_path="$agent_dir/$retired_label.plist"
+    if [ -e "$retired_path" ] || [ -L "$retired_path" ]; then
+        [ -f "$retired_path" ] && [ ! -L "$retired_path" ] \
+            && [ "$(/usr/libexec/PlistBuddy -c 'Print :FunkInstallerOwner' "$retired_path" 2>/dev/null || true)" = "$retired_label.v1" ] \
+            || die "refusing to retire an unowned LaunchAgent: $retired_path"
+        if "$launchctl_bin" print "gui/$(id -u)/$retired_label" >/dev/null 2>&1; then
+            "$launchctl_bin" bootout "gui/$(id -u)/$retired_label" \
+                || die "failed to stop retired transcript LaunchAgent: $retired_label"
+        fi
+        rm -- "$retired_path"
+    fi
+fi
+
+printf 'Installed each configured comprehensive backup LaunchAgent.\n'

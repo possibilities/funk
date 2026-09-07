@@ -48,9 +48,9 @@ Commands:
   verify-local-services
                       Show owner-reported Funk and fleet launchd health
   launchd-status      Show Funk launchd ownership, state, and log sizes
-  transcript-vault   Run the transcript preservation pipeline once now
-  install-transcript-vault
-                      Install the hourly transcript preservation agent
+  transcript-vault   Refresh the additive Claude transcript archive once now
+  backup <tier>      Back up durable account data to onsite or offsite Restic
+  install-backups    Install hourly onsite and daily offsite backup agents
   configure-macos    Apply Funk's user-level macOS preferences
   verify-notifications
                       Confirm Funk's health alerts can reach the screen
@@ -142,9 +142,13 @@ case "$command_name" in
         shift
         exec "$FUNK_ROOT/bin/.local/bin/transcript-vault" "$@"
         ;;
-    install-transcript-vault)
+    backup)
         shift
-        exec "$FUNK_ROOT/libexec/install-transcript-vault-agent" "$@"
+        exec "$FUNK_ROOT/bin/.local/bin/funk-backup" "$@"
+        ;;
+    install-backups)
+        shift
+        exec "$FUNK_ROOT/libexec/install-backup-agents" "$@"
         ;;
     configure-macos)
         shift

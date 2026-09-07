@@ -53,7 +53,7 @@ libexec/install-home-awake
 libexec/install-home-awake-agent
 libexec/verify-local-services
 libexec/launchd-status
-libexec/install-transcript-vault-agent
+libexec/install-backup-agents
 libexec/configure-macos
 libexec/verify-notifications
 libexec/configure-system
@@ -81,6 +81,7 @@ bin/.local/bin/home-awake
 bin/.local/bin/ssh-tailnet-config
 bin/.local/bin/git-identity
 bin/.local/bin/transcript-vault
+bin/.local/bin/funk-backup
 bin/.local/bin/adb-wireless-connect
 bin/.local/bin/adb-wireless-pair
 bin/.local/bin/raycast/localhost-8789-kiosk.sh
@@ -95,6 +96,8 @@ tests/kiosk-launcher.sh
 tests/tailscale-online.sh
 tests/gog-authed.sh
 tests/retire-gog-auth-agent.sh
+tests/funk-backup.sh
+tests/install-backup-agents.sh
 tests/funk-notify.sh
 tests/dismiss-terminal-notifier.sh
 tests/fixtures/adb
@@ -104,6 +107,7 @@ tests/fixtures/apkanalyzer-chuchu
 tests/fixtures/brew
 tests/fixtures/bun
 tests/fixtures/gog
+tests/fixtures/restic
 tests/fixtures/chrome
 tests/fixtures/codex
 tests/fixtures/dscacheutil
@@ -184,7 +188,8 @@ fi
 
 plist_lint launchd/io.arthack.funk.update.plist.in >/dev/null
 plist_lint launchd/io.arthack.funk.ensure-tailscale-online.plist.in >/dev/null
-plist_lint launchd/io.arthack.funk.preserve-transcripts.plist.in >/dev/null
+plist_lint launchd/io.arthack.funk.backup-onsite.plist.in >/dev/null
+plist_lint launchd/io.arthack.funk.backup-offsite.plist.in >/dev/null
 plist_lint system/io.arthack.funk.harden-boot.plist >/dev/null
 plist_lint launchd/io.arthack.funk.keep-home-awake.plist.in >/dev/null
 plist_lint launchd/io.arthack.funk.caffeinate.plist >/dev/null
@@ -323,36 +328,36 @@ fi
 grep -F '"$funk_command" install-home-awake' install >/dev/null \
     || fail "installer does not install the trusted-network agent"
 
-transcript_vault_plist=launchd/io.arthack.funk.preserve-transcripts.plist.in
-[ "$(plist_buddy -c 'Print :RunAtLoad' "$transcript_vault_plist")" = true ] \
-    || fail "transcript vault agent does not run at login"
-[ "$(plist_buddy -c 'Print :StartInterval' "$transcript_vault_plist")" = 3600 ] \
-    || fail "transcript vault agent does not run hourly"
-[ "$(plist_buddy -c 'Print :ProgramArguments:0' "$transcript_vault_plist")" \
-    = __TRANSCRIPT_VAULT__ ] \
-    || fail "transcript vault agent does not invoke the stowed helper"
-[ "$(plist_buddy -c 'Print :EnvironmentVariables:HOME' "$transcript_vault_plist")" \
-    = __FUNK_HOME__ ] \
-    || fail "transcript vault agent does not pin the target user HOME"
-if plist_buddy -c 'Print :ProgramArguments:1' "$transcript_vault_plist" \
-    >/dev/null 2>&1 \
-    || plist_buddy -c 'Print :KeepAlive' "$transcript_vault_plist" \
-        >/dev/null 2>&1; then
-    fail "transcript vault agent has an unapproved argument or trigger"
+onsite_backup_plist=launchd/io.arthack.funk.backup-onsite.plist.in
+offsite_backup_plist=launchd/io.arthack.funk.backup-offsite.plist.in
+[ "$(plist_buddy -c 'Print :RunAtLoad' "$onsite_backup_plist")" = true ] \
+    && [ "$(plist_buddy -c 'Print :StartInterval' "$onsite_backup_plist")" = 3600 ] \
+    || fail "onsite backup agent does not run hourly and at login"
+[ "$(plist_buddy -c 'Print :StartCalendarInterval:Hour' "$offsite_backup_plist")" = 4 ] \
+    && [ "$(plist_buddy -c 'Print :StartCalendarInterval:Minute' "$offsite_backup_plist")" = 0 ] \
+    || fail "offsite backup agent does not run daily at 04:00"
+[ "$(plist_buddy -c 'Print :ProgramArguments:1' "$onsite_backup_plist")" = onsite ] \
+    && [ "$(plist_buddy -c 'Print :ProgramArguments:1' "$offsite_backup_plist")" = offsite ] \
+    || fail "backup agents do not select their declared tiers"
+if sed 's/#.*//' bin/.local/bin/funk-backup \
+    | grep -E -- 'restic (forget|prune)|--prune' >/dev/null; then
+    fail "comprehensive backup silently introduces destructive retention"
 fi
-
-# The vault exists to preserve transcripts; nothing in it may ever delete
-# archive or repository content, and its snapshots must stay identifiable.
-if sed 's/#.*//' bin/.local/bin/transcript-vault \
-    | grep -E -- '--delete|restic forget|restic prune' >/dev/null; then
+grep -F '"$HOME/.codex"' bin/.local/bin/funk-backup >/dev/null \
+    || fail "comprehensive backup omits Codex"
+if sed 's/#.*//' bin/.local/bin/funk-backup | grep -E -- "--exclude.*['\"]\.git" >/dev/null; then
+    fail "comprehensive backup excludes Git recovery data"
+fi
+grep -F 'agentbrain backup verify' bin/.local/bin/funk-backup >/dev/null \
+    || fail "comprehensive backup does not verify Agentbrain recovery snapshots"
+grep -F 'PRAGMA quick_check;' bin/.local/bin/funk-backup >/dev/null \
+    || fail "comprehensive backup does not verify staged SQLite databases"
+if sed 's/#.*//' bin/.local/bin/transcript-vault | grep -F -- '--delete' >/dev/null; then
     fail "transcript vault contains a deletion path"
 fi
-grep -q -- '--tag claude-transcripts' bin/.local/bin/transcript-vault \
-    || fail "transcript vault snapshots are not tagged"
-
 # shellcheck disable=SC2016 # The installer's literal source line is the subject.
-grep -F '"$funk_command" install-transcript-vault' install >/dev/null \
-    || fail "installer does not install the transcript vault agent"
+grep -F '"$funk_command" install-backups' install >/dev/null \
+    || fail "installer does not install comprehensive backup agents"
 
 if command -v ruby >/dev/null 2>&1; then
     ruby -rjson -e '
@@ -449,7 +454,7 @@ brew "docker-buildx"
 brew "poppler"
 brew "terminal-notifier"
 brew "yq"
-# Snapshots the Claude Code transcript archive to silverbird (transcript-vault).
+# Encrypted comprehensive onsite and offsite account backups.
 brew "restic"
 brew "ripgrep"
 brew "fzf"
@@ -1489,6 +1494,8 @@ grep -Fx 'cask "android-platform-tools", greedy: true' Brewfile >/dev/null \
 if [ "$(uname -s)" = Darwin ]; then
     "$root/tests/home-awake.sh"
     "$root/tests/install-user-launchagent.sh"
+    "$root/tests/funk-backup.sh"
+    "$root/tests/install-backup-agents.sh"
 else
     skip "home-awake suite (root helper installability, idle-sleep hold-off)" \
         "needs macOS: BSD stat -f, pmset, caffeinate"

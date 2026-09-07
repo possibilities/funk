@@ -170,7 +170,7 @@ agentstart_root="$HOME/code/agentstart"
 "$funk_command" install-tailscale-recovery
 "$funk_root/libexec/retire-gog-auth-agent"
 "$funk_command" install-home-awake
-"$funk_command" install-transcript-vault
+"$funk_command" install-backups
 "$funk_command" configure-macos
 
 # ~/.ssh/config.d is generated from live Tailscale state rather than tracked, so
@@ -223,7 +223,8 @@ Repository: $funk_root
 Update log: $HOME/Library/Logs/Funk/update.log
 Tailscale recovery log: $HOME/Library/Logs/Funk/tailscale-online.log
 home-awake log: $HOME/Library/Logs/Funk/home-awake.log
-Transcript vault log: $HOME/Library/Logs/Funk/transcript-vault.log
+Onsite backup log: $HOME/Library/Logs/Funk/backup-onsite.log
+Offsite backup log: $HOME/Library/Logs/Funk/backup-offsite.log
 EOF
 
 if [ "$notifications_blocked" -eq 1 ]; then

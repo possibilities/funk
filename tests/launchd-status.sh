@@ -19,7 +19,8 @@ mkdir "$agent_dir" "$state_dir" "$logs" "$system_agents" "$system_logs" "$loaded
 labels='io.arthack.funk.update
 io.arthack.funk.ensure-tailscale-online
 io.arthack.funk.keep-home-awake
-io.arthack.funk.preserve-transcripts'
+io.arthack.funk.backup-onsite
+io.arthack.funk.backup-offsite'
 for label in $labels; do
     cp "$root/launchd/$label.plist.in" "$agent_dir/$label.plist"
     : >"$loaded/$label"
