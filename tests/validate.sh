@@ -935,6 +935,13 @@ fi
 stow_home=$(mktemp -d "${TMPDIR:-/tmp}/funk-stow-test.XXXXXX")
 trap 'rm -rf "$stow_home"' EXIT
 HOME="$stow_home" "$root/bin/funk" stow
+[ -L "$stow_home/.claude/preferences.json" ] || fail "Claude preferences were not stowed"
+[ -d "$stow_home/.claude" ] && [ ! -L "$stow_home/.claude" ] \
+    || fail "Claude package folded writable state into Funk"
+[ ! -e "$stow_home/.claude/settings.json" ] && [ ! -e "$stow_home/.claude.json" ] \
+    || fail "Claude writable settings/state must stay local"
+jq -e 'type == "object" and (has("projects") or has("autoMode") or has("hooks") or has("statusLine") or has("oauthAccount") or has("primaryApiKey") | not)' \
+    "$root/claude/.claude/preferences.json" >/dev/null || fail "Claude preferences contain runtime state"
 [ -L "$stow_home/.config/git/config" ] || fail "git package was not stowed"
 [ -L "$stow_home/.ssh/config" ] || fail "ssh config was not stowed"
 # The tailnet host files are generated onto the machine from live Tailscale
