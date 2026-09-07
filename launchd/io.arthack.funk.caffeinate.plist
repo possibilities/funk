@@ -13,6 +13,8 @@
 <dict>
   <key>Label</key>
   <string>io.arthack.funk.caffeinate</string>
+  <key>FunkInstallerOwner</key>
+  <string>io.arthack.funk.caffeinate.v1</string>
   <key>ProgramArguments</key>
   <array>
     <string>/usr/bin/caffeinate</string>

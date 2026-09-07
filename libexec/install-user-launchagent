@@ -23,7 +23,7 @@ load_mode="${6:-always}"
 agent_path="$agent_dir/$label.plist"
 legacy_path="$agent_dir/$legacy_label.plist"
 domain="gui/$(id -u)"
-marker="funk-installer-owned: $label.v1"
+marker="$label.v1"
 launchctl_bin="${FUNK_LAUNCHCTL_BIN:-/bin/launchctl}"
 [ -x "$launchctl_bin" ] || die "launchctl is not executable: $launchctl_bin"
 lock_dir="$HOME/.local/state/funk"
@@ -79,12 +79,12 @@ done
 lock_held=1
 
 [ -f "$rendered" ] && [ ! -L "$rendered" ] || die "invalid rendered plist: $rendered"
-grep -Fqx "<!-- $marker -->" "$rendered" \
+[ "$(/usr/libexec/PlistBuddy -c 'Print :FunkInstallerOwner' "$rendered" 2>/dev/null || true)" = "$marker" ] \
     || die "rendered plist lacks ownership marker: $marker"
 
 owned_current() {
     [ -f "$agent_path" ] && [ ! -L "$agent_path" ] || return 1
-    grep -Fqx "<!-- $marker -->" "$agent_path"
+    [ "$(/usr/libexec/PlistBuddy -c 'Print :FunkInstallerOwner' "$agent_path" 2>/dev/null || true)" = "$marker" ]
 }
 
 owned_legacy() {
@@ -100,6 +100,7 @@ with open(legacy_path, "rb") as handle:
 with open(rendered_path, "rb") as handle:
     rendered = plistlib.load(handle)
 legacy["Label"] = new_label
+rendered.pop("FunkInstallerOwner", None)
 raise SystemExit(0 if legacy == rendered else 1)
 PYTHON
 }

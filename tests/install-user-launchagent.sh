@@ -34,11 +34,31 @@ run_installer() {
 make_legacy() {
     cp "$rendered" "$agent_dir/$old_label.plist"
     /usr/bin/plutil -replace Label -string "$old_label" "$agent_dir/$old_label.plist"
+    /usr/bin/plutil -remove FunkInstallerOwner "$agent_dir/$old_label.plist"
 }
 
 reset_case() {
     rm -f "$agent_dir"/* "$state"/* "$actions"
 }
+
+# Real installers render templates with plutil, which discards XML comments.
+# The ownership key must survive that path and remain acceptable to the shared
+# installer.
+reset_case
+rendered_template="$test_home/rendered-template.plist"
+cp "$root/launchd/io.arthack.funk.update.plist.in" "$rendered_template"
+/usr/bin/plutil -replace ProgramArguments.1 -string "$root/bin/funk" "$rendered_template"
+/usr/bin/plutil -replace StandardOutPath -string "$log_dir/update.log" "$rendered_template"
+rendered="$rendered_template"
+new_label=io.arthack.funk.update
+old_label=com.arthack.funk.update
+run_installer
+[ "$(/usr/libexec/PlistBuddy -c 'Print :FunkInstallerOwner' "$agent_dir/$new_label.plist")" = "$new_label.v1" ] \
+    || fail "plutil-rendered plist lost its ownership marker"
+rendered="$root/launchd/io.arthack.funk.caffeinate.plist"
+new_label=io.arthack.funk.caffeinate
+old_label=com.arthack.funk.home-awake-caffeinate
+reset_case
 
 # A running exact predecessor is replaced, reloaded under the new label, and
 # removed only after the new bootstrap succeeds.

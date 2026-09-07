@@ -38,7 +38,7 @@ report() {
     if [ -L "$plist" ]; then
         ownership=foreign
     elif [ -f "$plist" ]; then
-        if grep -Fqx "<!-- funk-installer-owned: $label.v1 -->" "$plist"; then
+        if [ "$(/usr/libexec/PlistBuddy -c 'Print :FunkInstallerOwner' "$plist" 2>/dev/null || true)" = "$label.v1" ]; then
             ownership=ours
         else
             ownership=foreign

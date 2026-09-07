@@ -76,14 +76,14 @@ daemon_source="$source_root/system/$daemon_label.plist"
     || die "invalid daemon source: $daemon_source"
 /usr/bin/plutil -lint "$daemon_source" >/dev/null \
     || die "invalid LaunchDaemon plist"
-daemon_marker="funk-installer-owned: $daemon_label.v1"
-grep -Fqx "<!-- $daemon_marker -->" "$daemon_source" \
+daemon_marker="$daemon_label.v1"
+[ "$(/usr/libexec/PlistBuddy -c 'Print :FunkInstallerOwner' "$daemon_source" 2>/dev/null || true)" = "$daemon_marker" ] \
     || die "LaunchDaemon source lacks ownership marker"
 /bin/bash "$helper_source" validate
 
 if [ -e "$daemon_target" ] || [ -L "$daemon_target" ]; then
     [ -f "$daemon_target" ] && [ ! -L "$daemon_target" ] \
-        && grep -Fqx "<!-- $daemon_marker -->" "$daemon_target" \
+        && [ "$(/usr/libexec/PlistBuddy -c 'Print :FunkInstallerOwner' "$daemon_target" 2>/dev/null || true)" = "$daemon_marker" ] \
         || die "refusing to replace a LaunchDaemon Funk does not own: $daemon_target"
 fi
 daemon_preloaded=0
@@ -114,6 +114,7 @@ with open(legacy_path, "rb") as handle:
 with open(source_path, "rb") as handle:
     source = plistlib.load(handle)
 legacy["Label"] = new_label
+source.pop("FunkInstallerOwner", None)
 raise SystemExit(0 if legacy == source else 1)
 PYTHON
 fi

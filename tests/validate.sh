@@ -192,7 +192,7 @@ for plist in launchd/io.arthack.funk.*.plist* system/io.arthack.funk.*.plist; do
     label=$(plist_buddy -c 'Print :Label' "$plist")
     printf '%s\n' "$label" | grep -Eq '^io\.arthack\.funk\.[a-z][a-z0-9-]*$' \
         || fail "$plist label does not follow io.arthack.<project>.<verb>"
-    grep -Fqx "<!-- funk-installer-owned: $label.v1 -->" "$plist" \
+    [ "$(plist_buddy -c 'Print :FunkInstallerOwner' "$plist")" = "$label.v1" ] \
         || fail "$plist lacks its exact Funk ownership marker"
 done
 grep -F 'legacy_daemon_preloaded' system/install-hardening-root >/dev/null \

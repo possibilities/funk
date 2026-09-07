@@ -5,6 +5,8 @@
 <dict>
   <key>Label</key>
   <string>io.arthack.funk.keep-home-awake</string>
+  <key>FunkInstallerOwner</key>
+  <string>io.arthack.funk.keep-home-awake.v1</string>
   <key>ProgramArguments</key>
   <array>
     <string>__HOME_AWAKE__</string>
