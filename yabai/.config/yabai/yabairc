@@ -50,6 +50,13 @@ if [ "$scripting_addition" = ready ]; then
     done
 fi
 
+# Preserve the geometry macOS and applications choose for transient windows.
+# Finder's Empty Trash confirmation is an untitled AXDialog; panels use the
+# other two subroles, while preference and About windows are standard windows
+# whose titles carry their intent.
+yabai -m rule --add app="^.*$" subrole="^AX(Dialog|SystemDialog|FloatingWindow)$" manage=off
+yabai -m rule --add app="^.*$" title="^(About .+|Preferences|Settings)$" manage=off
+
 yabai -m rule --add app="^Google Chrome$" title="^Picture in Picture$" manage=off
 yabai -m rule --add app="^System Settings$" manage=off
 yabai -m rule --add app="^Tailscale$" manage=off

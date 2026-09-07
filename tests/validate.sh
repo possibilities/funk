@@ -1321,11 +1321,14 @@ if grep -F 'Run: funk yabai maintain' libexec/install-window-manager >/dev/null;
     fail "window installer still delegates initial Yabai maintenance to the user"
 fi
 
-# The floating set is reviewed as a whole: every entry must name an application
-# that Funk installs or that macOS ships, and the order is asserted because
-# Yabai applies all matching rules in registration order, letting a later rule
-# override an earlier value.
-expected_float_rules='app="^Google Chrome$" title="^Picture in Picture$"
+# The floating set is reviewed as a whole. The first two rules cover semantic
+# window classes across applications; every remaining entry names an
+# application that Funk installs or that macOS ships. The order is asserted
+# because Yabai applies all matching rules in registration order, letting a
+# later rule override an earlier value.
+expected_float_rules='app="^.*$" subrole="^AX(Dialog|SystemDialog|FloatingWindow)$"
+app="^.*$" title="^(About .+|Preferences|Settings)$"
+app="^Google Chrome$" title="^Picture in Picture$"
 app="^System Settings$"
 app="^Tailscale$"
 app="^Karabiner-Elements$"
@@ -1342,6 +1345,9 @@ actual_float_rules=$(
 )
 [ "$actual_float_rules" = "$expected_float_rules" ] \
     || fail "Yabai floating rules do not match the reviewed set"
+grep -Fx 'yabai -m rule --add app="^.*$" subrole="^AX(Dialog|SystemDialog|FloatingWindow)$" manage=off' \
+    yabai/.config/yabai/yabairc >/dev/null \
+    || fail "common macOS dialogs and panels are missing their Yabai floating rule"
 if grep -E '^yabai -m rule --add ' yabai/.config/yabai/yabairc \
     | grep -qv 'app="\^'; then
     fail "a Yabai rule is not scoped to a named application"
