@@ -163,11 +163,9 @@ agentstart_root="$HOME/code/agentstart"
 [ -x "$agentstart_root/scripts/install.sh" ] \
     || die "AgentStart owns the AI toolchain and is missing; clone it first: git clone <your AgentStart remote> $agentstart_root"
 "$agentstart_root/scripts/install.sh" --install
-"$funk_root/libexec/retire-browser-runtimes"
 
 "$funk_command" install-updater
 "$funk_command" install-tailscale-recovery
-"$funk_root/libexec/retire-gog-auth-agent"
 "$funk_command" install-home-awake
 "$funk_command" install-backups
 "$funk_command" configure-macos

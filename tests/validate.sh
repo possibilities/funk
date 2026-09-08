@@ -95,7 +95,6 @@ tests/home-awake.sh
 tests/ssh-tailnet-config.sh
 tests/kiosk-launcher.sh
 tests/tailscale-online.sh
-tests/retire-gog-auth-agent.sh
 tests/funk-backup.sh
 tests/install-backup-agents.sh
 tests/funk-notify.sh
@@ -179,10 +178,7 @@ done
 # on the interactive shell's PATH.
 grep -F '"$agentstart_status" --status' libexec/verify-local-services >/dev/null \
     || fail "verify-local-services does not delegate fleet status to AgentStart"
-grep -F '"$funk_root/libexec/retire-gog-auth-agent"' install >/dev/null \
-    || fail "installer does not retire the obsolete Google auth watchdog"
-[ ! -e libexec/retire-gog ] || fail "Funk must not uninstall AgentStart's Google MCP package"
-if grep -E 'agentbrain\.|agentweb\.|agentusage\.|agentscrape\.|agentsource\.|agentwiki\.' \
+if grep -E 'agentbrain\.|agentusage\.|agentscrape\.|agentsource\.|agentwiki\.' \
     libexec/verify-local-services >/dev/null; then
     fail "verify-local-services duplicates AgentStart's fleet service manifest"
 fi
@@ -1486,11 +1482,10 @@ grep -Fx 'cask "android-platform-tools", greedy: true' Brewfile >/dev/null \
 "$root/tests/tailscale-online.sh"
 "$root/tests/ssh-tailnet-config.sh"
 if [ "$(uname -s)" = Darwin ]; then
-    "$root/tests/retire-gog-auth-agent.sh"
     "$root/tests/launchd-status.sh"
 else
-    skip "LaunchAgent retirement and status suites" \
-        "needs macOS: native plist ownership checks and Darwin-gated retirement"
+    skip "LaunchAgent status suite" \
+        "needs macOS: native plist ownership checks"
 fi
 "$root/tests/funk-notify.sh"
 "$root/tests/dismiss-terminal-notifier.sh"

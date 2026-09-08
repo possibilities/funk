@@ -29,9 +29,7 @@ writes `~/.ssh/config.d` from whatever tailnet Tailscale is reporting. Neither
 is stored here.
 
 Browser runtimes and their dependencies are installed by AgentBrowse's
-`scripts/install-host`; Funk no longer installs Docker or Apple container. Full installation retires
-the old Docker CLI packages after checking existing profile migration receipts.
-Apple package removal is an explicit administrator step, preserving its data.
+`scripts/install-host`; Funk does not install Docker or Apple container.
 
 ## Fleet MCP access
 
