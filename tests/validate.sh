@@ -95,7 +95,7 @@ tests/home-awake.sh
 tests/ssh-tailnet-config.sh
 tests/kiosk-launcher.sh
 tests/tailscale-online.sh
-tests/gog-authed.sh
+tests/retire-gog.sh
 tests/retire-gog-auth-agent.sh
 tests/funk-backup.sh
 tests/install-backup-agents.sh
@@ -107,7 +107,6 @@ tests/fixtures/adb-wireless-connect-chuchu
 tests/fixtures/apkanalyzer-chuchu
 tests/fixtures/brew
 tests/fixtures/bun
-tests/fixtures/gog
 tests/fixtures/restic
 tests/fixtures/chrome
 tests/fixtures/codex
@@ -181,8 +180,11 @@ done
 # on the interactive shell's PATH.
 grep -F '"$agentstart_status" --status' libexec/verify-local-services >/dev/null \
     || fail "verify-local-services does not delegate fleet status to AgentStart"
-grep -F '"$funk_root/libexec/retire-gog-auth-agent"' install >/dev/null \
-    || fail "installer does not retire the Google auth LaunchAgent"
+grep -F '"$funk_root/libexec/retire-gog"' install >/dev/null \
+    || fail "installer does not retire the legacy Google CLI"
+[ -x libexec/retire-gog ] || fail "Gog retirement helper is missing"
+grep -F 'libexec/retire-gog-auth-agent' libexec/retire-gog >/dev/null \
+    || fail "Gog retirement bypasses the service ownership guard"
 if grep -E 'agentbrain\.|agentweb\.|agentusage\.|agentscrape\.|agentsource\.|agentwiki\.' \
     libexec/verify-local-services >/dev/null; then
     fail "verify-local-services duplicates AgentStart's fleet service manifest"
@@ -441,7 +443,6 @@ fi
 
 expected_brewfile='tap "asmvik/formulae"
 tap "oven-sh/bun"
-tap "openclaw/tap"
 brew "git-delta"
 brew "bat"
 brew "neovim"
@@ -469,7 +470,6 @@ brew "zig"
 brew "scrcpy"
 brew "asmvik/formulae/yabai", trusted: true
 brew "asmvik/formulae/skhd", trusted: true
-brew "openclaw/tap/gogcli", trusted: true
 cask "tailscale-app", greedy: true
 cask "alt-tab", greedy: true
 cask "ghostty", greedy: true
@@ -1485,9 +1485,9 @@ grep -Fx 'cask "android-platform-tools", greedy: true' Brewfile >/dev/null \
     || fail "Android Platform Tools are missing from the Brewfile"
 "$root/tests/tailscale-online.sh"
 "$root/tests/ssh-tailnet-config.sh"
-"$root/tests/gog-authed.sh"
 if [ "$(uname -s)" = Darwin ]; then
     "$root/tests/retire-gog-auth-agent.sh"
+    "$root/tests/retire-gog.sh"
     "$root/tests/launchd-status.sh"
 else
     skip "LaunchAgent retirement and status suites" \

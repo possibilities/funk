@@ -1,6 +1,5 @@
 tap "asmvik/formulae"
 tap "oven-sh/bun"
-tap "openclaw/tap"
 
 brew "git-delta"
 brew "bat"
@@ -29,7 +28,6 @@ brew "zig"
 brew "scrcpy"
 brew "asmvik/formulae/yabai", trusted: true
 brew "asmvik/formulae/skhd", trusted: true
-brew "openclaw/tap/gogcli", trusted: true
 
 cask "tailscale-app", greedy: true
 cask "alt-tab", greedy: true

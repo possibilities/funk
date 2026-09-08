@@ -142,7 +142,6 @@ for root in \
     "$HOME/Library/Application Support/codex-swap" \
     "$HOME/Library/Application Support/com.agentvoice.app" \
     "$HOME/Library/Application Support/io.datasette.llm" \
-    "$HOME/Library/Application Support/gogcli" \
     "$HOME/Library/Application Support/obsidian" \
     "$HOME/Library/Application Support/com.raycast.macos" \
     "$HOME/Library/Application Support/com.raycast.shared" \

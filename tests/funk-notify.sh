@@ -37,9 +37,9 @@ esac
 
 # A remedy that talks to a terminal must get one, or its output goes nowhere.
 : >"$log"
-run --title T --message M --terminal "gog auth login" || fail "--terminal must succeed"
+run --title T --message M --terminal "printf ready" || fail "--terminal must succeed"
 case "$(last)" in
-    *"<-execute> <osascript"*"Terminal"*"gog auth login"*) ;;
+    *"<-execute> <osascript"*"Terminal"*"printf ready"*) ;;
     *) fail "--terminal must open a terminal: $(last)" ;;
 esac
 
