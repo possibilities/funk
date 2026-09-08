@@ -1,0 +1,193 @@
+#!/bin/bash
+
+set -euo pipefail
+
+public_path=/mcp
+backend=http://127.0.0.1:4789/mcp
+check_only=0
+tailscale_bin=
+jq_bin=
+tailnet_status=
+funnel_status=
+dns_name=
+host_key=
+
+usage() {
+    cat <<'EOF'
+Usage: funk install-executor-funnel [--check]
+
+Expose Executor's local MCP endpoint at /mcp through Tailscale Funnel without
+changing any other Funnel handler.
+
+--check  Report whether the route is converged without changing Funnel state
+EOF
+}
+
+die() {
+    printf 'funk install-executor-funnel: %s\n' "$*" >&2
+    exit 1
+}
+
+defer() {
+    printf 'funk install-executor-funnel: %s\n' "$*" >&2
+    exit 75
+}
+
+case "${1:-}" in
+    "") ;;
+    --check)
+        [ "$#" -eq 1 ] || {
+            usage >&2
+            exit 64
+        }
+        check_only=1
+        ;;
+    -h|--help)
+        usage
+        exit 0
+        ;;
+    *)
+        usage >&2
+        exit 64
+        ;;
+esac
+
+tailscale_binary() {
+    local candidate
+    for candidate in "${TAILSCALE:-}" tailscale \
+        /Applications/Tailscale.app/Contents/MacOS/Tailscale \
+        /opt/homebrew/bin/tailscale /usr/local/bin/tailscale; do
+        [ -n "$candidate" ] || continue
+        if command -v "$candidate" >/dev/null 2>&1; then
+            command -v "$candidate"
+            return 0
+        fi
+    done
+    return 1
+}
+
+jq_binary() {
+    local candidate
+    for candidate in "${JQ:-}" jq /opt/homebrew/bin/jq /usr/local/bin/jq; do
+        [ -n "$candidate" ] || continue
+        if command -v "$candidate" >/dev/null 2>&1; then
+            command -v "$candidate"
+            return 0
+        fi
+    done
+    return 1
+}
+
+load_tailnet_status() {
+    local backend_state
+    local online
+
+    tailnet_status=$("$tailscale_bin" status --json 2>/dev/null) \
+        || defer "the Tailscale CLI could not reach a valid daemon; Funnel was unchanged"
+    "$jq_bin" -e '
+        type == "object"
+        and (.BackendState | type == "string" and length > 0)
+        and (.Self | type == "object")
+    ' >/dev/null 2>&1 <<<"$tailnet_status" \
+        || defer "the Tailscale daemon returned invalid status; Funnel was unchanged"
+
+    backend_state=$("$jq_bin" -r '.BackendState' <<<"$tailnet_status")
+    [ "$backend_state" = Running ] \
+        || defer "Tailscale is $backend_state; Funnel was unchanged"
+
+    online=$("$jq_bin" -r '
+        if (.Self.Online | type) == "boolean" then .Self.Online else "invalid" end
+    ' <<<"$tailnet_status")
+    [ "$online" = true ] \
+        || defer "this node is offline; Funnel was unchanged"
+
+    dns_name=$("$jq_bin" -r '
+        if (.Self.DNSName | type) == "string" then
+            .Self.DNSName | rtrimstr(".")
+        else
+            ""
+        end
+    ' <<<"$tailnet_status")
+    [ -n "$dns_name" ] \
+        || defer "Tailscale did not report this node's DNS name; Funnel was unchanged"
+    host_key="$dns_name:443"
+}
+
+load_funnel_status() {
+    funnel_status=$("$tailscale_bin" funnel status --json 2>/dev/null) \
+        || defer "Tailscale could not report Funnel state; Funnel was unchanged"
+    "$jq_bin" -e 'type == "object"' >/dev/null 2>&1 <<<"$funnel_status" \
+        || defer "Tailscale returned invalid Funnel state; Funnel was unchanged"
+}
+
+handler_exists() {
+    "$jq_bin" -e --arg host "$host_key" --arg path "$public_path" '
+        (.Web[$host].Handlers // {}) | has($path)
+    ' >/dev/null 2>&1 <<<"$funnel_status"
+}
+
+handler_proxy() {
+    "$jq_bin" -r --arg host "$host_key" --arg path "$public_path" '
+        .Web[$host].Handlers[$path].Proxy // ""
+    ' <<<"$funnel_status"
+}
+
+funnel_enabled() {
+    "$jq_bin" -e --arg host "$host_key" \
+        '.AllowFunnel[$host] == true' >/dev/null 2>&1 <<<"$funnel_status"
+}
+
+other_handlers() {
+    "$jq_bin" -cS --arg host "$host_key" --arg path "$public_path" '
+        (.Web[$host].Handlers // {}) | del(.[$path])
+    ' <<<"$funnel_status"
+}
+
+tailscale_bin=$(tailscale_binary || true)
+[ -n "$tailscale_bin" ] \
+    || defer "Tailscale is not installed; Funnel was unchanged"
+jq_bin=$(jq_binary || true)
+[ -n "$jq_bin" ] || defer "jq is missing; run: brew install jq"
+
+# The macOS GUI application and CLI share one executable. A sparse installer
+# environment must explicitly select CLI mode instead of opening the app.
+export TAILSCALE_BE_CLI=1
+
+load_tailnet_status
+load_funnel_status
+
+if handler_exists; then
+    current_proxy=$(handler_proxy)
+    [ "$current_proxy" = "$backend" ] \
+        || die "$public_path is already owned by another Funnel backend; nothing was changed"
+fi
+
+if handler_exists && funnel_enabled; then
+    printf 'Executor Funnel is configured: https://%s%s\n' "$dns_name" "$public_path"
+    exit 0
+fi
+
+if [ "$check_only" -eq 1 ]; then
+    printf 'Would configure Executor Funnel: https://%s%s -> %s\n' \
+        "$dns_name" "$public_path" "$backend"
+    exit 0
+fi
+
+before_handlers=$(other_handlers)
+if ! "$tailscale_bin" funnel --yes --bg --set-path="$public_path" "$backend" \
+    >/dev/null; then
+    defer "Tailscale could not configure the Executor route"
+fi
+
+load_funnel_status
+handler_exists \
+    || die "Tailscale accepted the update but did not create $public_path"
+[ "$(handler_proxy)" = "$backend" ] \
+    || die "Tailscale created $public_path with the wrong backend"
+funnel_enabled \
+    || die "Tailscale created $public_path without enabling Funnel"
+[ "$(other_handlers)" = "$before_handlers" ] \
+    || die "Tailscale changed another Funnel handler while adding $public_path"
+
+printf 'Configured Executor Funnel: https://%s%s -> %s\n' \
+    "$dns_name" "$public_path" "$backend"

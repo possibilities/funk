@@ -22,6 +22,7 @@ Default installation:
   - installs the window stack and converges Yabai Spaces 1-9
   - links the funk command into the active Homebrew bin directory
   - installs and loads the update and Tailscale recovery LaunchAgents
+  - exposes Executor's local MCP endpoint at an additive Funnel /mcp path
   - installs the home-network sleep and screen-lock agent
   - verifies the resident services AgentStart installs: the Agentbrain worker
     and share ingress, the Agentweb daemon, and the Agentusage daemon
@@ -167,6 +168,15 @@ agentstart_root="$HOME/code/agentstart"
 
 "$funk_command" install-updater
 "$funk_command" install-tailscale-recovery
+executor_funnel_deferred=0
+executor_funnel_failed=0
+executor_funnel_status=0
+"$funk_command" install-executor-funnel || executor_funnel_status=$?
+if [ "$executor_funnel_status" -eq 75 ]; then
+    executor_funnel_deferred=1
+elif [ "$executor_funnel_status" -ne 0 ]; then
+    executor_funnel_failed=1
+fi
 "$funk_root/libexec/retire-gog"
 "$funk_command" install-home-awake
 "$funk_command" install-backups
@@ -259,5 +269,23 @@ if [ "$ssh_hosts_failed" -eq 1 ]; then
 
 Action required: the tailnet ssh host files could not be written. The reason is
 above and ~/.ssh/config.d was left alone. Re-run with: funk ssh-tailnet-config
+EOF
+fi
+
+if [ "$executor_funnel_deferred" -eq 1 ]; then
+    cat <<'EOF'
+
+Deferred: Tailscale could not converge Executor's Funnel route. Existing
+Funnel handlers were left alone. Sign in or reconnect Tailscale and run:
+funk install-executor-funnel
+EOF
+fi
+
+if [ "$executor_funnel_failed" -eq 1 ]; then
+    cat <<'EOF'
+
+Action required: Executor's /mcp Funnel route conflicts with existing state or
+could not be verified. Existing Funnel handlers were left alone. Resolve the
+reported conflict and run: funk install-executor-funnel
 EOF
 fi

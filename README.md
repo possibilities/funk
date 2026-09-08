@@ -33,6 +33,26 @@ Browser runtimes and their dependencies are installed by AgentBrowse's
 the old Docker CLI packages after checking existing profile migration receipts.
 Apple package removal is an explicit administrator step, preserving its data.
 
+## Executor Funnel
+
+`./install` converges one additive Tailscale Funnel handler:
+`https://<Tailscale DNS name>/mcp` proxies to Executor at
+`http://127.0.0.1:4789/mcp`. Funk owns only `/mcp`; the existing `/` handler for
+the AgentSource GitHub webhook daemon and every other Funnel handler remain
+untouched. Use `funk install-executor-funnel --check` for a read-only verdict or
+`funk install-executor-funnel` to converge the route directly.
+
+Executor owns authentication and its generated token; Funk never reads or
+stores it. In a private terminal, run `executor server rotate-token`, save the
+returned value directly in a password manager, and enter it in the remote MCP
+client's bearer-token field. The client sends that value as the
+`Authorization: Bearer …` header. Do not paste the token into this repository,
+shell commands, issue trackers, or chat logs.
+
+An unauthenticated request to `https://<Tailscale DNS name>/mcp` should return
+HTTP 401 with `WWW-Authenticate: Bearer`. That check exercises the public route
+without exposing the token.
+
 ## Backups
 
 Funk installs two encrypted Restic jobs:

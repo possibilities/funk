@@ -1,0 +1,52 @@
+#!/bin/bash
+
+set -euo pipefail
+
+state_file=${FUNK_TEST_FUNNEL_STATE:?FUNK_TEST_FUNNEL_STATE is required}
+dns_name=${FUNK_TEST_TAILSCALE_DNS:-greybird.example.test.}
+jq_bin=${JQ:-jq}
+
+if [ -n "${FUNK_TEST_TAILSCALE_LOG:-}" ]; then
+    printf '%s\n' "$*" >>"$FUNK_TEST_TAILSCALE_LOG"
+fi
+
+if [ "${TAILSCALE_BE_CLI:-}" != 1 ]; then
+    printf 'TAILSCALE_BE_CLI was not set\n' >&2
+    exit 64
+fi
+
+if [ "${1:-}" = status ] && [ "${2:-}" = --json ] && [ "$#" -eq 2 ]; then
+    [ "${FUNK_TEST_TAILSCALE_STATUS_FAIL:-0}" -eq 0 ] || exit 1
+    online=true
+    [ "${FUNK_TEST_TAILSCALE_ONLINE:-1}" -eq 1 ] || online=false
+    printf '{"BackendState":"%s","Self":{"Online":%s,"DNSName":"%s"}}\n' \
+        "${FUNK_TEST_TAILSCALE_STATE:-Running}" "$online" "$dns_name"
+    exit 0
+fi
+
+if [ "${1:-}" = funnel ] && [ "${2:-}" = status ] \
+    && [ "${3:-}" = --json ] && [ "$#" -eq 3 ]; then
+    [ "${FUNK_TEST_FUNNEL_STATUS_FAIL:-0}" -eq 0 ] || exit 1
+    cat "$state_file"
+    exit 0
+fi
+
+if [ "${1:-}" = funnel ] && [ "${2:-}" = --yes ] \
+    && [ "${3:-}" = --bg ] && [ "${4:-}" = --set-path=/mcp ] \
+    && [ "${5:-}" = http://127.0.0.1:4789/mcp ] && [ "$#" -eq 5 ]; then
+    [ "${FUNK_TEST_FUNNEL_UPDATE_FAIL:-0}" -eq 0 ] || exit 1
+    host_key="${dns_name%.}:443"
+    temporary="$state_file.tmp"
+    "$jq_bin" --arg host "$host_key" '
+        .TCP["443"] = {"HTTPS": true}
+        | .Web[$host].Handlers["/mcp"] = {
+            "Proxy": "http://127.0.0.1:4789/mcp"
+          }
+        | .AllowFunnel[$host] = true
+    ' "$state_file" >"$temporary"
+    mv "$temporary" "$state_file"
+    exit 0
+fi
+
+printf 'unexpected tailscale fixture command: %s\n' "$*" >&2
+exit 64

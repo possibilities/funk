@@ -49,6 +49,7 @@ libexec/initialize-configs
 libexec/install-update-agent
 libexec/install-user-launchagent
 libexec/install-tailscale-agent
+libexec/install-executor-funnel
 libexec/install-home-awake
 libexec/install-home-awake-agent
 libexec/verify-local-services
@@ -95,6 +96,7 @@ tests/home-awake.sh
 tests/ssh-tailnet-config.sh
 tests/kiosk-launcher.sh
 tests/tailscale-online.sh
+tests/executor-funnel.sh
 tests/retire-gog.sh
 tests/retire-gog-auth-agent.sh
 tests/funk-backup.sh
@@ -120,6 +122,7 @@ tests/fixtures/npx
 tests/fixtures/spctl
 tests/fixtures/systemextensionsctl
 tests/fixtures/tailscale
+tests/fixtures/tailscale-funnel
 tests/fixtures/terminal-notifier
 tests/fixtures/terminal-notifier-remove-limit
 tests/fixtures/unzip-chuchu
@@ -1232,6 +1235,10 @@ grep -F 'AgentStart owns the AI toolchain and is missing' install >/dev/null \
     || fail "default install does not stop loudly without the AgentStart checkout"
 grep -F "\"\$funk_command\" install-tailscale-recovery" install >/dev/null \
     || fail "default install does not load Tailscale recovery"
+grep -F '"$funk_command" install-executor-funnel' install >/dev/null \
+    || fail "default install does not converge the Executor Funnel route"
+grep -F 'executor_funnel_status' install >/dev/null \
+    || fail "default install does not classify Executor Funnel failures"
 # Unattended health checks report through terminal-notifier, so an installation
 # that never confirms delivery can leave every future alert silent.
 grep -F "\"\$funk_command\" verify-notifications" install >/dev/null \
@@ -1484,6 +1491,7 @@ grep -Fx 'brew "scrcpy"' Brewfile >/dev/null \
 grep -Fx 'cask "android-platform-tools", greedy: true' Brewfile >/dev/null \
     || fail "Android Platform Tools are missing from the Brewfile"
 "$root/tests/tailscale-online.sh"
+"$root/tests/executor-funnel.sh"
 "$root/tests/ssh-tailnet-config.sh"
 if [ "$(uname -s)" = Darwin ]; then
     "$root/tests/retire-gog-auth-agent.sh"
