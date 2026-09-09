@@ -3,7 +3,7 @@
 # CLI flags and trusted project config can override these defaults.
 model = "gpt-6-astra"
 model_reasoning_effort = "high"
-service_tier = "fast"
+service_tier = "default"
 approvals_reviewer = "user"
 
 [agents]
