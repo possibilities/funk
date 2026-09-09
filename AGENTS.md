@@ -1,5 +1,9 @@
 # Funk agent guidance
 
+Read [CONTEXT.md](CONTEXT.md) for the machine/configuration terms and the
+[decision log](docs/adr/README.md) before changing ownership or theme policy.
+Per-application procedures live in [configuration guidance](docs/configuration.md).
+
 ## Repository context
 
 - `/Users/arthack/code/funk` is the canonical Funk repository and
@@ -24,8 +28,7 @@ converge by running `./install`; do not rely on one-off live configuration.
 - Use `funk stow --check` before risky changes. Use
   `funk stow --adopt <package>` only to migrate an intentional existing config,
   then review the Git diff because adoption changes repository files.
-- For a new package, register it in `libexec/stow-config`, add it to the table
-  below, and test the forward installation path.
+- For a new package, register it in `libexec/stow-config`, add it to the [package table](docs/configuration.md#stow-packages-and-generated-identity), and test the forward installation path.
 - Add user-level macOS preferences to `libexec/configure-macos`; route
   privileged machine settings through the guarded system helpers.
 - Preserve common Emacs/readline movement, history, cutting, and yanking
@@ -33,74 +36,21 @@ converge by running `./install`; do not rely on one-off live configuration.
 - Reload affected applications after changing live configuration when
   possible: source tmux's config and restart Yabai/skhd services. Karabiner
   reloads its configuration automatically.
-- Managed configuration carries no raw palette: no hard-coded named color or
-  hex literal, and no generated palette. Colors are named once, by
-  `theme = ` in `ghostty/.config/ghostty/config`, and every other layer
-  follows the terminal that results. Tmux's
-  `tmux/.config/tmux/conf.d/theme.conf` styles the status bar against that
-  palette using only ANSI indices (`colour0-15`) plus `default`.
-  `tests/validate.sh` pins that theme line's presence, the named-color and hex
-  bans, the tmux file's existence, and its confinement to the ANSI range, so a
-  future theme cleanup cannot sweep the status bar away again the way `24663c1`
-  did. Theme *files* still never live here: the Ghostty cask installs all of
-  them under the application's Resources, and Funk names one by string.
-- Picking a theme and tracking one are separate steps, and the seam between
-  them is deliberate. `ghostty-themes` — upstream's picker, cloned to
-  `~/source/flyerAI2025--ghostty-themes` by `funk install-ghostty-themes` and reached through
-  Funk's wrapper at `bin/.local/bin/ghostty-themes`, bound to
-  `ctrl+cmd+shift-t` in skhd — browses the cask's themes and writes the pick
-  into Ghostty's macOS Application Support config rather than the XDG one.
-  Ghostty loads that file second, so a pick outranks the tracked line until
-  someone promotes it by editing `theme = ` here and deleting the
-  machine-local file. That override is a known footgun, accepted to keep the
-  picker: nothing warns when the machine drifts from the checkout. The wrapper
-  still exists to pin `GHOSTTY_CONFIG` at the machine-local path, because the
-  picker rewrites its target with `mktemp` + `mv` — aimed at
-  `~/.config/ghostty/config` it would replace that Stow link with a real file.
-  `tests/validate.sh` pins the wrapper's pin.
+- Colors come from the tracked named Ghostty theme and terminal ANSI roles;
+  do not introduce raw palettes or theme files. Before changing themes or the
+  picker, read [the procedure and accepted local override](docs/configuration.md#terminal-theme-and-local-picker)
+  and [its decision](docs/adr/0003-tracked-theme-with-local-picker-override.md).
 - `assets/chuchu/Signal Room` is outside that managed desktop-configuration
   rule. It is the canonical remote APK asset consumed only by
   `funk chuchu-theme`, which must prove the built application ID is
   `com.arthack.chuchu.lab` before contacting ADB and must never uninstall or
   mutate the official `com.jossephus.chuchu` package.
 
-| Package | Target | `--no-folding` |
-| --- | --- | --- |
-| `git` | `~/.config/git/` | yes |
-| `ssh` | `~/.ssh/` | yes |
-| `ghostty` | `~/.config/ghostty/` | yes |
-| `nvim` | `~/.config/nvim/` | no |
-| `skhd` | `~/.config/skhd/` | no |
-| `tmux` | `~/.config/tmux/` | yes |
-| `zsh` | `~/.zshenv`, `~/.zshrc`, `~/.zsh/` | yes |
-| `yabai` | `~/.config/yabai/` | no |
-| `karabiner` | `~/.config/karabiner/` | yes |
-| `tmuxctl` | `~/.config/tmuxctl/` | yes |
-| `bin` | `~/.local/bin/` | yes |
-| `btop` | `~/.config/btop/` | no |
-| `herdr` | `~/.config/herdr/` | yes |
-| `claude` | `~/.claude/preferences.json` | yes |
-
-A `--no-folding` package's target directory stays a real directory, so it can
-hold files Funk does not track. That is the whole reason those rows are marked:
-`~/.ssh/config.d` is written by `funk ssh-tailnet-config` and
-`~/.config/git/config.local` by `funk git-identity`, and under normal folding
-both generators would be writing straight back into this checkout.
-
-Machine-identifying data is generated onto the machine at converge time, never
-tracked and never adopted back. `home-awake --learn-network` records the home
-router that way, `funk ssh-tailnet-config` records the tailnet that way, and
-`funk git-identity` records the commit name and address that way; all three
-write outside this repository, and none may be pulled back in with
-`funk stow --adopt`.
-
-The identity case is the one where getting the folding wrong is worst, and it
-is worth understanding before touching the `git` package. A relative
-`include.path` resolves against the directory of the *link* git opened, not the
-file behind it — so a real `~/.config/git` puts `config.local` on the machine,
-while a folded one puts the operator's name and address inside this working
-tree. `tests/validate.sh` asserts both halves: no identity in the tracked file,
-and a real directory to hold the untracked one.
+Read the [Stow package table and generated identity rules](docs/configuration.md#stow-packages-and-generated-identity)
+before adding or adopting a package. Preserve real target directories for
+packages with other writers. Machine-identifying data is generated locally,
+never tracked or adopted; Git's relative include path makes directory folding
+part of that privacy boundary.
 
 Never Stow credentials, secrets, generated application state, remote-device
 configuration, root-owned helpers, LaunchDaemons, rendered LaunchAgents, or live
@@ -174,23 +124,10 @@ by `tests/validate.sh`:
   invoking `system/install-yabai-root`, and skip the step when it already
   matches.
 
-`funk install-home-awake` follows the same rule. It compares the installed root
-helper's digest and its granted sudo invocations first, and elevates only when
-they differ from this checkout. It extends the rule to the login keychain by
-probing the stored item attribute-only, without `-w`, so the lookup never
-reaches the item's data and never raises a dialog, and by reporting the verdict
-`home-awake` last recorded instead of reading the secret. The prompt belongs to
-`home-awake --authorize`, which a human runs on purpose.
-
-A step that cannot converge is reported rather than failed.
-`funk ssh-tailnet-config` exits `EX_TEMPFAIL` when Tailscale cannot answer,
-having written and removed nothing, and `./install` prints a Deferred note and
-finishes.
-
-Repair state that makes Homebrew elevate instead of letting it recur:
-`libexec/reclaim-app-ownership` for applications left by a previous account,
-and `libexec/repair-cask-artifacts` for Caskroom state left by an aborted
-upgrade.
+Read the [helper procedures](docs/configuration.md#unprivileged-convergence-helpers)
+before changing home-awake, deferred tailnet convergence or cask ownership
+repair. Attribute-only keychain checks must not retrieve the secret or raise
+a dialog during unattended convergence.
 
 ## AI tooling and skills
 
@@ -209,38 +146,18 @@ if that checkout is missing; the scheduled updater calls
 installer or skill-synchronization path in this repository — a new AI tool,
 skill, or generated harness configuration belongs in AgentStart.
 
-Personal Codex preferences are an authored-source exception, tracked in
-`config/harnesses/codex.toml`. AgentStart's Codex shim copies that file into a
-private native profile for each invocation and adds temporary cwd/project
-trust; it owns the wrapper and its installation. The source is never Stowed
-over the live config, and trust, credentials, generated integrations, and
-session state never belong in it. See `config/harnesses/README.md`.
-
-Personal Claude preferences are the corresponding Stow exception:
-`claude/.claude/preferences.json` links to `~/.claude/preferences.json`.
-AgentStart's managed Claude shim loads it with native `--settings` and records
-workspace trust in local Claude state under Claude's config lock. Never adopt
-`settings.json` or `.claude.json`: generated integrations, classifier state,
-credentials, and project history stay local. The package uses `--no-folding`
-so Claude's config directory remains outside this checkout.
-
-Every operator guidance file the harnesses read is AgentStart's, linked by its
-installer rather than stowed here: the deliberately empty `~/AGENTS.md` (with
-`~/.claude/CLAUDE.md` and `~/.codex/AGENTS.md` linked at it) and the extension
-prompts at `~/.config/agentguidance/`. The retired operator-guidance and
-AI-tool Stow packages must not be recreated beyond the authored Claude
-preferences exception above — edit `~/code/agentstart/prompts/`
-or `~/code/agentstart/config/` instead.
+Read [harness preferences and guidance](docs/configuration.md#harness-preferences-and-guidance)
+before touching the authored Codex/Claude preference exceptions or guidance
+links. AgentStart owns generated harness configuration and installed guidance;
+Funk never adopts native credentials, trust or session state.
 
 Funk's repository guidance lives in this `AGENTS.md`, not in a priming skill.
 Do not install or synchronize a separate `funk` skill.
 
-Configuration another program writes is overlaid, never adopted. The llm CLI
-and its model configuration are AgentStart's (`config/llm/`, and the formula
-left the Brewfile with them). Herdr's live `config.toml` is also AgentStart's:
-`scripts/herdr-config` renders it from that checkout's tracked source, while
-Funk's `herdr` package retains only the machine-owned `agent-mem.sh` helper.
-Adopt a file only when Funk is its sole writer.
+Configuration another program writes is overlaid, never adopted. Read
+[the writer boundaries](docs/configuration.md#configuration-with-another-writer)
+before changing llm or Herdr configuration. Adopt a file only when Funk is its
+sole writer.
 
 Prove a configuration file is read before adopting it. A directory under
 `~/.config` named for a program is not evidence that the program loads it —

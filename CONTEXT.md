@@ -64,7 +64,7 @@ _Avoid_: bootstrap, dotfiles framework, general-purpose installer.
 
 **Machine-local theme seam** — the Ghostty theme the operator picks, written by
 `ghostty-themes` to the macOS Application Support config that Ghostty loads
-after the XDG one. It overrides colors for the live terminal while everything
-Funk tracks still selects no theme, so the tracked configuration stays
-palette-free and the picker's writes never reach this checkout.
+after the XDG one. It overrides Funk's tracked named theme until the pick is
+promoted into the checkout and the local override is removed; palette files
+remain the terminal application's, and picker writes never replace the Stow link.
 _Avoid_: theme manager, managed theme, Funk theme.
