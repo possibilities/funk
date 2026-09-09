@@ -227,9 +227,8 @@ EOF
 if [ "$notifications_blocked" -eq 1 ]; then
     cat <<'EOF'
 
-Action required: notifications are blocked for terminal-notifier, so Funk's
-unattended health alerts reach no one. Enable them at System Settings >
-Notifications > terminal-notifier, choosing the Alerts style, then run:
+Action required: notification banner delivery needs attention. Follow the
+notifier-specific diagnosis above, then run:
 funk verify-notifications
 EOF
 fi

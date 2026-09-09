@@ -61,4 +61,17 @@ FUNK_TERMINAL_NOTIFIER_BIN=/nonexistent PATH=/nonexistent "$helper" \
     --title T --message M || fail "a missing notifier must still exit zero"
 [ ! -s "$log" ] || fail "a missing notifier must post nothing"
 
+# Managed routing wins even when a caller inherited a Homebrew-first PATH.
+mkdir -p "$test_home/.local/bin" "$test_home/native"
+cp "$notifier_fixture" "$test_home/.local/bin/terminal-notifier"
+printf '#!/bin/bash\nexit 99\n' >"$test_home/native/terminal-notifier"
+chmod +x "$test_home/native/terminal-notifier"
+: >"$log"
+HOME="$test_home" PATH="$test_home/native:/usr/bin:/bin" FUNK_TEST_NOTIFIER_LOG="$log" \
+    "$helper" --title Routed --message Durable
+case "$(last)" in
+    *"<Routed>"*"<Durable>"*) ;;
+    *) fail 'managed router was bypassed by PATH' ;;
+esac
+
 printf 'funk-notify tests passed\n'

@@ -165,6 +165,8 @@ send_notification() {
     if [ -n "${FUNK_TERMINAL_NOTIFIER_BIN:-}" ] \
         && [ -x "$FUNK_TERMINAL_NOTIFIER_BIN" ]; then
         notifier="$FUNK_TERMINAL_NOTIFIER_BIN"
+    elif [ -z "${FUNK_TERMINAL_NOTIFIER_BIN:-}" ] && [ -x "$HOME/.local/bin/terminal-notifier" ]; then
+        notifier="$HOME/.local/bin/terminal-notifier"
     elif command -v terminal-notifier >/dev/null 2>&1; then
         notifier=$(command -v terminal-notifier)
     elif [ -x "$brew_prefix/bin/terminal-notifier" ]; then

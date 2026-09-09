@@ -24,7 +24,7 @@ probe_group=com.arthack.funk.notification-probe
 
 notifier_binary() {
     local candidate
-    for candidate in "${FUNK_TERMINAL_NOTIFIER_BIN:-}" terminal-notifier \
+    for candidate in "${FUNK_TERMINAL_NOTIFIER_BIN:-}" "$HOME/.local/bin/terminal-notifier" terminal-notifier \
         /opt/homebrew/bin/terminal-notifier /usr/local/bin/terminal-notifier; do
         [ -n "$candidate" ] || continue
         if command -v "$candidate" >/dev/null 2>&1; then
@@ -38,6 +38,31 @@ notifier_binary() {
 notifier=$(notifier_binary || true)
 [ -n "$notifier" ] \
     || die "terminal-notifier is missing; run ./install to converge the Brewfile"
+
+# The managed router selects AgentNotify when its inbox is available. Diagnose
+# that app's permission without posting/removing a probe in the durable inbox.
+# When the router selects the original notifier, retain its native probe below.
+if "$notifier" --version 2>/dev/null | grep -q '^agentnotify '; then
+    authorization=checking
+    for _ in {1..20}; do
+        diagnosis=$("$notifier" diagnose) || die 'AgentNotify diagnosis failed'
+        authorization=$(printf '%s' "$diagnosis" | jq -er '.data.native.authorization') \
+            || die 'AgentNotify returned no notification authorization status'
+        [ "$authorization" = checking ] || break
+        sleep 0.1
+    done
+    case "$authorization" in
+        authorized|provisional|ephemeral)
+            printf 'AgentNotify inbox is available; system notification authorization: %s.\n' "$authorization"
+            printf 'macOS appearance and Focus still control banner visibility.\n'
+            exit 0 ;;
+        denied|not-determined)
+            printf 'AgentNotify saves notifications durably, but its system banners are off.\n' >&2
+            printf 'Enable System Settings > Notifications > AgentNotify for banners.\n' >&2
+            exit 1 ;;
+        *) die "AgentNotify notification authorization is unresolved: $authorization" ;;
+    esac
+fi
 
 # macOS will not surface notifications from an application it has not
 # registered, and a Homebrew upgrade relocates the bundle. Registering here is

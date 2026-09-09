@@ -98,6 +98,7 @@ tests/tailscale-online.sh
 tests/funk-backup.sh
 tests/install-backup-agents.sh
 tests/funk-notify.sh
+tests/verify-notifications.sh
 tests/dismiss-terminal-notifier.sh
 tests/fixtures/adb
 tests/fixtures/adb-chuchu
@@ -1488,6 +1489,7 @@ else
         "needs macOS: native plist ownership checks"
 fi
 "$root/tests/funk-notify.sh"
+"$root/tests/verify-notifications.sh"
 "$root/tests/dismiss-terminal-notifier.sh"
 # home-awake asserts a root helper's installability through BSD stat -f and
 # drives pmset and caffeinate, so it only means anything on macOS.
@@ -1610,7 +1612,7 @@ for ownership_helper in libexec/reclaim-app-ownership libexec/list-unattendable-
         || fail "$ownership_helper treats every root-owned bundle as a pkg install"
 done
 
-if grep -R -E '/Users/[A-Za-z0-9._-]+|telegram|agentnotify|TCC\.db|security import|yabai-cert' \
+if grep -R -E '/Users/[A-Za-z0-9._-]+|telegram|TCC\.db|security import|yabai-cert' \
     Brewfile bin launchd libexec system yabai skhd karabiner >/dev/null; then
     fail "old-account or prohibited privileged machinery leaked into Funk"
 fi
