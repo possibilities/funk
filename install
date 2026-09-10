@@ -227,7 +227,7 @@ EOF
 if [ "$notifications_blocked" -eq 1 ]; then
     cat <<'EOF'
 
-Action required: notification banner delivery needs attention. Follow the
+Action required: notification delivery needs attention. Follow the
 notifier-specific diagnosis above, then run:
 funk verify-notifications
 EOF

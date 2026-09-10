@@ -73,7 +73,6 @@ yabai/.config/yabai/yabairc
 bin/.local/bin/tmux-cycle-session
 bin/.local/bin/tmux-move-window
 bin/.local/bin/focus-address-bar
-bin/.local/bin/dismiss-terminal-notifier
 bin/.local/bin/ginit
 bin/.local/bin/noizey
 bin/.local/bin/ghinit
@@ -99,7 +98,6 @@ tests/funk-backup.sh
 tests/install-backup-agents.sh
 tests/funk-notify.sh
 tests/verify-notifications.sh
-tests/dismiss-terminal-notifier.sh
 tests/fixtures/adb
 tests/fixtures/adb-chuchu
 tests/fixtures/adb-wireless-connect-chuchu
@@ -120,7 +118,6 @@ tests/fixtures/spctl
 tests/fixtures/systemextensionsctl
 tests/fixtures/tailscale
 tests/fixtures/terminal-notifier
-tests/fixtures/terminal-notifier-remove-limit
 tests/fixtures/unzip-chuchu
 tests/fixtures/zig
 tests/fixtures/go-noizey
@@ -1462,8 +1459,11 @@ grep -Fx 'f12 : yabai -m space --focus 9' skhd/.config/skhd/skhdrc >/dev/null \
 grep -F 'cmd + shift - v : /usr/bin/open "raycast://extensions/raycast/clipboard-history/clipboard-history"' \
     skhd/.config/skhd/skhdrc >/dev/null \
     || fail "Raycast Clipboard History shortcut is missing"
-grep -Fx 'ctrl + cmd - escape : ~/.local/bin/dismiss-terminal-notifier' skhd/.config/skhd/skhdrc >/dev/null \
-    || fail "terminal-notifier dismissal shortcut is missing"
+if grep -Eq 'ctrl \+ cmd - escape|dismiss-terminal-notifier' skhd/.config/skhd/skhdrc; then
+    fail "retired notification dismissal shortcut is present"
+fi
+[ ! -e bin/.local/bin/dismiss-terminal-notifier ] \
+    || fail "retired notification dismissal helper is present"
 grep -F 'ctrl - l [' skhd/.config/skhd/skhdrc >/dev/null \
     || fail "browser address-bar shortcut is missing"
 for browser_name in "Google Chrome" "Google Chrome Canary" Firefox "Brave Browser"; do
@@ -1490,7 +1490,6 @@ else
 fi
 "$root/tests/funk-notify.sh"
 "$root/tests/verify-notifications.sh"
-"$root/tests/dismiss-terminal-notifier.sh"
 # home-awake asserts a root helper's installability through BSD stat -f and
 # drives pmset and caffeinate, so it only means anything on macOS.
 if [ "$(uname -s)" = Darwin ]; then

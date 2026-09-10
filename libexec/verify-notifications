@@ -39,29 +39,18 @@ notifier=$(notifier_binary || true)
 [ -n "$notifier" ] \
     || die "terminal-notifier is missing; run ./install to converge the Brewfile"
 
-# The managed router selects AgentNotify when its inbox is available. Diagnose
-# that app's permission without posting/removing a probe in the durable inbox.
-# When the router selects the original notifier, retain its native probe below.
+# The managed router selects AgentNotify when its inbox is available. Its own
+# arrival preview is the complete presentation path: system notification
+# delivery must remain disabled. When the router selects the original notifier,
+# retain its native probe below as an availability fallback.
 if "$notifier" --version 2>/dev/null | grep -q '^agentnotify '; then
-    authorization=checking
-    for _ in {1..20}; do
-        diagnosis=$("$notifier" diagnose) || die 'AgentNotify diagnosis failed'
-        authorization=$(printf '%s' "$diagnosis" | jq -er '.data.native.authorization') \
-            || die 'AgentNotify returned no notification authorization status'
-        [ "$authorization" = checking ] || break
-        sleep 0.1
-    done
-    case "$authorization" in
-        authorized|provisional|ephemeral)
-            printf 'AgentNotify inbox is available; system notification authorization: %s.\n' "$authorization"
-            printf 'macOS appearance and Focus still control banner visibility.\n'
-            exit 0 ;;
-        denied|not-determined)
-            printf 'AgentNotify saves notifications durably, but its system banners are off.\n' >&2
-            printf 'Enable System Settings > Notifications > AgentNotify for banners.\n' >&2
-            exit 1 ;;
-        *) die "AgentNotify notification authorization is unresolved: $authorization" ;;
-    esac
+    diagnosis=$("$notifier" diagnose) || die 'AgentNotify diagnosis failed'
+    printf '%s' "$diagnosis" \
+        | jq -e '.data.native.authorization == "disabled" and .data.native.available == false' \
+            >/dev/null \
+        || die 'AgentNotify does not report its required own-arrivals-only policy; update AgentNotify'
+    printf 'AgentNotify inbox and arrival previews are available; macOS system notifications are disabled by design.\n'
+    exit 0
 fi
 
 # macOS will not surface notifications from an application it has not

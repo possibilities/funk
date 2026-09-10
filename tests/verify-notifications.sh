@@ -9,19 +9,33 @@ cat >"$fixture_home/.local/bin/terminal-notifier" <<'EOF'
 printf '%s\n' "$*" >>"$DIAGNOSE_LOG"
 case "$1" in
     --version) printf 'agentnotify 0.1.0\n' ;;
-    diagnose) printf '{"data":{"native":{"authorization":"%s"}}}\n' "$TEST_AUTHORIZATION" ;;
+    diagnose) printf '{"data":{"native":{"authorization":"%s","available":%s}}}\n' "$TEST_AUTHORIZATION" "$TEST_NATIVE_AVAILABLE" ;;
     *) exit 99 ;;
 esac
 EOF
 chmod +x "$fixture_home/.local/bin/terminal-notifier"
-for authorization in authorized denied not-determined; do
+for policy in own-arrivals-only system-notifications; do
     : >"$fixture_home/calls"
     result=0
+    if [ "$policy" = own-arrivals-only ]; then
+        authorization=disabled
+        native_available=false
+    else
+        authorization=authorized
+        native_available=true
+    fi
     HOME="$fixture_home" DIAGNOSE_LOG="$fixture_home/calls" TEST_AUTHORIZATION="$authorization" \
+        TEST_NATIVE_AVAILABLE="$native_available" \
         "$root/libexec/verify-notifications" >"$fixture_home/output" 2>&1 || result=$?
-    if [ "$authorization" = authorized ]; then [ "$result" -eq 0 ]; else [ "$result" -eq 1 ]; fi
+    if [ "$policy" = own-arrivals-only ]; then
+        [ "$result" -eq 0 ]
+        grep -F 'macOS system notifications are disabled by design' "$fixture_home/output" >/dev/null
+    else
+        [ "$result" -eq 1 ]
+        grep -F 'required own-arrivals-only policy' "$fixture_home/output" >/dev/null
+    fi
     grep -F AgentNotify "$fixture_home/output" >/dev/null
     [ "$(wc -l <"$fixture_home/calls" | tr -d ' ')" = 2 ]
     grep -Fx diagnose "$fixture_home/calls" >/dev/null
 done
-printf 'Managed notifier diagnosis passed without sending or removing inbox items.\n'
+printf 'Managed notifier own-arrivals-only diagnosis passed without sending or removing inbox items.\n'
