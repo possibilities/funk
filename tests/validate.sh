@@ -446,7 +446,6 @@ brew "azure-cli"
 brew "jq"
 # pdftotext, required by Agentscrape and Agentbrain to read PDFs.
 brew "poppler"
-brew "terminal-notifier"
 brew "yq"
 # Encrypted comprehensive onsite and offsite account backups.
 brew "restic"
