@@ -13,7 +13,6 @@ fail() {
 
 test_home="$test_dir/home"
 applications="$test_home/Applications"
-chrome_log="$test_dir/chrome.log"
 mkdir -p "$test_home"
 
 HOME="$test_home" FUNK_KIOSK_APPLICATIONS_DIR="$applications" \
@@ -33,25 +32,14 @@ while IFS='|' read -r name identifier url; do
     /usr/bin/codesign --verify --deep --strict "$bundle" >/dev/null 2>&1 \
         || fail "bundle signature was invalid: $name"
 
-    rm -f "$chrome_log"
-    HOME="$test_home" NC="$root/tests/fixtures/nc" \
-        FUNK_CHROME="$root/tests/fixtures/chrome" \
-        FUNK_TEST_CHROME_LOG="$chrome_log" FUNK_TEST_REACHABLE_PORTS=443 \
-        "$bundle/Contents/MacOS/FunkKioskLauncher" -psn_0_12345 \
-        >"$test_dir/launch.out" 2>"$test_dir/launch.err"
-    for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
-        [ -s "$chrome_log" ] && break
-        sleep 0.05
-    done
-    [ -s "$chrome_log" ] || fail "bundle did not start Chrome: $name"
-    if grep -F 'arg=--user-data-dir=' "$chrome_log" >/dev/null; then
-        fail "bundle started an isolated Chrome instance: $name"
-    fi
-    grep -Fx "arg=--app=$url" "$chrome_log" >/dev/null \
-        || fail "bundle opened the wrong URL: $name"
-    if grep -Fx 'arg=--kiosk' "$chrome_log" >/dev/null; then
-        fail "bundle requested full-screen kiosk mode: $name"
-    fi
+    "$bundle/Contents/MacOS/FunkKioskLauncher" --check \
+        >"$test_dir/launch-check.out"
+    expected=$(printf 'url=%s\nwindow=chromeless\nfullscreen=disabled\nengine=WKWebView' "$url")
+    [ "$(cat "$test_dir/launch-check.out")" = "$expected" ] \
+        || fail "bundle reported the wrong native window configuration: $name"
+    /usr/bin/otool -L "$bundle/Contents/MacOS/FunkKioskLauncher" \
+        | grep -F '/WebKit.framework/' >/dev/null \
+        || fail "bundle did not link the system WebKit framework: $name"
 done <<'EOF'
 AgentVoice Transcripts|com.arthack.funk.kiosk.agentvoice|https://agentvoice.localhost/
 AgentChats Transcripts|com.arthack.funk.kiosk.agentchats|https://agentchats.localhost/

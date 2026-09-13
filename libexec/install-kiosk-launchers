@@ -23,7 +23,7 @@ esac
 [ -n "${HOME:-}" ] && [ -d "$HOME" ] || die "HOME is not an existing directory"
 
 funk_root=${FUNK_ROOT:?FUNK_ROOT is not set}
-helper="$funk_root/libexec/kiosk-launcher"
+source_file="$funk_root/libexec/kiosk-launcher.m"
 applications_dir=${FUNK_KIOSK_APPLICATIONS_DIR:-"$HOME/Applications"}
 codesign_bin=/usr/bin/codesign
 lsregister=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
@@ -32,8 +32,10 @@ case "$applications_dir" in
     /*) ;;
     *) die "applications directory must be an absolute path: $applications_dir" ;;
 esac
-[ -x "$helper" ] || die "kiosk helper is missing or not executable: $helper"
+[ -f "$source_file" ] || die "native kiosk launcher source is missing: $source_file"
 [ -x "$codesign_bin" ] || die "Apple codesign is unavailable: $codesign_bin"
+clang_bin=${FUNK_CLANG:-/usr/bin/clang}
+[ -x "$clang_bin" ] || die "Apple clang is unavailable: $clang_bin"
 
 tmpdir=$(mktemp -d "${TMPDIR:-/tmp}/funk-kiosk-launchers.XXXXXX")
 lock_file=
@@ -44,6 +46,7 @@ active_incoming=
 active_new_target=0
 active_transaction=
 active_owner_file=
+launcher="$tmpdir/FunkKioskLauncher"
 
 cleanup() {
     if [ -n "$active_backup" ] && [ -e "$active_backup" ]; then
@@ -74,7 +77,7 @@ render_bundle() {
     local plist="$contents/Info.plist"
 
     /usr/bin/install -d -m 0755 "$contents/MacOS" "$contents/Resources"
-    /usr/bin/install -m 0755 "$helper" "$contents/MacOS/FunkKioskLauncher"
+    /usr/bin/install -m 0755 "$launcher" "$contents/MacOS/FunkKioskLauncher"
     printf '%s\n' "$url" >"$contents/Resources/launcher-url"
     /bin/chmod 0644 "$contents/Resources/launcher-url"
 
@@ -101,6 +104,12 @@ render_bundle() {
     "$codesign_bin" --verify --deep --strict "$bundle" >/dev/null 2>&1 \
         || die "rendered application has an invalid signature: $name"
 }
+
+"$clang_bin" \
+    -std=c11 -Os -Wall -Wextra -Werror -fobjc-arc \
+    -mmacosx-version-min=13.0 \
+    -framework AppKit -framework Foundation -framework WebKit \
+    "$source_file" -o "$launcher"
 
 render_bundle 'AgentVoice Transcripts' com.arthack.funk.kiosk.agentvoice \
     https://agentvoice.localhost/

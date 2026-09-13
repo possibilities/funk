@@ -132,12 +132,11 @@ Adopt a file only when Funk is its sole writer.
 
 `funk install-kiosk-launchers` renders the AgentVoice and AgentChats transcript
 applications into `~/Applications`. Their URLs are fixed resources inside the
-ad-hoc-signed bundles. Chrome's windowed app mode removes browser chrome without
-creating a full-screen macOS Space and reuses the normal Chrome process and
-profile rather than cold-starting an isolated browser for each application. The
-installer refuses to replace a bundle unless its identifier proves Funk owns
-it, and both `./install` and the scheduled path converge the applications
-without elevation.
+ad-hoc-signed bundles. A small AppKit executable hosts each URL in the system
+WebKit framework with an edge-to-edge content view, hidden title-bar furniture,
+and native full-screen Spaces disabled. The installer refuses to replace a
+bundle unless its identifier proves Funk owns it, and both `./install` and the
+scheduled path converge the applications without elevation.
 
 
 ## Process headroom warnings
