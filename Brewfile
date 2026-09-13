@@ -22,6 +22,7 @@ brew "btop"
 brew "uv"
 brew "stow"
 brew "pnpm"
+brew "portless"
 brew "oven-sh/bun/bun", trusted: true
 brew "zig"
 brew "scrcpy"
