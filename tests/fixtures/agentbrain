@@ -1,0 +1,16 @@
+#!/bin/bash
+
+set -euo pipefail
+
+case "$*" in
+    'backup create --output '*)
+        mkdir -p "$4"
+        printf 'test recovery snapshot\n' >"$4/recovery.txt"
+        ;;
+    'backup verify '*)
+        [ -f "$3/recovery.txt" ]
+        ;;
+    *)
+        exit 64
+        ;;
+esac
