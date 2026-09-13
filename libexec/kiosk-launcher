@@ -3,28 +3,19 @@
 set -euo pipefail
 
 usage() {
-    printf 'Usage: kiosk-launcher [URL PROFILE-NAME]\n' >&2
+    printf 'Usage: kiosk-launcher [URL]\n' >&2
 }
 
 case "$#:${1:-}" in
     0:|1:-psn_*)
         resources=$(cd -P -- "$(dirname -- "$0")/../Resources" && pwd)
         url=$(cat "$resources/launcher-url")
-        profile_name=$(cat "$resources/profile-name")
         ;;
-    2:*)
+    1:*)
         url=$1
-        profile_name=$2
         ;;
     *)
         usage
-        exit 64
-        ;;
-esac
-
-case "$profile_name" in
-    ''|*[!a-z0-9-]*)
-        printf 'Kiosk: invalid profile name: %s.\n' "$profile_name" >&2
         exit 64
         ;;
 esac
@@ -35,8 +26,6 @@ PATH="/opt/homebrew/bin:/usr/local/bin${PATH:+:$PATH}:/usr/bin:/bin:/usr/sbin:/s
 export PATH
 
 chrome=${FUNK_CHROME:-/Applications/Google Chrome.app/Contents/MacOS/Google Chrome}
-profile_root=${FUNK_KIOSK_PROFILE_ROOT:-$HOME/.local/state/funk/chrome-kiosk}
-profile="$profile_root/$profile_name"
 nc=${NC:-/usr/bin/nc}
 notify_helper=${FUNK_NOTIFY:-$HOME/.local/bin/funk-notify}
 
@@ -64,7 +53,7 @@ notify_unavailable() {
     "$notify_helper" \
         --title 'Kiosk unavailable' \
         --message "$1" \
-        --group "com.arthack.funk.kiosk.$profile_name"
+        --group "com.arthack.funk.kiosk.$host"
 }
 
 if ! "$nc" -z -G 2 "$host" "$port" >/dev/null 2>&1; then
@@ -79,10 +68,9 @@ if [ ! -x "$chrome" ]; then
     exit 127
 fi
 
-mkdir -p "$profile"
-# A dedicated profile keeps each transcript application in its own Chrome
-# process. --app removes the browser chrome without creating a full-screen
-# macOS Space, which --kiosk would do.
-"$chrome" --user-data-dir="$profile" --no-first-run --no-default-browser-check \
+# Reuse normal Chrome instead of forcing another process tree with a dedicated
+# user-data directory. --app removes the browser chrome without creating a
+# full-screen macOS Space, which --kiosk would do.
+"$chrome" --no-first-run --no-default-browser-check \
     --app="$url" >/dev/null 2>&1 &
 disown
