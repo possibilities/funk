@@ -42,7 +42,7 @@ assert_args() {
     local serial=$1
     shift
     {
-        printf '%s\n' -s "$serial" --stay-awake --keep-active --keyboard=uhid
+        printf '%s\n' -s "$serial" --window-borderless --stay-awake --keep-active --keyboard=uhid
         printf '%s\n' "$@"
     } >"$test_dir/expected.args"
     /usr/bin/cmp -s "$test_dir/expected.args" "$scrcpy_log" \

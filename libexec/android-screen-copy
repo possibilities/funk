@@ -104,6 +104,7 @@ esac
 
 scrcpy_args=(
     -s "$serial"
+    --window-borderless
     --stay-awake
     --keep-active
     --keyboard=uhid
