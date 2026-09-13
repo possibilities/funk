@@ -168,6 +168,7 @@ agentstart_root="$HOME/code/agentstart"
 "$funk_command" install-tailscale-recovery
 "$funk_command" install-home-awake
 "$funk_command" install-backups
+"$funk_command" install-process-warning
 "$funk_command" configure-macos
 
 # ~/.ssh/config.d is generated from live Tailscale state rather than tracked, so

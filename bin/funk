@@ -39,6 +39,8 @@ Commands:
                       Write ~/.ssh/config.d from live Tailscale state
   git-identity [--status]
                       Set this account's commit name and address, once
+  install-process-warning [--check] [--context FILE]
+                      Install the five-minute process-headroom warning
   install-updater    Install and load Funk's four-times-daily user LaunchAgent
   install-tailscale-recovery
                       Install the login/five-minute Tailscale recovery agent
@@ -150,6 +152,10 @@ case "$command_name" in
     backup)
         shift
         exec "$FUNK_ROOT/bin/.local/bin/funk-backup" "$@"
+        ;;
+    install-process-warning)
+        shift
+        exec /usr/bin/python3 "$FUNK_ROOT/libexec/install-process-headroom-agent.py" "$@"
         ;;
     install-backups)
         shift

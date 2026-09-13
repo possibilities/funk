@@ -127,3 +127,40 @@ left the Brewfile with them). Herdr's live `config.toml` is also AgentStart's:
 `scripts/herdr-config` renders it from that checkout's tracked source, while
 Funk's `herdr` package retains only the machine-owned `agent-mem.sh` helper.
 Adopt a file only when Funk is its sole writer.
+
+
+## Process headroom warnings
+
+`funk install-process-warning` installs `io.arthack.funk.warn-process-headroom`,
+a login and five-minute launchd check. Normal `./install` converges it too.
+The short-lived `/usr/bin/python3` checker calls macOS libproc and sysctl
+directly; it has no subprocesses, inference, process termination or service
+restart actions. It counts both user and system capacity and records the ten
+largest parent groups without command arguments or environment variables.
+
+Warnings begin at 300 free slots, become critical at 150, and repeat at most
+every 30 minutes unless severity increases. Recovery at 400 slots rearms the
+warning. These thresholds apply to whichever of the user and system limits has
+less room. Five-minute sampling cannot catch every burst or guarantee launchd
+can spawn the checker when the process table is already full.
+
+Alerts use AgentNotify's documented local Unix socket, without launching the app
+or a CLI. The app must already be running. If delivery fails, the exact request
+is saved and retried on the next scheduled check; a healthy sample cancels an
+unsent warning. Errors go to `~/Library/Logs/Funk/process-headroom.log`.
+No notification is sent on healthy checks.
+
+Private state is in `~/.local/state/funk/process-headroom/`: `latest.json` holds
+the latest sample, `state.json` holds throttling/delivery state, and `resume.md`
+is the notification's clickable handoff. Supply nonsecret investigation metadata
+with `funk install-process-warning --context /absolute/context.json`; include
+`cwd`, `session_id`, `resume_command`, evidence paths and any relevant pane IDs.
+That file is copied to local `context.json` and preserved by later installations.
+Never commit machine/session metadata. Optional `notify_socket` overrides the
+default `~/.local/state/agentnotify/notify.sock` for accounts with custom state.
+Opening the handoff does not execute its resume command. `--check` renders and
+validates without loading a job or changing local state.
+
+`python3 tests/process-headroom.py` exercises synthetic pressure, throttling,
+escalation, recovery, delivery failure/idempotency, the socket wire format and
+the five-minute plist, without spawning tool inventories or sending real alerts.

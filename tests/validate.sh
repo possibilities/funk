@@ -10,6 +10,8 @@ fail() {
     exit 1
 }
 
+python3 tests/process-headroom.py
+
 skipped=""
 skip() {
     skipped="$skipped  - $1
