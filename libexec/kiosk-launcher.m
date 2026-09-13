@@ -90,6 +90,32 @@ static NSURL *launcherURL(void) {
 
 @end
 
+static void installMainMenu(void) {
+    NSMenu *mainMenu = [[NSMenu alloc] init];
+
+    NSMenuItem *applicationItem = [[NSMenuItem alloc] init];
+    [mainMenu addItem:applicationItem];
+    NSMenu *applicationMenu = [[NSMenu alloc] init];
+    NSString *appName = [NSBundle.mainBundle objectForInfoDictionaryKey:@"CFBundleDisplayName"] ?: @"App";
+    NSMenuItem *quitItem = [[NSMenuItem alloc]
+        initWithTitle:[NSString stringWithFormat:@"Quit %@", appName]
+               action:@selector(terminate:)
+        keyEquivalent:@"q"];
+    [applicationMenu addItem:quitItem];
+    applicationItem.submenu = applicationMenu;
+
+    NSMenuItem *windowItem = [[NSMenuItem alloc] init];
+    [mainMenu addItem:windowItem];
+    NSMenu *windowMenu = [[NSMenu alloc] initWithTitle:@"Window"];
+    NSMenuItem *closeItem = [[NSMenuItem alloc] initWithTitle:@"Close"
+                                                      action:@selector(performClose:)
+                                               keyEquivalent:@"w"];
+    [windowMenu addItem:closeItem];
+    windowItem.submenu = windowMenu;
+    NSApp.windowsMenu = windowMenu;
+    NSApp.mainMenu = mainMenu;
+}
+
 int main(int argc, const char *argv[]) {
     @autoreleasepool {
         if (argc == 2 && strcmp(argv[1], "--check") == 0) {
@@ -105,6 +131,7 @@ int main(int argc, const char *argv[]) {
             return 64;
         }
         NSApplication *application = NSApplication.sharedApplication;
+        installMainMenu();
         FunkKioskDelegate *delegate = [[FunkKioskDelegate alloc] init];
         application.delegate = delegate;
         [application setActivationPolicy:NSApplicationActivationPolicyRegular];
