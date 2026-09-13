@@ -68,7 +68,7 @@ cleanup() {
 trap cleanup EXIT
 
 render_bundle() {
-    local name=$1 identifier=$2 url=$3 profile_name=$4
+    local name=$1 identifier=$2 url=$3
     local bundle="$tmpdir/$name.app"
     local contents="$bundle/Contents"
     local plist="$contents/Info.plist"
@@ -76,8 +76,7 @@ render_bundle() {
     /usr/bin/install -d -m 0755 "$contents/MacOS" "$contents/Resources"
     /usr/bin/install -m 0755 "$helper" "$contents/MacOS/FunkKioskLauncher"
     printf '%s\n' "$url" >"$contents/Resources/launcher-url"
-    printf '%s\n' "$profile_name" >"$contents/Resources/profile-name"
-    /bin/chmod 0644 "$contents/Resources/launcher-url" "$contents/Resources/profile-name"
+    /bin/chmod 0644 "$contents/Resources/launcher-url"
 
     /usr/bin/plutil -create xml1 "$plist"
     /usr/bin/plutil -insert CFBundleDevelopmentRegion -string en "$plist"
@@ -104,9 +103,9 @@ render_bundle() {
 }
 
 render_bundle 'AgentVoice Transcripts' com.arthack.funk.kiosk.agentvoice \
-    https://agentvoice.localhost/ agentvoice-transcripts
+    https://agentvoice.localhost/
 render_bundle 'AgentChats Transcripts' com.arthack.funk.kiosk.agentchats \
-    https://agentchats.localhost/ agentchats-transcripts
+    https://agentchats.localhost/
 
 if [ "$check_only" -eq 1 ]; then
     printf 'Kiosk launcher app bundles render and validate successfully.\n'
@@ -140,7 +139,6 @@ bundle_matches() {
 755 Contents/_CodeSignature
 755 Contents/MacOS/FunkKioskLauncher
 644 Contents/Resources/launcher-url
-644 Contents/Resources/profile-name
 644 Contents/Info.plist
 644 Contents/_CodeSignature/CodeResources
 EOF

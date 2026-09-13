@@ -20,7 +20,7 @@ HOME="$test_home" FUNK_KIOSK_APPLICATIONS_DIR="$applications" \
     FUNK_SKIP_LAUNCHSERVICES_REGISTRATION=1 \
     "$root/bin/funk" install-kiosk-launchers >"$test_dir/install.out"
 
-while IFS='|' read -r name identifier url profile_name; do
+while IFS='|' read -r name identifier url; do
     bundle="$applications/$name.app"
     [ -d "$bundle" ] || fail "bundle was not installed: $name"
     [ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' \
@@ -28,8 +28,8 @@ while IFS='|' read -r name identifier url profile_name; do
         || fail "bundle identifier was incorrect: $name"
     [ "$(cat "$bundle/Contents/Resources/launcher-url")" = "$url" ] \
         || fail "bundle URL was incorrect: $name"
-    [ "$(cat "$bundle/Contents/Resources/profile-name")" = "$profile_name" ] \
-        || fail "bundle profile was incorrect: $name"
+    [ ! -e "$bundle/Contents/Resources/profile-name" ] \
+        || fail "bundle retained a dedicated Chrome profile: $name"
     /usr/bin/codesign --verify --deep --strict "$bundle" >/dev/null 2>&1 \
         || fail "bundle signature was invalid: $name"
 
@@ -44,16 +44,17 @@ while IFS='|' read -r name identifier url profile_name; do
         sleep 0.05
     done
     [ -s "$chrome_log" ] || fail "bundle did not start Chrome: $name"
-    grep -Fx "arg=--user-data-dir=$test_home/.local/state/funk/chrome-kiosk/$profile_name" \
-        "$chrome_log" >/dev/null || fail "bundle used the wrong profile: $name"
+    if grep -F 'arg=--user-data-dir=' "$chrome_log" >/dev/null; then
+        fail "bundle started an isolated Chrome instance: $name"
+    fi
     grep -Fx "arg=--app=$url" "$chrome_log" >/dev/null \
         || fail "bundle opened the wrong URL: $name"
     if grep -Fx 'arg=--kiosk' "$chrome_log" >/dev/null; then
         fail "bundle requested full-screen kiosk mode: $name"
     fi
 done <<'EOF'
-AgentVoice Transcripts|com.arthack.funk.kiosk.agentvoice|https://agentvoice.localhost/|agentvoice-transcripts
-AgentChats Transcripts|com.arthack.funk.kiosk.agentchats|https://agentchats.localhost/|agentchats-transcripts
+AgentVoice Transcripts|com.arthack.funk.kiosk.agentvoice|https://agentvoice.localhost/
+AgentChats Transcripts|com.arthack.funk.kiosk.agentchats|https://agentchats.localhost/
 EOF
 
 HOME="$test_home" FUNK_KIOSK_APPLICATIONS_DIR="$applications" \

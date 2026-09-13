@@ -58,9 +58,9 @@ script commands and is the only supported Android launch surface.
 _Avoid_: Raycast Android launcher, script command.
 
 **Kiosk launcher application** — One of the per-user macOS application bundles
-under `~/Applications` that opens a fixed local web application in a dedicated,
-windowed Chrome app profile and is indexed by application launchers. It removes
-browser chrome without creating a full-screen macOS Space.
+under `~/Applications` that opens a fixed local web application in windowed
+Chrome app mode and is indexed by application launchers. It reuses normal
+Chrome, removing browser chrome without creating a full-screen macOS Space.
 _Avoid_: kiosk bookmark, Raycast kiosk command.
 
 **Fork-and-adapt** — what this repository offers a reader who is not the account

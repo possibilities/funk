@@ -111,10 +111,10 @@ posts a macOS notification instead of failing invisibly.
 `AgentVoice Transcripts.app` and `AgentChats Transcripts.app` open their fixed
 `.localhost` services in windowed Chrome app mode. The windows have no tabs,
 address bar, or other browser chrome, but do not create a full-screen macOS
-Space. Each has a separate profile under `~/.local/state/funk/chrome-kiosk`, so
-the two transcript apps remain independent from everyday Chrome and each other.
-An unreachable service or missing Chrome is reported with a macOS notification
-instead of leaving a silent launcher failure.
+Space. They reuse the normal Chrome process and profile so launching either app
+does not cold-start another browser process tree. An unreachable service or
+missing Chrome is reported with a macOS notification instead of leaving a
+silent launcher failure.
 
 Noizey's native terminal executable is built from the clean `~/code/noizey`
 checkout into `~/.local/lib/noizey/noizey`. Funk's `bin` Stow package exposes
