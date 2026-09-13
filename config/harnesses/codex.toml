@@ -10,7 +10,9 @@ approvals_reviewer = "user"
 hide_rate_limit_model_nudge = true
 
 [agents]
-max_concurrent_threads_per_session = 12
+# Native v2 retains completed children until another child needs their slot.
+# Bound each root to three resident children; replaced roots can retain children.
+max_concurrent_threads_per_session = 3
 default_subagent_model = "gpt-5.6-sol"
 default_subagent_reasoning_effort = "medium"
 
