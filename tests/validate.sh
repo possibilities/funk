@@ -45,7 +45,6 @@ libexec/stow-config
 libexec/install-chuchu-lab-theme
 libexec/android-screen-copy
 libexec/install-android-launchers
-libexec/kiosk-launcher
 libexec/install-kiosk-launchers
 libexec/install-ghostty-terminfo
 libexec/install-noizey
@@ -1518,7 +1517,7 @@ else
     skip "Android launcher application suite" \
         "needs macOS: AppKit, clang, codesign, and BSD stat -f"
     skip "kiosk launcher application suite" \
-        "needs macOS: codesign, shlock, and BSD stat -f"
+        "needs macOS: AppKit, WebKit, clang, codesign, shlock, and BSD stat -f"
 fi
 "$root/tests/kiosk-launcher.sh"
 kiosk_launcher=bin/.local/bin/raycast/localhost-8789-kiosk.sh

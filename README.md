@@ -109,12 +109,10 @@ rejected as ambiguous. If neither USB nor wireless is available, the launcher
 posts a macOS notification instead of failing invisibly.
 
 `AgentVoice Transcripts.app` and `AgentChats Transcripts.app` open their fixed
-`.localhost` services in windowed Chrome app mode. The windows have no tabs,
-address bar, or other browser chrome, but do not create a full-screen macOS
-Space. They reuse the normal Chrome process and profile so launching either app
-does not cold-start another browser process tree. An unreachable service or
-missing Chrome is reported with a macOS notification instead of leaving a
-silent launcher failure.
+`.localhost` services in borderless native WebKit windows. Web content extends
+beneath a transparent hidden title bar, the traffic-light controls are hidden,
+and native full-screen Spaces are disabled. Each small launcher uses the system
+WebKit framework instead of starting another Chrome process tree.
 
 Noizey's native terminal executable is built from the clean `~/code/noizey`
 checkout into `~/.local/lib/noizey/noizey`. Funk's `bin` Stow package exposes
