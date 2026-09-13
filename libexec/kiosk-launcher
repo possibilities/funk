@@ -1,0 +1,88 @@
+#!/bin/bash
+
+set -euo pipefail
+
+usage() {
+    printf 'Usage: kiosk-launcher [URL PROFILE-NAME]\n' >&2
+}
+
+case "$#:${1:-}" in
+    0:|1:-psn_*)
+        resources=$(cd -P -- "$(dirname -- "$0")/../Resources" && pwd)
+        url=$(cat "$resources/launcher-url")
+        profile_name=$(cat "$resources/profile-name")
+        ;;
+    2:*)
+        url=$1
+        profile_name=$2
+        ;;
+    *)
+        usage
+        exit 64
+        ;;
+esac
+
+case "$profile_name" in
+    ''|*[!a-z0-9-]*)
+        printf 'Kiosk: invalid profile name: %s.\n' "$profile_name" >&2
+        exit 64
+        ;;
+esac
+
+# LaunchServices does not inherit the interactive shell's PATH. The browser is
+# addressed directly, but funk-notify may be supplied by the Stow package.
+PATH="/opt/homebrew/bin:/usr/local/bin${PATH:+:$PATH}:/usr/bin:/bin:/usr/sbin:/sbin"
+export PATH
+
+chrome=${FUNK_CHROME:-/Applications/Google Chrome.app/Contents/MacOS/Google Chrome}
+profile_root=${FUNK_KIOSK_PROFILE_ROOT:-$HOME/.local/state/funk/chrome-kiosk}
+profile="$profile_root/$profile_name"
+nc=${NC:-/usr/bin/nc}
+notify_helper=${FUNK_NOTIFY:-$HOME/.local/bin/funk-notify}
+
+rest=${url#*://}
+hostport=${rest%%/*}
+host=${hostport%%:*}
+port=${hostport##*:}
+if [ "$port" = "$hostport" ]; then
+    case "$url" in
+        https://*) port=443 ;;
+        http://*) port=80 ;;
+        *)
+            printf 'Kiosk: unsupported URL: %s.\n' "$url" >&2
+            exit 64
+            ;;
+    esac
+fi
+[ -n "$host" ] || {
+    printf 'Kiosk: %s has no host to connect to.\n' "$url" >&2
+    exit 64
+}
+
+notify_unavailable() {
+    [ -x "$notify_helper" ] || return 0
+    "$notify_helper" \
+        --title 'Kiosk unavailable' \
+        --message "$1" \
+        --group "com.arthack.funk.kiosk.$profile_name"
+}
+
+if ! "$nc" -z -G 2 "$host" "$port" >/dev/null 2>&1; then
+    notify_unavailable "Nothing is listening at $host:$port."
+    printf 'Kiosk: nothing is listening on %s:%s.\n' "$host" "$port" >&2
+    exit 1
+fi
+
+if [ ! -x "$chrome" ]; then
+    notify_unavailable "Google Chrome is not installed."
+    printf 'Kiosk: Google Chrome is not installed at %s.\n' "$chrome" >&2
+    exit 127
+fi
+
+mkdir -p "$profile"
+# A dedicated profile keeps each transcript application in its own Chrome
+# process. --app removes the browser chrome without creating a full-screen
+# macOS Space, which --kiosk would do.
+"$chrome" --user-data-dir="$profile" --no-first-run --no-default-browser-check \
+    --app="$url" >/dev/null 2>&1 &
+disown

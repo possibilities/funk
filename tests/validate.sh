@@ -45,6 +45,8 @@ libexec/stow-config
 libexec/install-chuchu-lab-theme
 libexec/android-screen-copy
 libexec/install-android-launchers
+libexec/kiosk-launcher
+libexec/install-kiosk-launchers
 libexec/install-ghostty-terminfo
 libexec/install-noizey
 libexec/initialize-configs
@@ -89,6 +91,7 @@ bin/.local/bin/adb-wireless-pair
 bin/.local/bin/raycast/localhost-8789-kiosk.sh
 tests/adb-wireless.sh
 tests/android-launchers.sh
+tests/kiosk-applications.sh
 tests/chuchu-theme.sh
 tests/ghostty-terminfo.sh
 tests/noizey.sh
@@ -1508,11 +1511,14 @@ fi
 if [ "$(uname -s)" = Darwin ]; then
     "$root/tests/adb-wireless.sh"
     "$root/tests/android-launchers.sh"
+    "$root/tests/kiosk-applications.sh"
 else
     skip "adb-wireless suite" \
         "needs macOS: /usr/bin/shlock and BSD stat -f"
     skip "Android launcher application suite" \
         "needs macOS: AppKit, clang, codesign, and BSD stat -f"
+    skip "kiosk launcher application suite" \
+        "needs macOS: codesign, shlock, and BSD stat -f"
 fi
 "$root/tests/kiosk-launcher.sh"
 kiosk_launcher=bin/.local/bin/raycast/localhost-8789-kiosk.sh
