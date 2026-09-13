@@ -32,7 +32,14 @@ esac
 
 credentials="${FUNK_BACKUP_CREDENTIALS:-$HOME/.config/restic/$repository_name.env}"
 state_root="$HOME/.local/state/funk"
-stage_root="$state_root/backup-staging/$tier"
+internal_stage_root="$state_root/backup-staging/$tier"
+scratch_cache_root="${FUNK_BACKUP_SCRATCH_CACHE_ROOT:-/Volumes/Scratch/cache}"
+stage_root="$internal_stage_root"
+stage_is_external=0
+if [ "$tier" = onsite ] && [ -d "$scratch_cache_root" ]; then
+    stage_root="$scratch_cache_root/funk/backup-staging/$tier"
+    stage_is_external=1
+fi
 log_path="${FUNK_BACKUP_LOG:-$HOME/Library/Logs/Funk/backup-$tier.log}"
 lock_dir="/tmp/funk-backup-$tier.$(id -u).lock"
 
@@ -170,6 +177,9 @@ if [ "$tier" = onsite ]; then
         /Volumes/Scratch/claude-archive; do
         add_root "$root"
     done
+    if [ "$stage_is_external" -eq 1 ]; then
+        roots+=("$stage_root")
+    fi
 fi
 
 excludes=(
@@ -291,8 +301,8 @@ fi
 printf '%s\n' "$$" >"$lock_dir/pid"
 trap 'rm -rf -- "$lock_dir"' EXIT
 
-mkdir -p "$stage_root"
-chmod 700 "$state_root/backup-staging" "$stage_root"
+mkdir -p "$(dirname "$stage_root")" "$stage_root"
+chmod 700 "$(dirname "$stage_root")" "$stage_root"
 preflight_failures=0
 
 replace_directory_snapshot() {
@@ -375,8 +385,8 @@ if [ "$tier" = onsite ] && [ -x "$transcript_helper" ]; then
     fi
 fi
 
-if [ -d /Volumes/Scratch/cache ]; then
-    export RESTIC_CACHE_DIR=/Volumes/Scratch/cache/restic
+if [ -d "$scratch_cache_root" ]; then
+    export RESTIC_CACHE_DIR="$scratch_cache_root/restic"
 else
     export RESTIC_CACHE_DIR="$HOME/Library/Caches/Funk/restic"
     mkdir -p "$RESTIC_CACHE_DIR"
@@ -396,4 +406,8 @@ if [ "$backup_status" -ne 0 ]; then
     exit "$backup_status"
 fi
 [ "$preflight_failures" -eq 0 ] || exit 1
+if [ "$stage_is_external" -eq 1 ] && [ -d "$internal_stage_root" ]; then
+    rm -rf -- "$internal_stage_root"
+    log 'removed legacy internal onsite recovery staging'
+fi
 exit 0

@@ -8,8 +8,10 @@ fake_restic="$root/tests/fixtures/restic"
 test_home=$(mktemp -d "${TMPDIR:-/tmp}/funk-backup-test.XXXXXX")
 trap 'rm -rf "$test_home"' EXIT
 credentials="$test_home/restic.env"
+scratch_cache="$test_home/scratch-cache"
+scratch_stage="$scratch_cache/funk/backup-staging/onsite"
 mkdir "$test_home/.config" "$test_home/.codex" "$test_home/code" \
-    "$test_home/Documents" "$test_home/Downloads"
+    "$test_home/Documents" "$test_home/Downloads" "$scratch_cache"
 mkdir "$test_home/code/jobsearch"
 /usr/bin/sqlite3 "$test_home/code/jobsearch/jobsearch.db" \
     'CREATE TABLE durable (value TEXT); INSERT INTO durable VALUES ("kept");'
@@ -18,6 +20,7 @@ chmod 600 "$credentials"
 
 if HOME="$test_home" FUNK_RESTIC_BIN=/usr/bin/true \
     FUNK_BACKUP_CREDENTIALS="$test_home/missing.env" \
+    FUNK_BACKUP_SCRATCH_CACHE_ROOT="$scratch_cache" \
     "$backup" onsite --check >/dev/null 2>&1; then
     printf 'funk-backup test: missing credentials were reported ready\n' >&2
     exit 1
@@ -30,6 +33,7 @@ check() {
     HOME="$test_home" \
         FUNK_RESTIC_BIN=/usr/bin/true \
         FUNK_BACKUP_CREDENTIALS="$credentials" \
+        FUNK_BACKUP_SCRATCH_CACHE_ROOT="$scratch_cache" \
         "$backup" "$1" --check
 }
 
@@ -50,10 +54,14 @@ fi
 # from protecting the unrelated roots that are available.
 chmod 600 "$credentials"
 restic_log="$test_home/restic.log"
+legacy_stage="$test_home/.local/state/funk/backup-staging/onsite"
+mkdir -p "$legacy_stage"
+touch "$legacy_stage/legacy-marker"
 : >"$restic_log"
 if HOME="$test_home" \
     FUNK_RESTIC_BIN="$fake_restic" \
     FUNK_BACKUP_CREDENTIALS="$credentials" \
+    FUNK_BACKUP_SCRATCH_CACHE_ROOT="$scratch_cache" \
     FUNK_BACKUP_LOG="$test_home/backup.log" \
     FUNK_TRANSCRIPT_VAULT_BIN=/usr/bin/true \
     FUNK_TEST_RESTIC_LOG="$restic_log" \
@@ -63,16 +71,21 @@ if HOME="$test_home" \
 fi
 grep -F -- '--tag funk-home-onsite' "$restic_log" >/dev/null \
     || { printf 'funk-backup test: preflight failure blocked Restic\n' >&2; exit 1; }
-find "$test_home/.local/state/funk/backup-staging" \
+grep -F -- "$scratch_stage" "$restic_log" >/dev/null \
+    || { printf 'funk-backup test: external staging was not passed to Restic\n' >&2; exit 1; }
+find "$scratch_cache/funk/backup-staging" "$test_home/.local/state/funk/backup-staging" \
     -type f \( -name '.*-wal' -o -name '.*-shm' \) | grep . >/dev/null \
     && { printf 'funk-backup test: SQLite verification left temp sidecars\n' >&2; exit 1; }
-[ -f "$test_home/.local/state/funk/backup-staging/onsite/jobsearch.sqlite3" ] \
+[ -f "$scratch_stage/jobsearch.sqlite3" ] \
     || { printf 'funk-backup test: Jobsearch snapshot was not staged\n' >&2; exit 1; }
+[ -f "$legacy_stage/legacy-marker" ] \
+    || { printf 'funk-backup test: degraded preflight removed legacy staging\n' >&2; exit 1; }
 
 : >"$restic_log"
 if HOME="$test_home" \
     FUNK_RESTIC_BIN="$fake_restic" \
     FUNK_BACKUP_CREDENTIALS="$credentials" \
+    FUNK_BACKUP_SCRATCH_CACHE_ROOT="$scratch_cache" \
     FUNK_BACKUP_LOG="$test_home/backup.log" \
     FUNK_TEST_RESTIC_LOG="$restic_log" \
     "$backup" offsite >/dev/null 2>&1; then
@@ -87,5 +100,54 @@ if grep -F -- "$test_home/Downloads" "$restic_log" >/dev/null; then
 fi
 grep -F -- "--exclude $test_home/.local/state/agentweb/control.sqlite3" "$restic_log" >/dev/null \
     || { printf 'funk-backup test: live Agentweb database is not excluded\n' >&2; exit 1; }
+[ -f "$test_home/.local/state/funk/backup-staging/offsite/jobsearch.sqlite3" ] \
+    || { printf 'funk-backup test: offsite snapshot was not staged internally\n' >&2; exit 1; }
+
+# Legacy internal onsite staging is retired only after both the application
+# preflight and Restic succeed with the external staging root protected.
+mkdir -p "$test_home/.local/bin"
+install -m 755 "$root/tests/fixtures/agentbrain" "$test_home/.local/bin/agentbrain"
+install -m 755 "$root/tests/fixtures/agentboard" "$test_home/.local/bin/agentboard"
+if HOME="$test_home" \
+    FUNK_RESTIC_BIN="$fake_restic" \
+    FUNK_BACKUP_CREDENTIALS="$credentials" \
+    FUNK_BACKUP_SCRATCH_CACHE_ROOT="$scratch_cache" \
+    FUNK_BACKUP_LOG="$test_home/backup.log" \
+    FUNK_TRANSCRIPT_VAULT_BIN=/usr/bin/true \
+    FUNK_TEST_RESTIC_LOG="$restic_log" \
+    FUNK_TEST_RESTIC_EXIT=9 \
+    "$backup" onsite >/dev/null 2>&1; then
+    printf 'funk-backup test: failed Restic run was accepted\n' >&2
+    exit 1
+fi
+[ -f "$legacy_stage/legacy-marker" ] \
+    || { printf 'funk-backup test: failed Restic run removed legacy staging\n' >&2; exit 1; }
+
+HOME="$test_home" \
+    FUNK_RESTIC_BIN="$fake_restic" \
+    FUNK_BACKUP_CREDENTIALS="$credentials" \
+    FUNK_BACKUP_SCRATCH_CACHE_ROOT="$scratch_cache" \
+    FUNK_BACKUP_LOG="$test_home/backup.log" \
+    FUNK_TRANSCRIPT_VAULT_BIN=/usr/bin/true \
+    FUNK_TEST_RESTIC_LOG="$restic_log" \
+    "$backup" onsite >/dev/null
+[ ! -e "$legacy_stage" ] \
+    || { printf 'funk-backup test: successful external backup retained legacy staging\n' >&2; exit 1; }
+
+# An absent cache directory represents an unmounted Scratch volume. The onsite
+# job must fall back internally without creating the configured external path.
+missing_scratch_cache="$test_home/unmounted-scratch/cache"
+HOME="$test_home" \
+    FUNK_RESTIC_BIN="$fake_restic" \
+    FUNK_BACKUP_CREDENTIALS="$credentials" \
+    FUNK_BACKUP_SCRATCH_CACHE_ROOT="$missing_scratch_cache" \
+    FUNK_BACKUP_LOG="$test_home/backup.log" \
+    FUNK_TRANSCRIPT_VAULT_BIN=/usr/bin/true \
+    FUNK_TEST_RESTIC_LOG="$restic_log" \
+    "$backup" onsite >/dev/null
+[ -f "$legacy_stage/jobsearch.sqlite3" ] \
+    || { printf 'funk-backup test: onsite fallback did not stage internally\n' >&2; exit 1; }
+[ ! -e "$missing_scratch_cache" ] \
+    || { printf 'funk-backup test: onsite fallback created an unmounted cache root\n' >&2; exit 1; }
 
 printf 'funk-backup tests passed\n'
