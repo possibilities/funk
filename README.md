@@ -91,6 +91,8 @@ funk stow            # link config packages into $HOME
 funk chuchu-theme    # build and push Signal Room to Chuchu Lab
 funk install-android-launchers
                      # converge the four Screen Copy applications
+funk install-kiosk-launchers
+                     # converge the two transcript kiosk applications
 funk install-ghostty-terminfo
                      # expose Ghostty capabilities to remote shells
 funk install-noizey  # build and install the global terminal sound mixer
@@ -105,6 +107,14 @@ one is attached. With none attached they recover the existing wireless ADB
 connection; emulators are ignored and multiple authorized USB devices are
 rejected as ambiguous. If neither USB nor wireless is available, the launcher
 posts a macOS notification instead of failing invisibly.
+
+`AgentVoice Transcripts.app` and `AgentChats Transcripts.app` open their fixed
+`.localhost` services in windowed Chrome app mode. The windows have no tabs,
+address bar, or other browser chrome, but do not create a full-screen macOS
+Space. Each has a separate profile under `~/.local/state/funk/chrome-kiosk`, so
+the two transcript apps remain independent from everyday Chrome and each other.
+An unreachable service or missing Chrome is reported with a macOS notification
+instead of leaving a silent launcher failure.
 
 Noizey's native terminal executable is built from the clean `~/code/noizey`
 checkout into `~/.local/lib/noizey/noizey`. Funk's `bin` Stow package exposes

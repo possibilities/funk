@@ -46,6 +46,7 @@ unattendable_lister="$funk_root/libexec/list-unattendable-casks"
 cask_dir_lister="$funk_root/libexec/repair-cask-user-dirs"
 terminfo_installer="$funk_root/libexec/install-ghostty-terminfo"
 android_launcher_installer="$funk_root/libexec/install-android-launchers"
+kiosk_launcher_installer="$funk_root/libexec/install-kiosk-launchers"
 noizey_installer="$funk_root/libexec/install-noizey"
 # AgentStart owns the globally managed agent skills; its sync-skills is the
 # no-download convergence path this scheduled run is allowed to take. The
@@ -77,6 +78,10 @@ fi
 }
 [ -x "$android_launcher_installer" ] || {
     log "FAILED: Android launcher installer not found at $android_launcher_installer" >&2
+    exit 66
+}
+[ -x "$kiosk_launcher_installer" ] || {
+    log "FAILED: kiosk launcher installer not found at $kiosk_launcher_installer" >&2
     exit 66
 }
 [ -x "$noizey_installer" ] || {
@@ -232,6 +237,11 @@ fi
 # helper changes. This is unprivileged per-user convergence.
 if [ "$status" -eq 0 ]; then
     "$android_launcher_installer" || status=$?
+fi
+# Keep the transcript launch surface indexed and in step with its fixed local
+# service URLs. Like the Android bundles, these are unprivileged per-user apps.
+if [ "$status" -eq 0 ]; then
+    "$kiosk_launcher_installer" || status=$?
 fi
 # Refresh the native mixer from its clean local checkout without moving its
 # branch, touching settings, or interrupting an already running process.
