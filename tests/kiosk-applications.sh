@@ -39,7 +39,17 @@ while IFS='|' read -r name identifier url; do
 
     "$bundle/Contents/MacOS/FunkKioskLauncher" --check \
         >"$test_dir/launch-check.out"
-    expected=$(printf 'url=%s\nwindow=chromeless\nfullscreen=disabled\nengine=WKWebView' "$url")
+    expected=$(printf '%s\n' \
+        "url=$url" \
+        'window=chromeless' \
+        'fullscreen=disabled' \
+        'engine=WKWebView' \
+        'edit=Undo|selector=undo:|key=z|modifiers=command|target=responder-chain' \
+        'edit=Redo|selector=redo:|key=z|modifiers=command+shift|target=responder-chain' \
+        'edit=Cut|selector=cut:|key=x|modifiers=command|target=responder-chain' \
+        'edit=Copy|selector=copy:|key=c|modifiers=command|target=responder-chain' \
+        'edit=Paste|selector=paste:|key=v|modifiers=command|target=responder-chain' \
+        'edit=Select All|selector=selectAll:|key=a|modifiers=command|target=responder-chain')
     [ "$(cat "$test_dir/launch-check.out")" = "$expected" ] \
         || fail "bundle reported the wrong native window configuration: $name"
     /usr/bin/otool -L "$bundle/Contents/MacOS/FunkKioskLauncher" \

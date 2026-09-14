@@ -90,7 +90,7 @@ static NSURL *launcherURL(void) {
 
 @end
 
-static void installMainMenu(void) {
+static NSMenu *newMainMenu(void) {
     NSMenu *mainMenu = [[NSMenu alloc] init];
 
     NSMenuItem *applicationItem = [[NSMenuItem alloc] init];
@@ -104,6 +104,36 @@ static void installMainMenu(void) {
     [applicationMenu addItem:quitItem];
     applicationItem.submenu = applicationMenu;
 
+    NSMenuItem *editItem = [[NSMenuItem alloc] initWithTitle:@"Edit"
+                                                     action:nil
+                                              keyEquivalent:@""];
+    [mainMenu addItem:editItem];
+    NSMenu *editMenu = [[NSMenu alloc] initWithTitle:@"Edit"];
+    NSArray<NSMenuItem *> *editItems = @[
+        [[NSMenuItem alloc] initWithTitle:@"Undo" action:@selector(undo:) keyEquivalent:@"z"],
+        [[NSMenuItem alloc] initWithTitle:@"Redo" action:@selector(redo:) keyEquivalent:@"z"],
+        NSMenuItem.separatorItem,
+        [[NSMenuItem alloc] initWithTitle:@"Cut" action:@selector(cut:) keyEquivalent:@"x"],
+        [[NSMenuItem alloc] initWithTitle:@"Copy" action:@selector(copy:) keyEquivalent:@"c"],
+        [[NSMenuItem alloc] initWithTitle:@"Paste" action:@selector(paste:) keyEquivalent:@"v"],
+        NSMenuItem.separatorItem,
+        [[NSMenuItem alloc] initWithTitle:@"Select All"
+                                  action:@selector(selectAll:)
+                           keyEquivalent:@"a"],
+    ];
+    editItems[1].keyEquivalentModifierMask =
+        NSEventModifierFlagCommand | NSEventModifierFlagShift;
+    for (NSMenuItem *item in editItems) {
+        if (!item.isSeparatorItem) {
+            item.target = nil;
+            if (item != editItems[1]) {
+                item.keyEquivalentModifierMask = NSEventModifierFlagCommand;
+            }
+        }
+        [editMenu addItem:item];
+    }
+    editItem.submenu = editMenu;
+
     NSMenuItem *windowItem = [[NSMenuItem alloc] init];
     [mainMenu addItem:windowItem];
     NSMenu *windowMenu = [[NSMenu alloc] initWithTitle:@"Window"];
@@ -112,8 +142,35 @@ static void installMainMenu(void) {
                                                keyEquivalent:@"w"];
     [windowMenu addItem:closeItem];
     windowItem.submenu = windowMenu;
-    NSApp.windowsMenu = windowMenu;
+    return mainMenu;
+}
+
+static void installMainMenu(void) {
+    NSMenu *mainMenu = newMainMenu();
+    NSApp.windowsMenu = mainMenu.itemArray.lastObject.submenu;
     NSApp.mainMenu = mainMenu;
+}
+
+static void printEditMenuCheck(void) {
+    NSMenu *editMenu = newMainMenu().itemArray[1].submenu;
+    for (NSMenuItem *item in editMenu.itemArray) {
+        if (item.isSeparatorItem) {
+            continue;
+        }
+        NSEventModifierFlags modifiers = item.keyEquivalentModifierMask &
+            NSEventModifierFlagDeviceIndependentFlagsMask;
+        NSString *modifierName = modifiers == NSEventModifierFlagCommand
+            ? @"command"
+            : modifiers == (NSEventModifierFlagCommand | NSEventModifierFlagShift)
+                ? @"command+shift"
+                : @"other";
+        printf("edit=%s|selector=%s|key=%s|modifiers=%s|target=%s\n",
+               item.title.UTF8String,
+               NSStringFromSelector(item.action).UTF8String,
+               item.keyEquivalent.UTF8String,
+               modifierName.UTF8String,
+               item.target == nil ? "responder-chain" : "explicit");
+    }
 }
 
 int main(int argc, const char *argv[]) {
@@ -125,6 +182,7 @@ int main(int argc, const char *argv[]) {
             }
             printf("url=%s\nwindow=chromeless\nfullscreen=disabled\nengine=WKWebView\n",
                    url.absoluteString.UTF8String);
+            printEditMenuCheck();
             return 0;
         }
         if (argc > 1 && strncmp(argv[1], "-psn_", 5) != 0) {

@@ -134,7 +134,9 @@ Adopt a file only when Funk is its sole writer.
 applications into `~/Applications`. Their URLs are fixed resources inside the
 ad-hoc-signed bundles. A small AppKit executable hosts each URL in the system
 WebKit framework with an edge-to-edge content view, hidden title-bar furniture,
-and native full-screen Spaces disabled. Canonical SVG marks in
+and native full-screen Spaces disabled. Its standard Edit menu routes Undo,
+Redo, Cut, Copy, Paste, and Select All through the native responder chain, so
+the focused web control owns each command. Canonical SVG marks in
 `assets/kiosk-icons` are rendered into multi-resolution macOS icons during
 convergence. The installer refuses to replace a bundle unless its identifier
 proves Funk owns it, and both `./install` and the scheduled path converge the
