@@ -131,15 +131,15 @@ Adopt a file only when Funk is its sole writer.
 ## Kiosk launcher applications
 
 `funk install-kiosk-launchers` renders the AgentVoice and AgentChats transcript
-applications into `~/Applications`. Their URLs are fixed resources inside the
-ad-hoc-signed bundles. A small AppKit executable hosts each URL in the system
-WebKit framework with an edge-to-edge content view, hidden title-bar furniture,
-and native full-screen Spaces disabled. Its standard Edit menu routes Undo,
-Redo, Cut, Copy, Paste, and Select All through the native responder chain, so
-the focused web control owns each command. Before AppKit terminates the single
-window, the launcher dispatches a standard `pagehide` event so the page can
-synchronously flush in-progress state; a 500 ms fallback keeps a hung web
-process from blocking termination.
+applications and the AgentHUD work dashboard into `~/Applications`. Their URLs
+are fixed resources inside the ad-hoc-signed bundles. A small AppKit executable
+hosts each URL in the system WebKit framework with an edge-to-edge content view,
+hidden title-bar furniture, and native full-screen Spaces disabled. Its standard
+Edit menu routes Undo, Redo, Cut, Copy, Paste, and Select All through the native
+responder chain, so the focused web control owns each command. Before AppKit
+terminates the single window, the launcher dispatches a standard `pagehide`
+event so the page can synchronously flush in-progress state; a 500 ms fallback
+keeps a hung web process from blocking termination.
 
 At document start in the main frame, the launcher exposes the nonsecret stable
 `window.funkKiosk.persistenceInstanceId` value
