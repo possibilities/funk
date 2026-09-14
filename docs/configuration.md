@@ -136,7 +136,17 @@ ad-hoc-signed bundles. A small AppKit executable hosts each URL in the system
 WebKit framework with an edge-to-edge content view, hidden title-bar furniture,
 and native full-screen Spaces disabled. Its standard Edit menu routes Undo,
 Redo, Cut, Copy, Paste, and Select All through the native responder chain, so
-the focused web control owns each command. Canonical SVG marks in
+the focused web control owns each command. Before AppKit terminates the single
+window, the launcher dispatches a standard `pagehide` event so the page can
+synchronously flush in-progress state; a 500 ms fallback keeps a hung web
+process from blocking termination.
+
+At document start in the main frame, the launcher exposes the nonsecret stable
+`window.funkKiosk.persistenceInstanceId` value
+`<CFBundleIdentifier>:main`. A page may use this optional value only when it
+needs persistence ownership to survive a kiosk process restart. Ordinary
+browsers do not receive it, and the `:main` suffix records the launcher's
+single-window constraint. Canonical SVG marks in
 `assets/kiosk-icons` are rendered into multi-resolution macOS icons during
 convergence. The installer refuses to replace a bundle unless its identifier
 proves Funk owns it, and both `./install` and the scheduled path converge the

@@ -1511,6 +1511,7 @@ if [ "$(uname -s)" = Darwin ]; then
     "$root/tests/adb-wireless.sh"
     "$root/tests/android-launchers.sh"
     "$root/tests/kiosk-applications.sh"
+    "$root/tests/kiosk-storage-persistence.sh"
 else
     skip "adb-wireless suite" \
         "needs macOS: /usr/bin/shlock and BSD stat -f"
@@ -1518,6 +1519,8 @@ else
         "needs macOS: AppKit, clang, codesign, and BSD stat -f"
     skip "kiosk launcher application suite" \
         "needs macOS: AppKit, WebKit, clang, codesign, shlock, and BSD stat -f"
+    skip "kiosk storage persistence suite" \
+        "needs macOS: AppKit, WebKit, clang, and codesign"
 fi
 "$root/tests/kiosk-launcher.sh"
 kiosk_launcher=bin/.local/bin/raycast/localhost-8789-kiosk.sh

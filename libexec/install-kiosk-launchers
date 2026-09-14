@@ -146,6 +146,7 @@ render_bundle() {
 "$clang_bin" \
     -std=c11 -Os -Wall -Wextra -Werror -fobjc-arc \
     -mmacosx-version-min=13.0 \
+    -I "$funk_root/libexec" \
     -framework AppKit -framework Foundation -framework WebKit \
     "$source_file" -o "$launcher"
 

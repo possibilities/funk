@@ -44,6 +44,8 @@ while IFS='|' read -r name identifier url; do
         'window=chromeless' \
         'fullscreen=disabled' \
         'engine=WKWebView' \
+        'termination=pagehide-with-500ms-timeout' \
+        "persistence-instance=$identifier:main" \
         'edit=Undo|selector=undo:|key=z|modifiers=command|target=responder-chain' \
         'edit=Redo|selector=redo:|key=z|modifiers=command+shift|target=responder-chain' \
         'edit=Cut|selector=cut:|key=x|modifiers=command|target=responder-chain' \

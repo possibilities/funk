@@ -2,6 +2,8 @@
 #import <Foundation/Foundation.h>
 #import <WebKit/WebKit.h>
 
+#import "kiosk-webview-support.h"
+
 #include <stdio.h>
 #include <string.h>
 
@@ -24,6 +26,7 @@ static NSURL *launcherURL(void) {
 
 @property(nonatomic, strong) NSWindow *window;
 @property(nonatomic, strong) WKWebView *webView;
+@property(nonatomic) BOOL terminationPending;
 
 @end
 
@@ -64,7 +67,7 @@ static NSURL *launcherURL(void) {
     }
 
     WKWebViewConfiguration *configuration = [[WKWebViewConfiguration alloc] init];
-    configuration.websiteDataStore = WKWebsiteDataStore.defaultDataStore;
+    configureKioskWebView(configuration);
     WKWebView *webView = [[WKWebView alloc] initWithFrame:frame
                                            configuration:configuration];
     webView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
@@ -86,6 +89,12 @@ static NSURL *launcherURL(void) {
 - (BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication *)sender {
     (void)sender;
     return YES;
+}
+
+- (NSApplicationTerminateReply)applicationShouldTerminate:(NSApplication *)sender {
+    return requestPageHideBeforeTermination(
+        self.webView, sender, &_terminationPending
+    );
 }
 
 @end
@@ -182,6 +191,9 @@ int main(int argc, const char *argv[]) {
             }
             printf("url=%s\nwindow=chromeless\nfullscreen=disabled\nengine=WKWebView\n",
                    url.absoluteString.UTF8String);
+            printf("termination=pagehide-with-500ms-timeout\n");
+            printf("persistence-instance=%s\n",
+                   persistenceInstanceIdentifier().UTF8String);
             printEditMenuCheck();
             return 0;
         }
