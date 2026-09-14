@@ -3,6 +3,7 @@
 #import <WebKit/WebKit.h>
 
 #import "kiosk-webview-support.h"
+#import "kiosk-window.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -43,35 +44,38 @@ static NSURL *launcherURL(void) {
     }
 
     NSRect frame = NSMakeRect(0, 0, 1280, 800);
-    NSWindowStyleMask style = NSWindowStyleMaskTitled |
-        NSWindowStyleMaskClosable |
-        NSWindowStyleMaskMiniaturizable |
-        NSWindowStyleMaskResizable |
-        NSWindowStyleMaskFullSizeContentView;
-    NSWindow *window = [[NSWindow alloc] initWithContentRect:frame
-                                                   styleMask:style
+    FunkKioskWindow *window = [[FunkKioskWindow alloc] initWithContentRect:frame
+                                                   styleMask:NSWindowStyleMaskBorderless
                                                      backing:NSBackingStoreBuffered
                                                        defer:NO];
+    window.releasedWhenClosed = NO;
+    window.opaque = YES;
+    window.hasShadow = YES;
     window.delegate = self;
     window.title = [NSBundle.mainBundle objectForInfoDictionaryKey:@"CFBundleDisplayName"] ?: @"";
-    window.titleVisibility = NSWindowTitleHidden;
-    window.titlebarAppearsTransparent = YES;
-    window.titlebarSeparatorStyle = NSTitlebarSeparatorStyleNone;
     window.collectionBehavior = NSWindowCollectionBehaviorFullScreenNone;
     window.backgroundColor = NSColor.blackColor;
     window.minSize = NSMakeSize(640, 400);
-    for (NSNumber *buttonType in @[
-        @(NSWindowCloseButton), @(NSWindowMiniaturizeButton), @(NSWindowZoomButton)
-    ]) {
-        [[window standardWindowButton:buttonType.unsignedIntegerValue] setHidden:YES];
-    }
-
     WKWebViewConfiguration *configuration = [[WKWebViewConfiguration alloc] init];
     configureKioskWebView(configuration);
     WKWebView *webView = [[WKWebView alloc] initWithFrame:frame
                                            configuration:configuration];
     webView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
-    window.contentView = webView;
+    FunkKioskContentView *content = [[FunkKioskContentView alloc] initWithFrame:frame];
+    window.contentView = content;
+    webView.frame = content.bounds;
+    [content addSubview:webView];
+    window.accessibilityRole = NSAccessibilityWindowRole;
+    window.accessibilitySubrole = NSAccessibilityStandardWindowSubrole;
+    __weak FunkKioskWindow *weakWindow = window;
+    window.accessibilityCustomActions = @[
+        [[NSAccessibilityCustomAction alloc] initWithName:@"Close window" handler:^BOOL {
+            [weakWindow performClose:nil]; return YES;
+        }],
+        [[NSAccessibilityCustomAction alloc] initWithName:@"Minimize window" handler:^BOOL {
+            [weakWindow performMiniaturize:nil]; return YES;
+        }]
+    ];
     self.window = window;
     self.webView = webView;
 
@@ -81,9 +85,13 @@ static NSURL *launcherURL(void) {
         [window center];
     }
     [window setFrameAutosaveName:autosaveName];
-    [webView loadRequest:[NSURLRequest requestWithURL:url]];
+    [self loadLauncherURL:url];
     [window makeKeyAndOrderFront:nil];
     [NSApp activateIgnoringOtherApps:YES];
+}
+
+- (void)loadLauncherURL:(NSURL *)url {
+    [self.webView loadRequest:[NSURLRequest requestWithURL:url]];
 }
 
 - (BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication *)sender {
@@ -191,6 +199,7 @@ int main(int argc, const char *argv[]) {
             }
             printf("url=%s\nwindow=chromeless\nfullscreen=disabled\nengine=WKWebView\n",
                    url.absoluteString.UTF8String);
+            printf("corners=square\nwindow-drag=top-20pt\nwindow-resize=outer-6pt\n");
             printf("termination=pagehide-with-500ms-timeout\n");
             printf("persistence-instance=%s\n",
                    persistenceInstanceIdentifier().UTF8String);

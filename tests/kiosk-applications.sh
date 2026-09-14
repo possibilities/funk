@@ -15,9 +15,14 @@ test_home="$test_dir/home"
 applications="$test_home/Applications"
 mkdir -p "$test_home"
 
+# Intermediate bundle directories must have stable public application modes,
+# even when the invoking account uses a restrictive creation mask.
+(
+    umask 077
 HOME="$test_home" FUNK_KIOSK_APPLICATIONS_DIR="$applications" \
     FUNK_SKIP_LAUNCHSERVICES_REGISTRATION=1 \
     "$root/bin/funk" install-kiosk-launchers >"$test_dir/install.out"
+)
 
 while IFS='|' read -r name identifier url; do
     bundle="$applications/$name.app"
@@ -44,6 +49,9 @@ while IFS='|' read -r name identifier url; do
         'window=chromeless' \
         'fullscreen=disabled' \
         'engine=WKWebView' \
+        'corners=square' \
+        'window-drag=top-20pt' \
+        'window-resize=outer-6pt' \
         'termination=pagehide-with-500ms-timeout' \
         "persistence-instance=$identifier:main" \
         'edit=Undo|selector=undo:|key=z|modifiers=command|target=responder-chain' \

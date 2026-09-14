@@ -91,6 +91,7 @@ bin/.local/bin/raycast/localhost-8789-kiosk.sh
 tests/adb-wireless.sh
 tests/android-launchers.sh
 tests/kiosk-applications.sh
+tests/kiosk-window.sh
 tests/chuchu-theme.sh
 tests/ghostty-terminfo.sh
 tests/noizey.sh
@@ -1510,6 +1511,7 @@ fi
 if [ "$(uname -s)" = Darwin ]; then
     "$root/tests/adb-wireless.sh"
     "$root/tests/android-launchers.sh"
+    "$root/tests/kiosk-window.sh"
     "$root/tests/kiosk-applications.sh"
     "$root/tests/kiosk-storage-persistence.sh"
 else
@@ -1517,6 +1519,8 @@ else
         "needs macOS: /usr/bin/shlock and BSD stat -f"
     skip "Android launcher application suite" \
         "needs macOS: AppKit, clang, codesign, and BSD stat -f"
+    skip "kiosk window geometry suite" \
+        "needs macOS: AppKit and clang"
     skip "kiosk launcher application suite" \
         "needs macOS: AppKit, WebKit, clang, codesign, shlock, and BSD stat -f"
     skip "kiosk storage persistence suite" \

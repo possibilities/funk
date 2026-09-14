@@ -111,7 +111,7 @@ render_bundle() {
     local contents="$bundle/Contents"
     local plist="$contents/Info.plist"
 
-    /usr/bin/install -d -m 0755 "$contents/MacOS" "$contents/Resources"
+    /usr/bin/install -d -m 0755 "$bundle" "$contents" "$contents/MacOS" "$contents/Resources"
     /usr/bin/install -m 0755 "$launcher" "$contents/MacOS/FunkKioskLauncher"
     printf '%s\n' "$url" >"$contents/Resources/launcher-url"
     /bin/chmod 0644 "$contents/Resources/launcher-url"
