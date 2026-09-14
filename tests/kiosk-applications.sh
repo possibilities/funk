@@ -27,6 +27,11 @@ while IFS='|' read -r name identifier url; do
         || fail "bundle identifier was incorrect: $name"
     [ "$(cat "$bundle/Contents/Resources/launcher-url")" = "$url" ] \
         || fail "bundle URL was incorrect: $name"
+    [ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIconFile' \
+        "$bundle/Contents/Info.plist")" = AppIcon ] \
+        || fail "bundle icon declaration was incorrect: $name"
+    [ -s "$bundle/Contents/Resources/AppIcon.icns" ] \
+        || fail "bundle icon was missing: $name"
     [ ! -e "$bundle/Contents/Resources/profile-name" ] \
         || fail "bundle retained a dedicated Chrome profile: $name"
     /usr/bin/codesign --verify --deep --strict "$bundle" >/dev/null 2>&1 \
