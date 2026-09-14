@@ -24,9 +24,12 @@ esac
 
 funk_root=${FUNK_ROOT:?FUNK_ROOT is not set}
 source_file="$funk_root/libexec/kiosk-launcher.m"
+icon_source_dir="$funk_root/assets/kiosk-icons"
 applications_dir=${FUNK_KIOSK_APPLICATIONS_DIR:-"$HOME/Applications"}
 codesign_bin=/usr/bin/codesign
+iconutil_bin=/usr/bin/iconutil
 lsregister=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
+sips_bin=/usr/bin/sips
 
 case "$applications_dir" in
     /*) ;;
@@ -34,6 +37,8 @@ case "$applications_dir" in
 esac
 [ -f "$source_file" ] || die "native kiosk launcher source is missing: $source_file"
 [ -x "$codesign_bin" ] || die "Apple codesign is unavailable: $codesign_bin"
+[ -x "$iconutil_bin" ] || die "Apple iconutil is unavailable: $iconutil_bin"
+[ -x "$sips_bin" ] || die "Apple sips is unavailable: $sips_bin"
 clang_bin=${FUNK_CLANG:-/usr/bin/clang}
 [ -x "$clang_bin" ] || die "Apple clang is unavailable: $clang_bin"
 
@@ -70,8 +75,38 @@ cleanup() {
 }
 trap cleanup EXIT
 
+render_icon() {
+    local source=$1 destination=$2 key=$3
+    local iconset="$tmpdir/$key.iconset"
+    local size scale pixels output
+
+    [ -f "$source" ] || die "kiosk icon source is missing: $source"
+    /usr/bin/install -d -m 0755 "$iconset"
+    while IFS=' ' read -r size scale pixels; do
+        [ "$scale" != - ] || scale=
+        output="$iconset/icon_${size}x${size}${scale}.png"
+        "$sips_bin" -s format png -z "$pixels" "$pixels" "$source" \
+            --out "$output" >/dev/null \
+            || die "could not render kiosk icon: $source"
+    done <<'EOF'
+16 - 16
+16 @2x 32
+32 - 32
+32 @2x 64
+128 - 128
+128 @2x 256
+256 - 256
+256 @2x 512
+512 - 512
+512 @2x 1024
+EOF
+    "$iconutil_bin" -c icns "$iconset" -o "$destination" \
+        || die "could not compile kiosk icon: $source"
+    /bin/chmod 0644 "$destination"
+}
+
 render_bundle() {
-    local name=$1 identifier=$2 url=$3
+    local name=$1 identifier=$2 url=$3 icon_name=$4
     local bundle="$tmpdir/$name.app"
     local contents="$bundle/Contents"
     local plist="$contents/Info.plist"
@@ -80,12 +115,15 @@ render_bundle() {
     /usr/bin/install -m 0755 "$launcher" "$contents/MacOS/FunkKioskLauncher"
     printf '%s\n' "$url" >"$contents/Resources/launcher-url"
     /bin/chmod 0644 "$contents/Resources/launcher-url"
+    render_icon "$icon_source_dir/$icon_name.svg" \
+        "$contents/Resources/AppIcon.icns" "$icon_name"
 
     /usr/bin/plutil -create xml1 "$plist"
     /usr/bin/plutil -insert CFBundleDevelopmentRegion -string en "$plist"
     /usr/bin/plutil -insert CFBundleDisplayName -string "$name" "$plist"
     /usr/bin/plutil -insert CFBundleExecutable -string FunkKioskLauncher "$plist"
     /usr/bin/plutil -insert CFBundleIdentifier -string "$identifier" "$plist"
+    /usr/bin/plutil -insert CFBundleIconFile -string AppIcon "$plist"
     /usr/bin/plutil -insert CFBundleInfoDictionaryVersion -string 6.0 "$plist"
     /usr/bin/plutil -insert CFBundleName -string "$name" "$plist"
     /usr/bin/plutil -insert CFBundlePackageType -string APPL "$plist"
@@ -112,9 +150,9 @@ render_bundle() {
     "$source_file" -o "$launcher"
 
 render_bundle 'AgentVoice Transcripts' com.arthack.funk.kiosk.agentvoice \
-    https://agentvoice.localhost/
+    https://agentvoice.localhost/ AgentVoice
 render_bundle 'AgentChats Transcripts' com.arthack.funk.kiosk.agentchats \
-    https://agentchats.localhost/
+    https://agentchats.localhost/ AgentChats
 
 if [ "$check_only" -eq 1 ]; then
     printf 'Kiosk launcher app bundles render and validate successfully.\n'
@@ -147,6 +185,7 @@ bundle_matches() {
 755 Contents/Resources
 755 Contents/_CodeSignature
 755 Contents/MacOS/FunkKioskLauncher
+644 Contents/Resources/AppIcon.icns
 644 Contents/Resources/launcher-url
 644 Contents/Info.plist
 644 Contents/_CodeSignature/CodeResources
