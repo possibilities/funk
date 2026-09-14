@@ -60,13 +60,14 @@ while IFS='|' read -r name identifier url; do
 done <<'EOF'
 AgentVoice Transcripts|com.arthack.funk.kiosk.agentvoice|https://agentvoice.localhost/
 AgentChats Transcripts|com.arthack.funk.kiosk.agentchats|https://agentchats.localhost/
+AgentHUD|com.arthack.funk.kiosk.agenthud|https://agenthud.localhost/
 EOF
 
 HOME="$test_home" FUNK_KIOSK_APPLICATIONS_DIR="$applications" \
     FUNK_SKIP_LAUNCHSERVICES_REGISTRATION=1 \
     "$root/bin/funk" install-kiosk-launchers >"$test_dir/install-again.out"
-[ "$(grep -c '^Already installed ' "$test_dir/install-again.out")" -eq 2 ] \
-    || fail "repeated installation did not recognize both bundles"
+[ "$(grep -c '^Already installed ' "$test_dir/install-again.out")" -eq 3 ] \
+    || fail "repeated installation did not recognize all three bundles"
 
 # Recover a hard stop that happened after the installed bundle became backup.
 recovery_transaction="$applications/.AgentChats Transcripts.app.funk-transaction"

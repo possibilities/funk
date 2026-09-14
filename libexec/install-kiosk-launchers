@@ -154,6 +154,8 @@ render_bundle 'AgentVoice Transcripts' com.arthack.funk.kiosk.agentvoice \
     https://agentvoice.localhost/ AgentVoice
 render_bundle 'AgentChats Transcripts' com.arthack.funk.kiosk.agentchats \
     https://agentchats.localhost/ AgentChats
+render_bundle 'AgentHUD' com.arthack.funk.kiosk.agenthud \
+    https://agenthud.localhost/ AgentHUD
 
 if [ "$check_only" -eq 1 ]; then
     printf 'Kiosk launcher app bundles render and validate successfully.\n'
@@ -266,7 +268,8 @@ install_bundle() {
 
     case "$target" in
         "$applications_dir/AgentVoice Transcripts.app"|\
-        "$applications_dir/AgentChats Transcripts.app") ;;
+        "$applications_dir/AgentChats Transcripts.app"|\
+        "$applications_dir/AgentHUD.app") ;;
         *) die "refusing unexpected application target: $target" ;;
     esac
     recover_transaction "$name" "$identifier" "$target" "$transaction"
@@ -324,3 +327,4 @@ install_bundle() {
 
 install_bundle 'AgentVoice Transcripts' com.arthack.funk.kiosk.agentvoice
 install_bundle 'AgentChats Transcripts' com.arthack.funk.kiosk.agentchats
+install_bundle 'AgentHUD' com.arthack.funk.kiosk.agenthud

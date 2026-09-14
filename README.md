@@ -92,7 +92,7 @@ funk chuchu-theme    # build and push Signal Room to Chuchu Lab
 funk install-android-launchers
                      # converge the four Screen Copy applications
 funk install-kiosk-launchers
-                     # converge the two transcript kiosk applications
+                     # converge the three local web applications
 funk install-ghostty-terminfo
                      # expose Ghostty capabilities to remote shells
 funk install-noizey  # build and install the global terminal sound mixer
@@ -108,11 +108,12 @@ connection; emulators are ignored and multiple authorized USB devices are
 rejected as ambiguous. If neither USB nor wireless is available, the launcher
 posts a macOS notification instead of failing invisibly.
 
-`AgentVoice Transcripts.app` and `AgentChats Transcripts.app` open their fixed
-`.localhost` services in borderless native WebKit windows. Web content extends
-beneath a transparent hidden title bar, the traffic-light controls are hidden,
-and native full-screen Spaces are disabled. Each small launcher uses the system
-WebKit framework instead of starting another Chrome process tree.
+`AgentVoice Transcripts.app`, `AgentChats Transcripts.app`, and `AgentHUD.app`
+open their fixed `.localhost` services in borderless native WebKit windows. Web
+content extends beneath a transparent hidden title bar, the traffic-light
+controls are hidden, and native full-screen Spaces are disabled. Each small
+launcher uses the system WebKit framework instead of starting another Chrome
+process tree.
 
 Noizey's native terminal executable is built from the clean `~/code/noizey`
 checkout into `~/.local/lib/noizey/noizey`. Funk's `bin` Stow package exposes
