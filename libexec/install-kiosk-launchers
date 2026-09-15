@@ -154,8 +154,6 @@ render_bundle 'AgentVoice Transcripts' com.arthack.funk.kiosk.agentvoice \
     https://agentvoice.localhost/ AgentVoice
 render_bundle 'AgentVoice TEST Transcripts' com.arthack.funk.kiosk.agentvoice-test \
     https://agentvoice-test.localhost AgentVoiceTest
-render_bundle 'AgentChats Transcripts' com.arthack.funk.kiosk.agentchats \
-    https://agentchats.localhost/ AgentChats
 render_bundle 'AgentHUD' com.arthack.funk.kiosk.agenthud \
     https://agenthud.localhost/ AgentHUD
 
@@ -271,7 +269,6 @@ install_bundle() {
     case "$target" in
         "$applications_dir/AgentVoice Transcripts.app"|\
         "$applications_dir/AgentVoice TEST Transcripts.app"|\
-        "$applications_dir/AgentChats Transcripts.app"|\
         "$applications_dir/AgentHUD.app") ;;
         *) die "refusing unexpected application target: $target" ;;
     esac
@@ -330,5 +327,4 @@ install_bundle() {
 
 install_bundle 'AgentVoice Transcripts' com.arthack.funk.kiosk.agentvoice
 install_bundle 'AgentVoice TEST Transcripts' com.arthack.funk.kiosk.agentvoice-test
-install_bundle 'AgentChats Transcripts' com.arthack.funk.kiosk.agentchats
 install_bundle 'AgentHUD' com.arthack.funk.kiosk.agenthud

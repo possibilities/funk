@@ -130,9 +130,14 @@ Adopt a file only when Funk is its sole writer.
 
 ## Kiosk launcher applications
 
+AgentChats retired its web reader; its search CLI and terminal resume picker
+remain available. Funk no longer builds or installs the AgentChats kiosk.
+Existing installed bundles and their WebKit data are retained until an explicit
+operator cleanup; this change never terminates a running kiosk or clears data.
+
 `funk install-kiosk-launchers` renders the production and TEST AgentVoice
-transcript applications, the AgentChats transcript application, and the
-AgentHUD work dashboard into `~/Applications`. The AgentVoice launchers have
+transcript applications and the AgentHUD work dashboard into `~/Applications`.
+The AgentVoice launchers have
 distinct bundle identifiers and fixed URLs; the TEST launcher opens
 `https://agentvoice-test.localhost`. The TEST icon reverses the tracked
 AgentVoice mark's foreground and background colors so it remains recognizable

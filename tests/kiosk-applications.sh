@@ -68,7 +68,6 @@ while IFS='|' read -r name identifier url; do
 done <<'EOF'
 AgentVoice Transcripts|com.arthack.funk.kiosk.agentvoice|https://agentvoice.localhost/
 AgentVoice TEST Transcripts|com.arthack.funk.kiosk.agentvoice-test|https://agentvoice-test.localhost
-AgentChats Transcripts|com.arthack.funk.kiosk.agentchats|https://agentchats.localhost/
 AgentHUD|com.arthack.funk.kiosk.agenthud|https://agenthud.localhost/
 EOF
 
@@ -103,22 +102,22 @@ grep -F 'fill="none" stroke="#050607" stroke-width="5"' \
 HOME="$test_home" FUNK_KIOSK_APPLICATIONS_DIR="$applications" \
     FUNK_SKIP_LAUNCHSERVICES_REGISTRATION=1 \
     "$root/bin/funk" install-kiosk-launchers >"$test_dir/install-again.out"
-[ "$(grep -c '^Already installed ' "$test_dir/install-again.out")" -eq 4 ] \
-    || fail "repeated installation did not recognize all four bundles"
+[ "$(grep -c '^Already installed ' "$test_dir/install-again.out")" -eq 3 ] \
+    || fail "repeated installation did not recognize all three bundles"
 
 # Recover a hard stop that happened after the installed bundle became backup.
-recovery_transaction="$applications/.AgentChats Transcripts.app.funk-transaction"
+recovery_transaction="$applications/.AgentHUD.app.funk-transaction"
 mkdir -m 0700 "$recovery_transaction"
-printf '%s\n' 'funk-kiosk-launcher-transaction-v1:com.arthack.funk.kiosk.agentchats' \
+printf '%s\n' 'funk-kiosk-launcher-transaction-v1:com.arthack.funk.kiosk.agenthud' \
     >"$recovery_transaction/owner"
 chmod 0600 "$recovery_transaction/owner"
-mv "$applications/AgentChats Transcripts.app" "$recovery_transaction/backup.app"
+mv "$applications/AgentHUD.app" "$recovery_transaction/backup.app"
 HOME="$test_home" FUNK_KIOSK_APPLICATIONS_DIR="$applications" \
     FUNK_SKIP_LAUNCHSERVICES_REGISTRATION=1 \
     "$root/bin/funk" install-kiosk-launchers >"$test_dir/recover.out"
 grep -F 'Recovered interrupted application backup' "$test_dir/recover.out" \
     >/dev/null || fail "installer did not report interrupted backup recovery"
-[ -d "$applications/AgentChats Transcripts.app" ] \
+[ -d "$applications/AgentHUD.app" ] \
     || fail "installer did not restore interrupted application backup"
 [ ! -e "$recovery_transaction" ] \
     || fail "installer left the recovered transaction behind"

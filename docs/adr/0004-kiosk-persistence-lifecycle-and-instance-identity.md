@@ -44,3 +44,7 @@ same-keystroke crash recovery must journal that state as the input changes.
 The native storage harness tests process restart, bundle replacement,
 termination dispatch, and bundle-identifier isolation without opening a visible
 window or using either installed kiosk profile.
+
+AgentChats web launcher ownership is retired by
+[0006](0006-retire-agentchats-web-launcher.md); the remaining kiosk persistence
+boundaries are unchanged.

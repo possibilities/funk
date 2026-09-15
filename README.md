@@ -108,9 +108,8 @@ connection; emulators are ignored and multiple authorized USB devices are
 rejected as ambiguous. If neither USB nor wireless is available, the launcher
 posts a macOS notification instead of failing invisibly.
 
-`AgentVoice Transcripts.app`, `AgentVoice TEST Transcripts.app`,
-`AgentChats Transcripts.app`, and `AgentHUD.app` open their fixed `.localhost`
-services in borderless native WebKit windows. The TEST launcher has its own
+`AgentVoice Transcripts.app`, `AgentVoice TEST Transcripts.app`, and `AgentHUD.app`
+open their fixed `.localhost` services in borderless native WebKit windows. The TEST launcher has its own
 bundle identifier and opens `https://agentvoice-test.localhost`, keeping it
 separate from the production AgentVoice launcher. Its reversed-color AgentVoice
 icon makes the launch surfaces visibly distinct. Web content extends beneath a
