@@ -31,7 +31,7 @@ Commands:
   install-android-launchers [--check]
                       Install the four native Android launcher applications
   install-kiosk-launchers [--check]
-                      Install the three local web launcher applications
+                      Install the four local web launcher applications
   install-ghostty-terminfo
                       Install Ghostty's terminal definition for remote shells
   install-ghostty-themes

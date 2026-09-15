@@ -33,9 +33,10 @@ reads nor interprets page state.
 
 ## Consequences
 
-AgentVoice and AgentChats remain isolated because their bundle identifiers are
-different. A future launcher that creates multiple windows must give each
-window a distinct stable identity before it can use this bridge.
+Production AgentVoice, TEST AgentVoice, and AgentChats remain isolated because
+their bundle identifiers are different. A future launcher that creates multiple
+windows must give each window a distinct stable identity before it can use this
+bridge.
 
 The page owns its persistence format and synchronous lifecycle handler. Abrupt
 process death remains outside the termination hook, so pages that need

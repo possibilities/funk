@@ -130,15 +130,19 @@ Adopt a file only when Funk is its sole writer.
 
 ## Kiosk launcher applications
 
-`funk install-kiosk-launchers` renders the AgentVoice and AgentChats transcript
-applications and the AgentHUD work dashboard into `~/Applications`. Their URLs
-are fixed resources inside the ad-hoc-signed bundles. A small AppKit executable
-hosts each URL in the system WebKit framework with an edge-to-edge content view,
-square borderless corners, and native full-screen Spaces disabled. The top 20
-points provide an invisible native drag region; the outer 6 points resize from
-any edge or corner, with a 640×400 minimum. These native hit regions have cursor
-feedback and exclude ordinary web event routing. The remaining page keeps its
-normal text-selection and pointer behavior. Native shadows remain enabled.
+`funk install-kiosk-launchers` renders the production and TEST AgentVoice
+transcript applications, the AgentChats transcript application, and the
+AgentHUD work dashboard into `~/Applications`. The AgentVoice launchers have
+distinct bundle identifiers and fixed URLs; the TEST launcher opens
+`https://agentvoice-test.localhost`. Both reuse the tracked AgentVoice mark.
+All URLs are fixed resources inside the ad-hoc-signed bundles. A small AppKit
+executable hosts each URL in the system WebKit framework with an edge-to-edge
+content view, square borderless corners, and native full-screen Spaces disabled.
+The top 20 points provide an invisible native drag region; the outer 6 points
+resize from any edge or corner, with a 640×400 minimum. These native hit regions
+have cursor feedback and exclude ordinary web event routing. The remaining page
+keeps its normal text-selection and pointer behavior. Native shadows remain
+enabled.
 The window explicitly accepts keyboard focus and exposes accessibility frame
 changes plus Close/Minimize actions. Window → Close keeps the web view alive
 through the same termination handshake as Quit. Its standard

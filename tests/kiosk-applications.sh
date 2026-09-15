@@ -67,6 +67,7 @@ while IFS='|' read -r name identifier url; do
         || fail "bundle did not link the system WebKit framework: $name"
 done <<'EOF'
 AgentVoice Transcripts|com.arthack.funk.kiosk.agentvoice|https://agentvoice.localhost/
+AgentVoice TEST Transcripts|com.arthack.funk.kiosk.agentvoice-test|https://agentvoice-test.localhost
 AgentChats Transcripts|com.arthack.funk.kiosk.agentchats|https://agentchats.localhost/
 AgentHUD|com.arthack.funk.kiosk.agenthud|https://agenthud.localhost/
 EOF
@@ -74,8 +75,8 @@ EOF
 HOME="$test_home" FUNK_KIOSK_APPLICATIONS_DIR="$applications" \
     FUNK_SKIP_LAUNCHSERVICES_REGISTRATION=1 \
     "$root/bin/funk" install-kiosk-launchers >"$test_dir/install-again.out"
-[ "$(grep -c '^Already installed ' "$test_dir/install-again.out")" -eq 3 ] \
-    || fail "repeated installation did not recognize all three bundles"
+[ "$(grep -c '^Already installed ' "$test_dir/install-again.out")" -eq 4 ] \
+    || fail "repeated installation did not recognize all four bundles"
 
 # Recover a hard stop that happened after the installed bundle became backup.
 recovery_transaction="$applications/.AgentChats Transcripts.app.funk-transaction"

@@ -5,7 +5,7 @@
 
 ## Decision
 
-The three kiosk launcher applications share a pure borderless AppKit window
+The four kiosk launcher applications share a pure borderless AppKit window
 with an opaque rectangular background and native shadow. Hidden titlebar
 furniture on a titled window leaves the system's rounded frame; no private
 corner APIs or view-class replacement is used.
