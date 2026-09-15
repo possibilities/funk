@@ -92,7 +92,7 @@ funk chuchu-theme    # build and push Signal Room to Chuchu Lab
 funk install-android-launchers
                      # converge the four Screen Copy applications
 funk install-kiosk-launchers
-                     # converge the four local web applications
+                     # converge the three local web applications
 funk install-ghostty-terminfo
                      # expose Ghostty capabilities to remote shells
 funk install-noizey  # build and install the global terminal sound mixer

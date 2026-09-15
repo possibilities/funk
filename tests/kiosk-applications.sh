@@ -15,6 +15,13 @@ test_home="$test_dir/home"
 applications="$test_home/Applications"
 mkdir -p "$test_home"
 
+# Retiring a web launch edge preserves an existing bundle and its stored data.
+retired_bundle="$applications/AgentChats Transcripts.app"
+retired_storage="$test_home/Library/WebKit/com.arthack.funk.kiosk.agentchats"
+mkdir -p "$retired_bundle" "$retired_storage"
+printf 'retained bundle\n' >"$retired_bundle/sentinel"
+printf 'retained history\n' >"$retired_storage/sentinel"
+
 # Intermediate bundle directories must have stable public application modes,
 # even when the invoking account uses a restrictive creation mask.
 (
@@ -133,5 +140,10 @@ if HOME="$test_home" FUNK_KIOSK_APPLICATIONS_DIR="$applications" \
 fi
 grep -F 'refusing to replace unrelated application' "$test_dir/foreign.err" \
     >/dev/null || fail "installer did not explain the foreign application"
+
+[ "$(cat "$retired_bundle/sentinel")" = 'retained bundle' ] \
+    || fail "retired AgentChats bundle was changed"
+[ "$(cat "$retired_storage/sentinel")" = 'retained history' ] \
+    || fail "retired AgentChats WebKit data was changed"
 
 printf 'Kiosk launcher application tests passed.\n'

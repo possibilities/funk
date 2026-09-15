@@ -30,3 +30,7 @@ behavior. Geometry, hit routing and minimum bounds have native headless tests;
 visible drag, resize, text entry, shadow, accessibility and close behavior need
 a disposable-window check when these mechanisms change. Never substitute a
 relaunch of a human's kiosk for a test fixture without an explicit handoff.
+
+The four-launcher scope above is partially superseded by
+[0006](0006-retire-agentchats-web-launcher.md), which retires AgentChats web
+launcher installation. The generic square-window behavior is unchanged.
