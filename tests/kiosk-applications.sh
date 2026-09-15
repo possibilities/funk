@@ -72,6 +72,34 @@ AgentChats Transcripts|com.arthack.funk.kiosk.agentchats|https://agentchats.loca
 AgentHUD|com.arthack.funk.kiosk.agenthud|https://agenthud.localhost/
 EOF
 
+production_icon="$applications/AgentVoice Transcripts.app/Contents/Resources/AppIcon.icns"
+test_icon="$applications/AgentVoice TEST Transcripts.app/Contents/Resources/AppIcon.icns"
+cmp -s "$production_icon" "$test_icon" \
+    && fail "TEST launcher icon was identical to the production icon"
+
+icon_evidence="$test_dir/icon-evidence"
+mkdir -p "$icon_evidence"
+for icon_name in AgentVoice AgentVoiceTest; do
+    source="$root/assets/kiosk-icons/$icon_name.svg"
+    png="$icon_evidence/$icon_name.png"
+    /usr/bin/sips -s format png -z 128 128 "$source" --out "$png" >/dev/null \
+        || fail "could not render icon evidence: $icon_name"
+    width=$(/usr/bin/sips -g pixelWidth "$png" | awk '/pixelWidth:/ {print $2}')
+    height=$(/usr/bin/sips -g pixelHeight "$png" | awk '/pixelHeight:/ {print $2}')
+    [ "$width" = 128 ] && [ "$height" = 128 ] \
+        || fail "rendered icon evidence had wrong dimensions: $icon_name"
+done
+production_hash=$(/usr/bin/shasum -a 256 "$icon_evidence/AgentVoice.png" | awk '{print $1}')
+test_hash=$(/usr/bin/shasum -a 256 "$icon_evidence/AgentVoiceTest.png" | awk '{print $1}')
+[ "$production_hash" != "$test_hash" ] \
+    || fail "rendered TEST icon pixels matched the production icon"
+grep -F '<rect width="108" height="108" rx="24" fill="#d4ff72"/>' \
+    "$root/assets/kiosk-icons/AgentVoiceTest.svg" >/dev/null \
+    || fail "TEST icon did not use the reversed lime background"
+grep -F 'fill="none" stroke="#050607" stroke-width="5"' \
+    "$root/assets/kiosk-icons/AgentVoiceTest.svg" >/dev/null \
+    || fail "TEST icon did not use the reversed dark waveform"
+
 HOME="$test_home" FUNK_KIOSK_APPLICATIONS_DIR="$applications" \
     FUNK_SKIP_LAUNCHSERVICES_REGISTRATION=1 \
     "$root/bin/funk" install-kiosk-launchers >"$test_dir/install-again.out"

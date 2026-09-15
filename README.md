@@ -112,7 +112,8 @@ posts a macOS notification instead of failing invisibly.
 `AgentChats Transcripts.app`, and `AgentHUD.app` open their fixed `.localhost`
 services in borderless native WebKit windows. The TEST launcher has its own
 bundle identifier and opens `https://agentvoice-test.localhost`, keeping it
-separate from the production AgentVoice launcher. Web content extends beneath a
+separate from the production AgentVoice launcher. Its reversed-color AgentVoice
+icon makes the launch surfaces visibly distinct. Web content extends beneath a
 transparent hidden title bar, the traffic-light controls are hidden, and native
 full-screen Spaces are disabled. Each small launcher uses the system WebKit
 framework instead of starting another Chrome process tree.

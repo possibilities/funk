@@ -153,7 +153,7 @@ render_bundle() {
 render_bundle 'AgentVoice Transcripts' com.arthack.funk.kiosk.agentvoice \
     https://agentvoice.localhost/ AgentVoice
 render_bundle 'AgentVoice TEST Transcripts' com.arthack.funk.kiosk.agentvoice-test \
-    https://agentvoice-test.localhost AgentVoice
+    https://agentvoice-test.localhost AgentVoiceTest
 render_bundle 'AgentChats Transcripts' com.arthack.funk.kiosk.agentchats \
     https://agentchats.localhost/ AgentChats
 render_bundle 'AgentHUD' com.arthack.funk.kiosk.agenthud \

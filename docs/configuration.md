@@ -134,10 +134,12 @@ Adopt a file only when Funk is its sole writer.
 transcript applications, the AgentChats transcript application, and the
 AgentHUD work dashboard into `~/Applications`. The AgentVoice launchers have
 distinct bundle identifiers and fixed URLs; the TEST launcher opens
-`https://agentvoice-test.localhost`. Both reuse the tracked AgentVoice mark.
-All URLs are fixed resources inside the ad-hoc-signed bundles. A small AppKit
-executable hosts each URL in the system WebKit framework with an edge-to-edge
-content view, square borderless corners, and native full-screen Spaces disabled.
+`https://agentvoice-test.localhost`. The TEST icon reverses the tracked
+AgentVoice mark's foreground and background colors so it remains recognizable
+and is visibly distinct from production. All URLs are fixed resources inside
+the ad-hoc-signed bundles. A small AppKit executable hosts each URL in the system
+WebKit framework with an edge-to-edge content view, square borderless corners,
+and native full-screen Spaces disabled.
 The top 20 points provide an invisible native drag region; the outer 6 points
 resize from any edge or corner, with a 640×400 minimum. These native hit regions
 have cursor feedback and exclude ordinary web event routing. The remaining page
