@@ -10,7 +10,8 @@ fail() {
     exit 1
 }
 
-python3 tests/process-headroom.py
+python3 -B tests/process-headroom.py
+python3 -B tests/artbird-browser-watchdog.py
 
 skipped=""
 skip() {
@@ -59,6 +60,7 @@ libexec/launchd-status
 libexec/install-backup-agents
 libexec/configure-macos
 libexec/verify-notifications
+libexec/verify-obs-camera
 libexec/configure-system
 libexec/funk-harden-client
 libexec/install-hardening
@@ -103,6 +105,7 @@ tests/funk-backup.sh
 tests/install-backup-agents.sh
 tests/funk-notify.sh
 tests/verify-notifications.sh
+tests/verify-obs-camera.sh
 tests/fixtures/adb
 tests/fixtures/adb-chuchu
 tests/fixtures/adb-wireless-connect-chuchu
@@ -938,6 +941,7 @@ rm -rf "$update_test_dir"
 "$root/bin/funk" install-tailscale-recovery --check >/dev/null
 "$root/bin/funk" configure-macos --check
 "$root/bin/funk" verify-notifications --check
+"$root/bin/funk" verify-obs-camera --check
 else
     skip "Homebrew cask helpers and --check entry points (repair, unattendable, user-dirs, ownership)" \
         "needs macOS: BSD stat -f and live system probes"
@@ -1237,6 +1241,10 @@ grep -F "\"\$funk_command\" verify-notifications" install >/dev/null \
     || fail "default install does not verify notification delivery"
 grep -F 'notifications_blocked=1' install >/dev/null \
     || fail "install treats blocked notifications as fatal instead of reporting"
+grep -F '"$funk_command" verify-obs-camera' install >/dev/null \
+    || fail "default install does not diagnose OBS camera-extension approval"
+grep -F '"$obs_camera_verifier" || obs_camera_blocked=1' libexec/funk-update >/dev/null \
+    || fail "scheduled updates do not diagnose OBS camera-extension approval"
 # Reopening Karabiner on every install only raises a window the user did not ask
 # for; it exists to request permissions that are already granted once its
 # per-user services are up.
@@ -1495,6 +1503,7 @@ else
 fi
 "$root/tests/funk-notify.sh"
 "$root/tests/verify-notifications.sh"
+"$root/tests/verify-obs-camera.sh"
 # home-awake asserts a root helper's installability through BSD stat -f and
 # drives pmset and caffeinate, so it only means anything on macOS.
 if [ "$(uname -s)" = Darwin ]; then
@@ -1579,6 +1588,7 @@ if sed 's/^[[:space:]]*#.*$//' \
     bin/funk libexec/funk-update libexec/install-update-agent \
     libexec/converge-brewfile libexec/converge-brew-casks \
     libexec/repair-cask-artifacts \
+    libexec/verify-obs-camera \
     "$update_agentstart_root/scripts/sync-skills" \
     launchd/io.arthack.funk.update.plist.in \
     | grep -Eqi 'bundle cleanup|uninstall|fetch-head|telegram|sudo'; then

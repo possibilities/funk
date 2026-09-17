@@ -48,6 +48,7 @@ terminfo_installer="$funk_root/libexec/install-ghostty-terminfo"
 android_launcher_installer="$funk_root/libexec/install-android-launchers"
 kiosk_launcher_installer="$funk_root/libexec/install-kiosk-launchers"
 noizey_installer="$funk_root/libexec/install-noizey"
+obs_camera_verifier="$funk_root/libexec/verify-obs-camera"
 # AgentStart owns the globally managed agent skills; its sync-skills is the
 # no-download convergence path this scheduled run is allowed to take. The
 # checkout is required the same way ./install requires it: a machine whose
@@ -86,6 +87,10 @@ fi
 }
 [ -x "$noizey_installer" ] || {
     log "FAILED: Noizey installer not found at $noizey_installer" >&2
+    exit 66
+}
+[ -x "$obs_camera_verifier" ] || {
+    log "FAILED: OBS camera verifier not found at $obs_camera_verifier" >&2
     exit 66
 }
 [ -x "$skill_sync" ] || {
@@ -258,6 +263,12 @@ if [ "$status" -eq 0 ]; then
     "$skill_sync" || status=$?
 fi
 
+# A same-identity extension upgrade normally retains approval. If macOS ever
+# drops it, the scheduled path cannot answer the protected Settings toggle, so
+# report the drift without turning an otherwise successful update into failure.
+obs_camera_blocked=0
+"$obs_camera_verifier" || obs_camera_blocked=1
+
 snapshot_versions "$after"
 collect_changes
 
@@ -290,6 +301,9 @@ if [ "$notify" -eq 1 ]; then
         fi
         if [ -n "$skipped_summary" ]; then
             notification_body="$notification_body Needs ./install: $skipped_summary."
+        fi
+        if [ "$obs_camera_blocked" -eq 1 ]; then
+            notification_body="$notification_body OBS Virtual Camera needs approval; run funk verify-obs-camera."
         fi
         send_notification "Funk Update" "$notification_body" || status=1
     else

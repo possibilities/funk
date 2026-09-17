@@ -1,0 +1,114 @@
+#!/bin/bash
+# Verify the macOS-owned approval that makes OBS Virtual Camera available.
+
+set -euo pipefail
+
+die() {
+    printf 'funk verify-obs-camera: %s\n' "$*" >&2
+    exit 1
+}
+
+usage() {
+    printf 'Usage: funk verify-obs-camera [--check]\n' >&2
+}
+
+if [ "$#" -gt 1 ] || { [ "$#" -eq 1 ] && [ "$1" != "--check" ]; }; then
+    usage
+    exit 64
+fi
+
+if [ "${1:-}" = "--check" ]; then
+    exit 0
+fi
+
+# Tests supply a fixture on non-macOS hosts. A real invocation is meaningful
+# only on Darwin, where systemextensionsctl owns this state.
+if [ "$(uname -s)" != Darwin ] && [ -z "${FUNK_SYSTEMEXTENSIONSCTL_BIN:-}" ]; then
+    die "macOS is required"
+fi
+[ "$(id -u)" -ne 0 ] || die "run as the target user, not root"
+
+extension_path=${FUNK_OBS_CAMERA_EXTENSION:-/Applications/OBS.app/Contents/Library/SystemExtensions/com.obsproject.obs-studio.mac-camera-extension.systemextension}
+team_id=2MMRE5MTB8
+bundle_id=com.obsproject.obs-studio.mac-camera-extension
+
+[ -d "$extension_path" ] || {
+    cat >&2 <<'EOF'
+funk verify-obs-camera: the OBS camera extension is missing.
+
+Run ./install to converge the OBS cask, then open OBS and click Start Virtual
+Camera once so OBS can ask macOS to register its extension.
+EOF
+    exit 1
+}
+
+systemextensionsctl_binary() {
+    local candidate
+    for candidate in "${FUNK_SYSTEMEXTENSIONSCTL_BIN:-}" systemextensionsctl \
+        /usr/bin/systemextensionsctl; do
+        [ -n "$candidate" ] || continue
+        if command -v "$candidate" >/dev/null 2>&1; then
+            command -v "$candidate"
+            return 0
+        fi
+    done
+    return 1
+}
+
+systemextensionsctl_bin=$(systemextensionsctl_binary || true)
+[ -n "$systemextensionsctl_bin" ] \
+    || die "systemextensionsctl is unavailable"
+
+listing=$(
+    "$systemextensionsctl_bin" list com.apple.system_extension.cmio 2>&1
+) || die "systemextensionsctl could not read the camera-extension state: $listing"
+
+records=$(
+    printf '%s\n' "$listing" \
+        | /usr/bin/awk -F '\t' -v team="$team_id" -v bundle="$bundle_id" '
+            $3 == team && index($4, bundle " ") == 1 { print }
+        '
+)
+
+if [ -z "$records" ]; then
+    cat >&2 <<'EOF'
+funk verify-obs-camera: OBS Virtual Camera is not registered with macOS.
+
+Open OBS and click Start Virtual Camera once. Then enable:
+  System Settings > General > Login Items & Extensions > OBS > Media Extension
+
+macOS reserves this approval for the operator; Funk will not edit its protected
+system-extension database. Re-check with: funk verify-obs-camera
+EOF
+    exit 1
+fi
+
+record_count=$(printf '%s\n' "$records" | /usr/bin/awk 'NF { count++ } END { print count + 0 }')
+enabled=$(printf '%s\n' "$records" | /usr/bin/awk -F '\t' 'NR == 1 { print $1 }')
+active=$(printf '%s\n' "$records" | /usr/bin/awk -F '\t' 'NR == 1 { print $2 }')
+state=$(
+    printf '%s\n' "$records" | /usr/bin/awk -F '\t' '
+        NF { states = states ? states ", " $6 : $6 }
+        END { print states }
+    '
+)
+
+if [ "$record_count" -eq 1 ] \
+    && [ "$enabled" = '*' ] && [ "$active" = '*' ] \
+    && [ "$state" = '[activated enabled]' ]; then
+    printf 'OBS Virtual Camera extension is activated and enabled.\n'
+    exit 0
+fi
+
+cat >&2 <<EOF
+funk verify-obs-camera: OBS Virtual Camera needs operator approval.
+
+Current macOS state: ${state:-unknown}
+
+Enable:
+  System Settings > General > Login Items & Extensions > OBS > Media Extension
+
+macOS reserves this approval for the operator; Funk will not edit its protected
+system-extension database. Re-check with: funk verify-obs-camera
+EOF
+exit 1

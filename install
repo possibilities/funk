@@ -171,6 +171,7 @@ agentstart_root="$HOME/code/agentstart"
 "$funk_command" install-home-awake
 "$funk_command" install-backups
 "$funk_command" install-process-warning
+"$funk_command" install-artbird-watchdog
 "$funk_command" configure-macos
 
 # ~/.ssh/config.d is generated from live Tailscale state rather than tracked, so
@@ -198,6 +199,12 @@ fi
 # and refusing to finish installing over it would help no one.
 notifications_blocked=0
 "$funk_command" verify-notifications || notifications_blocked=1
+
+# OBS can register its camera extension, but macOS reserves the enabling toggle
+# for the operator. Diagnose that protected state without prompting so a fresh
+# account finishes installing and reports the one manual step it still needs.
+obs_camera_blocked=0
+"$funk_command" verify-obs-camera || obs_camera_blocked=1
 
 # Each service owner reports its own manifest, ownership marker, loaded state,
 # last exit, and log size. Keeping that knowledge at the owner boundary avoids
@@ -233,6 +240,14 @@ if [ "$notifications_blocked" -eq 1 ]; then
 Action required: notification delivery needs attention. Follow the
 notifier-specific diagnosis above, then run:
 funk verify-notifications
+EOF
+fi
+
+if [ "$obs_camera_blocked" -eq 1 ]; then
+    cat <<'EOF'
+
+Action required: OBS Virtual Camera needs attention. Follow the diagnosis above,
+then re-check with: funk verify-obs-camera
 EOF
 fi
 

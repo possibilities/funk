@@ -88,6 +88,17 @@ A step that cannot converge is reported rather than failed.
 having written and removed nothing, and `./install` prints a Deferred note and
 finishes.
 
+The OBS Virtual Camera approval follows the same report-without-forcing rule.
+OBS ships its signed camera system extension inside the cask, while macOS owns
+the enabled state in its protected system-extension database. The approval is
+durable across launches and same-identity upgrades, keyed by OBS's Team ID and
+extension bundle ID, but neither Stow nor `defaults` can set it and
+`systemextensionsctl` exposes no enable operation. `funk verify-obs-camera`
+checks that the expected signed identity is activated and enabled. `./install`
+and the scheduled update path report the exact operator-owned Settings step
+when it is absent or waiting; they never open Settings or modify the protected
+database unattended.
+
 Repair state that makes Homebrew elevate instead of letting it recur:
 `libexec/reclaim-app-ownership` for applications left by a previous account,
 and `libexec/repair-cask-artifacts` for Caskroom state left by an aborted
@@ -206,3 +217,28 @@ validates without loading a job or changing local state.
 `python3 tests/process-headroom.py` exercises synthetic pressure, throttling,
 escalation, recovery, delivery failure/idempotency, the socket wire format and
 the five-minute plist, without spawning tool inventories or sending real alerts.
+
+## Artbird browser watchdog
+
+`funk install-artbird-watchdog` installs `io.arthack.funk.watch-artbird`, a
+login and five-minute launchd check. Normal `./install` converges it too. The
+short-lived checker uses batch-mode SSH to read Artbird's hardware temperatures
+and process accounting, then reads AgentBrowse's target and session inventory.
+It never destroys a target, releases a session, kills a process, starts an
+agent, or restarts a service.
+
+One sample at 90°C or 150% browser-VM CPU is immediately critical. Temperatures
+from 80°C or browser-VM CPU from 75% must persist for two samples. Unknown or
+failed AgentBrowse targets and observation failures must persist for three.
+Warnings repeat at most every 30 minutes unless the evidence or severity
+changes; two healthy samples replace the warning with one recovery notice.
+These thresholds deliberately tolerate bounded scraping while catching the
+sustained VM/rendering failure that previously heated Artbird.
+
+Alerts use AgentNotify's documented local Unix socket and one stable group.
+Failed delivery retains the exact idempotent request for the next check. Private
+state and the clickable evidence handoff live in
+`~/.local/state/funk/artbird-browser-watchdog/`; errors append to
+`~/Library/Logs/Funk/artbird-browser-watchdog.log`. Run
+`python3 ~/code/funk/libexec/artbird-browser-watchdog.py --sample-only` for a
+read-only manual sample. `--check` validates the LaunchAgent without loading it.
