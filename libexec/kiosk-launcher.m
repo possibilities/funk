@@ -126,6 +126,11 @@ static NSMenu *newMainMenu(void) {
                                               keyEquivalent:@""];
     [mainMenu addItem:editItem];
     NSMenu *editMenu = [[NSMenu alloc] initWithTitle:@"Edit"];
+    NSMenuItem *findItem = [[NSMenuItem alloc]
+        initWithTitle:@"Find…"
+        action:@selector(performFindPanelAction:)
+        keyEquivalent:@"f"];
+    findItem.tag = NSFindPanelActionShowFindPanel;
     NSArray<NSMenuItem *> *editItems = @[
         [[NSMenuItem alloc] initWithTitle:@"Undo" action:@selector(undo:) keyEquivalent:@"z"],
         [[NSMenuItem alloc] initWithTitle:@"Redo" action:@selector(redo:) keyEquivalent:@"z"],
@@ -133,6 +138,8 @@ static NSMenu *newMainMenu(void) {
         [[NSMenuItem alloc] initWithTitle:@"Cut" action:@selector(cut:) keyEquivalent:@"x"],
         [[NSMenuItem alloc] initWithTitle:@"Copy" action:@selector(copy:) keyEquivalent:@"c"],
         [[NSMenuItem alloc] initWithTitle:@"Paste" action:@selector(paste:) keyEquivalent:@"v"],
+        NSMenuItem.separatorItem,
+        findItem,
         NSMenuItem.separatorItem,
         [[NSMenuItem alloc] initWithTitle:@"Select All"
                                   action:@selector(selectAll:)
@@ -181,6 +188,15 @@ static void printEditMenuCheck(void) {
             : modifiers == (NSEventModifierFlagCommand | NSEventModifierFlagShift)
                 ? @"command+shift"
                 : @"other";
+        if (item.tag == NSFindPanelActionShowFindPanel) {
+            printf("edit=%s|selector=%s|key=%s|modifiers=%s|tag=show-find-panel|target=%s\n",
+                   item.title.UTF8String,
+                   NSStringFromSelector(item.action).UTF8String,
+                   item.keyEquivalent.UTF8String,
+                   modifierName.UTF8String,
+                   item.target == nil ? "responder-chain" : "explicit");
+            continue;
+        }
         printf("edit=%s|selector=%s|key=%s|modifiers=%s|target=%s\n",
                item.title.UTF8String,
                NSStringFromSelector(item.action).UTF8String,
