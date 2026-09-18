@@ -2,6 +2,7 @@
 #import <Foundation/Foundation.h>
 #import <WebKit/WebKit.h>
 
+#import "kiosk-find-controller.h"
 #import "kiosk-webview-support.h"
 #import "kiosk-window.h"
 
@@ -27,6 +28,7 @@ static NSURL *launcherURL(void) {
 
 @property(nonatomic, strong) NSWindow *window;
 @property(nonatomic, strong) WKWebView *webView;
+@property(nonatomic, strong) FunkKioskFindController *findController;
 @property(nonatomic) BOOL terminationPending;
 
 @end
@@ -78,6 +80,7 @@ static NSURL *launcherURL(void) {
     ];
     self.window = window;
     self.webView = webView;
+    self.findController.webView = webView;
 
     NSString *autosaveName = [NSString stringWithFormat:@"%@.main-window",
         NSBundle.mainBundle.bundleIdentifier ?: @"com.arthack.funk.kiosk"];
@@ -107,7 +110,7 @@ static NSURL *launcherURL(void) {
 
 @end
 
-static NSMenu *newMainMenu(void) {
+static NSMenu *newMainMenu(FunkKioskFindController *findController) {
     NSMenu *mainMenu = [[NSMenu alloc] init];
 
     NSMenuItem *applicationItem = [[NSMenuItem alloc] init];
@@ -126,6 +129,20 @@ static NSMenu *newMainMenu(void) {
                                               keyEquivalent:@""];
     [mainMenu addItem:editItem];
     NSMenu *editMenu = [[NSMenu alloc] initWithTitle:@"Edit"];
+    NSMenuItem *findItem = [[NSMenuItem alloc] initWithTitle:@"Find…"
+                                                       action:@selector(showFindPanel:)
+                                                keyEquivalent:@"f"];
+    findItem.target = findController;
+    NSMenuItem *findNextItem = [[NSMenuItem alloc] initWithTitle:@"Find Next"
+                                                           action:@selector(findNext:)
+                                                    keyEquivalent:@"g"];
+    findNextItem.target = findController;
+    NSMenuItem *findPreviousItem = [[NSMenuItem alloc] initWithTitle:@"Find Previous"
+                                                               action:@selector(findPrevious:)
+                                                        keyEquivalent:@"g"];
+    findPreviousItem.keyEquivalentModifierMask =
+        NSEventModifierFlagCommand | NSEventModifierFlagShift;
+    findPreviousItem.target = findController;
     NSArray<NSMenuItem *> *editItems = @[
         [[NSMenuItem alloc] initWithTitle:@"Undo" action:@selector(undo:) keyEquivalent:@"z"],
         [[NSMenuItem alloc] initWithTitle:@"Redo" action:@selector(redo:) keyEquivalent:@"z"],
@@ -134,6 +151,10 @@ static NSMenu *newMainMenu(void) {
         [[NSMenuItem alloc] initWithTitle:@"Copy" action:@selector(copy:) keyEquivalent:@"c"],
         [[NSMenuItem alloc] initWithTitle:@"Paste" action:@selector(paste:) keyEquivalent:@"v"],
         NSMenuItem.separatorItem,
+        findItem,
+        findNextItem,
+        findPreviousItem,
+        NSMenuItem.separatorItem,
         [[NSMenuItem alloc] initWithTitle:@"Select All"
                                   action:@selector(selectAll:)
                            keyEquivalent:@"a"],
@@ -141,7 +162,7 @@ static NSMenu *newMainMenu(void) {
     editItems[1].keyEquivalentModifierMask =
         NSEventModifierFlagCommand | NSEventModifierFlagShift;
     for (NSMenuItem *item in editItems) {
-        if (!item.isSeparatorItem) {
+        if (!item.isSeparatorItem && item.target == nil) {
             item.target = nil;
             if (item != editItems[1]) {
                 item.keyEquivalentModifierMask = NSEventModifierFlagCommand;
@@ -162,14 +183,15 @@ static NSMenu *newMainMenu(void) {
     return mainMenu;
 }
 
-static void installMainMenu(void) {
-    NSMenu *mainMenu = newMainMenu();
+static void installMainMenu(FunkKioskFindController *findController) {
+    NSMenu *mainMenu = newMainMenu(findController);
     NSApp.windowsMenu = mainMenu.itemArray.lastObject.submenu;
     NSApp.mainMenu = mainMenu;
 }
 
 static void printEditMenuCheck(void) {
-    NSMenu *editMenu = newMainMenu().itemArray[1].submenu;
+    FunkKioskFindController *findController = [[FunkKioskFindController alloc] init];
+    NSMenu *editMenu = newMainMenu(findController).itemArray[1].submenu;
     for (NSMenuItem *item in editMenu.itemArray) {
         if (item.isSeparatorItem) {
             continue;
@@ -181,12 +203,15 @@ static void printEditMenuCheck(void) {
             : modifiers == (NSEventModifierFlagCommand | NSEventModifierFlagShift)
                 ? @"command+shift"
                 : @"other";
+        NSString *targetName = item.target == nil ? @"responder-chain"
+            : [item.target isKindOfClass:FunkKioskFindController.class] ? @"find-controller"
+            : @"explicit";
         printf("edit=%s|selector=%s|key=%s|modifiers=%s|target=%s\n",
                item.title.UTF8String,
                NSStringFromSelector(item.action).UTF8String,
                item.keyEquivalent.UTF8String,
                modifierName.UTF8String,
-               item.target == nil ? "responder-chain" : "explicit");
+               targetName.UTF8String);
     }
 }
 
@@ -210,8 +235,9 @@ int main(int argc, const char *argv[]) {
             return 64;
         }
         NSApplication *application = NSApplication.sharedApplication;
-        installMainMenu();
         FunkKioskDelegate *delegate = [[FunkKioskDelegate alloc] init];
+        delegate.findController = [[FunkKioskFindController alloc] init];
+        installMainMenu(delegate.findController);
         application.delegate = delegate;
         [application setActivationPolicy:NSApplicationActivationPolicyRegular];
         [application run];

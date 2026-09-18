@@ -66,6 +66,9 @@ while IFS='|' read -r name identifier url; do
         'edit=Cut|selector=cut:|key=x|modifiers=command|target=responder-chain' \
         'edit=Copy|selector=copy:|key=c|modifiers=command|target=responder-chain' \
         'edit=Paste|selector=paste:|key=v|modifiers=command|target=responder-chain' \
+        'edit=Find…|selector=showFindPanel:|key=f|modifiers=command|target=find-controller' \
+        'edit=Find Next|selector=findNext:|key=g|modifiers=command|target=find-controller' \
+        'edit=Find Previous|selector=findPrevious:|key=g|modifiers=command+shift|target=find-controller' \
         'edit=Select All|selector=selectAll:|key=a|modifiers=command|target=responder-chain')
     [ "$(cat "$test_dir/launch-check.out")" = "$expected" ] \
         || fail "bundle reported the wrong native window configuration: $name"
