@@ -1522,7 +1522,6 @@ if [ "$(uname -s)" = Darwin ]; then
     "$root/tests/android-launchers.sh"
     "$root/tests/kiosk-window.sh"
     "$root/tests/kiosk-applications.sh"
-    "$root/tests/kiosk-find.sh"
     "$root/tests/kiosk-storage-persistence.sh"
 else
     skip "adb-wireless suite" \
@@ -1533,8 +1532,6 @@ else
         "needs macOS: AppKit and clang"
     skip "kiosk launcher application suite" \
         "needs macOS: AppKit, WebKit, clang, codesign, shlock, and BSD stat -f"
-    skip "kiosk native Find suite" \
-        "needs macOS: AppKit, WebKit, and clang"
     skip "kiosk storage persistence suite" \
         "needs macOS: AppKit, WebKit, clang, and codesign"
 fi

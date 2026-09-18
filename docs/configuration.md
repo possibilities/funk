@@ -165,11 +165,7 @@ The window explicitly accepts keyboard focus and exposes accessibility frame
 changes plus Close/Minimize actions. Window → Close keeps the web view alive
 through the same termination handshake as Quit. Its standard
 Edit menu routes Undo, Redo, Cut, Copy, Paste, and Select All through the native
-responder chain, so the focused web control owns each command. Find, Find Next, and
-Find Previous target the launcher's native find controller: Command-F opens its
-native Find panel and Command-G / Command-Shift-G move through page matches. The
-controller uses WebKit's public find API, which selects each match and scrolls it into
-view. Before AppKit
+responder chain, so the focused web control owns each command. Before AppKit
 terminates the single window, the launcher dispatches a standard `pagehide`
 event so the page can synchronously flush in-progress state; a 500 ms fallback
 keeps a hung web process from blocking termination.
