@@ -1014,6 +1014,8 @@ done
 # installer: the home AGENTS.md, extension prompts, and llm model
 # configuration. Funk stowing any of them again would be a second writer for
 # the same paths.
+[ ! -e CLAUDE.md ] && [ ! -L CLAUDE.md ] \
+    || fail "the retired root CLAUDE.md entrypoint must stay absent"
 [ ! -e "$stow_home/AGENTS.md" ] \
     || fail "the home guidance is AgentStart's; nothing in Funk may stow ~/AGENTS.md"
 [ ! -e "$stow_home/.config/arthack" ] \

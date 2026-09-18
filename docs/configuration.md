@@ -124,7 +124,7 @@ so Claude's config directory remains outside this checkout.
 Every operator guidance file the harnesses read is AgentStart's, linked by its
 installer rather than stowed here. AgentStart's `scripts/install.sh`
 owns the canonical empty guidance in its fixed resource set and the
-`~/.claude/CLAUDE.md` / `~/.codex/AGENTS.md` links, plus the extension prompts
+`~/.claude/AGENTS.md` / `~/.codex/AGENTS.md` links, plus the extension prompts
 at `~/.config/agentguidance/`. Follow that installer contract for destinations. The retired operator-guidance and
 AI-tool Stow packages must not be recreated beyond the authored Claude
 preferences exception above — edit `~/code/agentstart/prompts/`
