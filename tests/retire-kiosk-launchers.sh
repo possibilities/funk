@@ -68,8 +68,17 @@ printf '%s\n' 'funk-kiosk-launcher-transaction-v1:com.arthack.funk.kiosk.agenthu
     >"$transaction/owner"
 write_bundle "$transaction/backup.app" com.arthack.funk.kiosk.agenthud
 
-mkdir -p "$test_home/.local/bin/raycast" "$test_dir/old-funk/bin/.local/bin/raycast"
-ln -s "$test_dir/old-funk/bin/.local/bin/raycast/localhost-8789-kiosk.sh" \
+retired_script="$root/bin/.local/bin/raycast/localhost-8789-kiosk.sh"
+mkdir -p "$test_home/.local/bin/raycast"
+raycast_dir=$(cd -P -- "$test_home/.local/bin/raycast" && pwd)
+relative_retired_script=$(python3 - "$raycast_dir" "$retired_script" <<'PYTHON'
+import os
+import sys
+
+print(os.path.relpath(sys.argv[2], sys.argv[1]))
+PYTHON
+)
+ln -s "$relative_retired_script" \
     "$test_home/.local/bin/raycast/localhost-8789-kiosk.sh"
 ln -s "$test_dir/foreign-raycast.sh" "$test_home/.local/bin/raycast/foreign.sh"
 
@@ -86,6 +95,7 @@ run_retirement >"$test_dir/retire.out" 2>"$test_dir/retire.err"
 [ "$(cat "$test_home/.local/state/funk/chrome-kiosk/sentinel")" = 'Chrome profile' ] \
     || fail 'Chrome kiosk profile was changed'
 [ ! -e "$test_home/.local/bin/raycast/localhost-8789-kiosk.sh" ] \
+    && [ ! -L "$test_home/.local/bin/raycast/localhost-8789-kiosk.sh" ] \
     || fail 'owned Raycast kiosk launcher survived retirement'
 [ -L "$test_home/.local/bin/raycast/foreign.sh" ] \
     || fail 'unrelated Raycast launcher was changed'
@@ -103,6 +113,16 @@ run_retirement >"$test_dir/repeat.out" 2>"$test_dir/repeat.err"
 [ ! -s "$test_dir/repeat.out" ] || fail 'retirement was not idempotent'
 [ -d "$applications/AgentHUD.app" ] || fail 'foreign bundle changed on repeat'
 [ -d "$applications/AgentVoice.app" ] || fail 'native AgentVoice changed on repeat'
+
+# An arbitrary symlink with the former basename is not Funk-owned merely
+# because its target ends in the retired script suffix.
+ln -s "$test_dir/foreign/bin/.local/bin/raycast/localhost-8789-kiosk.sh" \
+    "$test_home/.local/bin/raycast/localhost-8789-kiosk.sh"
+run_retirement >"$test_dir/foreign-raycast.out" 2>"$test_dir/foreign-raycast.err"
+[ -L "$test_home/.local/bin/raycast/localhost-8789-kiosk.sh" ] \
+    || fail 'foreign suffix-matching Raycast symlink was removed'
+grep -F 'preserving non-Funk Raycast launcher' "$test_dir/foreign-raycast.err" >/dev/null \
+    || fail 'foreign suffix-matching Raycast symlink was not reported'
 
 # Unknown transaction contents are not cleanup authority.
 foreign_transaction="$applications/.AgentVoice TEST Transcripts.app.funk-transaction"

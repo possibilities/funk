@@ -31,6 +31,46 @@ usage() {
     exit 1
 }
 
+resolve_self() {
+    local source_path=$1 source_dir link_target
+
+    while [ -L "$source_path" ]; do
+        source_dir=$(cd -P -- "$(dirname -- "$source_path")" && pwd)
+        link_target=$(readlink "$source_path")
+        case "$link_target" in
+            /*) source_path=$link_target ;;
+            *) source_path="$source_dir/$link_target" ;;
+        esac
+    done
+    source_dir=$(cd -P -- "$(dirname -- "$source_path")" && pwd)
+    printf '%s/%s\n' "$source_dir" "$(basename -- "$source_path")"
+}
+
+normalize_absolute_path() {
+    local path=$1 part
+    local -a parts normalized
+
+    case "$path" in
+        /*) ;;
+        *) return 1 ;;
+    esac
+    IFS=/ read -r -a parts <<<"$path"
+    for part in "${parts[@]}"; do
+        case "$part" in
+            ''|.) ;;
+            ..)
+                [ "${#normalized[@]}" -eq 0 ] \
+                    || normalized=("${normalized[@]:0:${#normalized[@]}-1}")
+                ;;
+            *) normalized+=("$part") ;;
+        esac
+    done
+    (IFS=/; printf '/%s\n' "${normalized[*]}")
+}
+
+self=$(resolve_self "$0")
+funk_root=$(cd -P -- "$(dirname -- "$self")/.." && pwd)
+retired_raycast_source="$funk_root/bin/.local/bin/raycast/localhost-8789-kiosk.sh"
 applications_dir=${FUNK_KIOSK_APPLICATIONS_DIR:-"$HOME/Applications"}
 lsregister=${FUNK_LSREGISTER:-/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister}
 
@@ -121,19 +161,27 @@ retire_transaction() {
 
 retire_raycast_launcher() {
     local launcher="$HOME/.local/bin/raycast/localhost-8789-kiosk.sh"
-    local target
+    local target launcher_dir
 
     [ -L "$launcher" ] || return 0
     target=$(readlink "$launcher")
     case "$target" in
-        */bin/.local/bin/raycast/localhost-8789-kiosk.sh)
-            /bin/rm "$launcher"
-            log "retired $launcher"
-            ;;
+        /*) ;;
         *)
-            warn "preserving non-Funk Raycast launcher: $launcher"
+            launcher_dir=$(cd -P -- "$(dirname -- "$launcher")" && pwd)
+            target="$launcher_dir/$target"
             ;;
     esac
+    target=$(normalize_absolute_path "$target") || {
+        warn "preserving non-Funk Raycast launcher: $launcher"
+        return 0
+    }
+    [ "$target" = "$retired_raycast_source" ] || {
+        warn "preserving non-Funk Raycast launcher: $launcher"
+        return 0
+    }
+    /bin/rm "$launcher"
+    log "retired $launcher"
 }
 
 # A fresh account has no Applications directory yet.  Do not create one just

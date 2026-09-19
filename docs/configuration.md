@@ -155,7 +155,8 @@ those bundles when possible and reconciles only a matching old Funk transaction
 remnant. A foreign bundle, symlink, malformed transaction, native
 `~/Applications/AgentVoice.app`, all WebKit data, and the dedicated Chrome
 profile are preserved. The retired Raycast launcher is removed only when its
-Stow symlink still points at Funk's former script.
+Stow symlink resolves to the exact former script path in the running Funk
+checkout.
 
 
 ## Process headroom warnings
