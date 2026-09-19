@@ -1,0 +1,156 @@
+#!/bin/bash
+
+# Remove only the three WebKit application bundles rendered by the retired
+# kiosk installer.  This intentionally knows no browser or WebKit data paths:
+# removing a launch surface must not reset a web application's local state.
+set -euo pipefail
+
+log() {
+    printf 'funk retire-kiosk-launchers: %s\n' "$*"
+}
+
+warn() {
+    printf 'funk retire-kiosk-launchers: %s\n' "$*" >&2
+}
+
+usage() {
+    printf 'Usage: internal retirement helper; no public command\n' >&2
+}
+
+[ "$#" -eq 0 ] || { usage; exit 64; }
+[ "$(uname -s)" = Darwin ] || {
+    log 'skipping: macOS application bundles are not present'
+    exit 0
+}
+[ "$(id -u)" -ne 0 ] || {
+    warn 'refusing to run as root; use the target account'
+    exit 1
+}
+[ -n "${HOME:-}" ] && [ -d "$HOME" ] || {
+    warn 'HOME is not an existing directory'
+    exit 1
+}
+
+applications_dir=${FUNK_KIOSK_APPLICATIONS_DIR:-"$HOME/Applications"}
+lsregister=${FUNK_LSREGISTER:-/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister}
+
+case "$applications_dir" in
+    /*) ;;
+    *) warn "applications directory must be absolute: $applications_dir"; exit 1 ;;
+esac
+
+bundle_identifier() {
+    local bundle=$1
+
+    [ -d "$bundle" ] && [ ! -L "$bundle" ] || return 1
+    [ -f "$bundle/Contents/Info.plist" ] && [ ! -L "$bundle/Contents/Info.plist" ] || return 1
+    /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' \
+        "$bundle/Contents/Info.plist" 2>/dev/null || return 1
+}
+
+unregister_bundle() {
+    local bundle=$1
+
+    [ -x "$lsregister" ] || return 0
+    "$lsregister" -u "$bundle" >/dev/null 2>&1 \
+        || warn "could not unregister $bundle; continuing with retirement"
+}
+
+remove_owned_bundle() {
+    local bundle=$1 identifier=$2
+    local actual_identifier
+
+    [ -e "$bundle" ] || return 0
+    [ ! -L "$bundle" ] || {
+        warn "preserving symlink at retired application path: $bundle"
+        return 0
+    }
+    actual_identifier=$(bundle_identifier "$bundle" || true)
+    [ "$actual_identifier" = "$identifier" ] || {
+        warn "preserving non-Funk application at retired path: $bundle"
+        return 0
+    }
+    unregister_bundle "$bundle"
+    /bin/rm -rf "$bundle"
+    log "retired $bundle"
+}
+
+retire_transaction() {
+    local name=$1 identifier=$2
+    local transaction="$applications_dir/.$name.app.funk-transaction"
+    local owner_file="$transaction/owner"
+    local owner="funk-kiosk-launcher-transaction-v1:$identifier"
+    local artifact actual_identifier unexpected
+
+    [ -e "$transaction" ] || return 0
+    [ -d "$transaction" ] && [ ! -L "$transaction" ] || {
+        warn "preserving unrecognized kiosk transaction: $transaction"
+        return 0
+    }
+    [ -f "$owner_file" ] && [ ! -L "$owner_file" ] \
+        && [ "$(cat "$owner_file" 2>/dev/null || true)" = "$owner" ] || {
+        warn "preserving unrecognized kiosk transaction: $transaction"
+        return 0
+    }
+    unexpected=$(
+        /usr/bin/find "$transaction" -mindepth 1 -maxdepth 1 \
+            ! -name owner ! -name incoming.app ! -name backup.app -print -quit
+    )
+    [ -z "$unexpected" ] || {
+        warn "preserving kiosk transaction with an unknown artifact: $transaction"
+        return 0
+    }
+    for artifact in "$transaction/incoming.app" "$transaction/backup.app"; do
+        [ -e "$artifact" ] || continue
+        actual_identifier=$(bundle_identifier "$artifact" || true)
+        [ "$actual_identifier" = "$identifier" ] || {
+            warn "preserving kiosk transaction with an unrecognized bundle: $transaction"
+            return 0
+        }
+    done
+    for artifact in "$transaction/incoming.app" "$transaction/backup.app"; do
+        [ ! -e "$artifact" ] || /bin/rm -rf "$artifact"
+    done
+    /bin/rm "$owner_file"
+    /bin/rmdir "$transaction" || {
+        warn "could not finish known kiosk transaction cleanup: $transaction"
+        return 0
+    }
+    log "retired transaction remnant $transaction"
+}
+
+retire_raycast_launcher() {
+    local launcher="$HOME/.local/bin/raycast/localhost-8789-kiosk.sh"
+    local target
+
+    [ -L "$launcher" ] || return 0
+    target=$(readlink "$launcher")
+    case "$target" in
+        */bin/.local/bin/raycast/localhost-8789-kiosk.sh)
+            /bin/rm "$launcher"
+            log "retired $launcher"
+            ;;
+        *)
+            warn "preserving non-Funk Raycast launcher: $launcher"
+            ;;
+    esac
+}
+
+# A fresh account has no Applications directory yet.  Do not create one just
+# to prove retired launchers are absent.
+if [ -e "$applications_dir" ]; then
+    [ -d "$applications_dir" ] && [ ! -L "$applications_dir" ] || {
+        warn "refusing to inspect non-directory Applications path: $applications_dir"
+        exit 1
+    }
+    retire_transaction 'AgentVoice Transcripts' com.arthack.funk.kiosk.agentvoice
+    retire_transaction 'AgentVoice TEST Transcripts' com.arthack.funk.kiosk.agentvoice-test
+    retire_transaction 'AgentHUD' com.arthack.funk.kiosk.agenthud
+    remove_owned_bundle "$applications_dir/AgentVoice Transcripts.app" \
+        com.arthack.funk.kiosk.agentvoice
+    remove_owned_bundle "$applications_dir/AgentVoice TEST Transcripts.app" \
+        com.arthack.funk.kiosk.agentvoice-test
+    remove_owned_bundle "$applications_dir/AgentHUD.app" \
+        com.arthack.funk.kiosk.agenthud
+fi
+retire_raycast_launcher

@@ -46,7 +46,7 @@ libexec/stow-config
 libexec/install-chuchu-lab-theme
 libexec/android-screen-copy
 libexec/install-android-launchers
-libexec/install-kiosk-launchers
+libexec/retire-kiosk-launchers
 libexec/install-ghostty-terminfo
 libexec/install-noizey
 libexec/initialize-configs
@@ -89,17 +89,14 @@ bin/.local/bin/transcript-vault
 bin/.local/bin/funk-backup
 bin/.local/bin/adb-wireless-connect
 bin/.local/bin/adb-wireless-pair
-bin/.local/bin/raycast/localhost-8789-kiosk.sh
 tests/adb-wireless.sh
 tests/android-launchers.sh
-tests/kiosk-applications.sh
-tests/kiosk-window.sh
 tests/chuchu-theme.sh
 tests/ghostty-terminfo.sh
 tests/noizey.sh
 tests/home-awake.sh
 tests/ssh-tailnet-config.sh
-tests/kiosk-launcher.sh
+tests/retire-kiosk-launchers.sh
 tests/tailscale-online.sh
 tests/funk-backup.sh
 tests/install-backup-agents.sh
@@ -1000,8 +997,9 @@ grep -F 'path = ~/.config/git/config.local' git/.config/git/config >/dev/null \
     || fail "wireless ADB pairing helper was not stowed as an executable"
 [ -x "$stow_home/.local/bin/tailscale-ensure-online" ] \
     || fail "Tailscale recovery helper was not stowed as an executable"
-[ -L "$stow_home/.local/bin/raycast/localhost-8789-kiosk.sh" ] \
-    || fail "Raycast kiosk command was not stowed"
+[ ! -e "$stow_home/.local/bin/raycast/localhost-8789-kiosk.sh" ] \
+    && [ ! -L "$stow_home/.local/bin/raycast/localhost-8789-kiosk.sh" ] \
+    || fail "retired Raycast kiosk command was stowed"
 for retired_android_command in \
     scrcpy.sh \
     scrcpy-no-audio.sh \
@@ -1522,34 +1520,17 @@ fi
 if [ "$(uname -s)" = Darwin ]; then
     "$root/tests/adb-wireless.sh"
     "$root/tests/android-launchers.sh"
-    "$root/tests/kiosk-window.sh"
-    "$root/tests/kiosk-applications.sh"
-    "$root/tests/kiosk-storage-persistence.sh"
+    "$root/tests/retire-kiosk-launchers.sh"
 else
     skip "adb-wireless suite" \
         "needs macOS: /usr/bin/shlock and BSD stat -f"
     skip "Android launcher application suite" \
         "needs macOS: AppKit, clang, codesign, and BSD stat -f"
-    skip "kiosk window geometry suite" \
-        "needs macOS: AppKit and clang"
-    skip "kiosk launcher application suite" \
-        "needs macOS: AppKit, WebKit, clang, codesign, shlock, and BSD stat -f"
-    skip "kiosk storage persistence suite" \
-        "needs macOS: AppKit, WebKit, clang, and codesign"
+    skip "kiosk retirement suite" \
+        "needs macOS: PlistBuddy and Launch Services"
 fi
-"$root/tests/kiosk-launcher.sh"
-kiosk_launcher=bin/.local/bin/raycast/localhost-8789-kiosk.sh
 if grep -R -F '@raycast.title Android' bin/.local/bin/raycast >/dev/null; then
     fail "retired Raycast Android command is tracked"
-fi
-grep -F '@raycast.title Localhost 8789 (kiosk)' "$kiosk_launcher" >/dev/null \
-    || fail "localhost kiosk Raycast command is missing"
-# Launching through `open` reuses a running Chrome and discards --kiosk, so the
-# launcher must keep invoking the binary with its own profile directory.
-grep -F -- '--user-data-dir=' "$kiosk_launcher" >/dev/null \
-    || fail "kiosk launcher lost the dedicated Chrome profile"
-if grep -Eq '(^|[^-])open ' "$kiosk_launcher"; then
-    fail "kiosk launcher routes Chrome through open and would drop --kiosk"
 fi
 grep -Fx 'cask "google-chrome", greedy: true' Brewfile >/dev/null \
     || fail "Google Chrome is missing from the Brewfile"

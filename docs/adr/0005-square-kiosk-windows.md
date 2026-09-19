@@ -1,6 +1,6 @@
 # 0005: Square kiosk windows
 
-- Status: Accepted
+- Status: Superseded by [0007](0007-retire-local-web-kiosk-launchers.md)
 - Date: 2026-09-14
 
 ## Decision

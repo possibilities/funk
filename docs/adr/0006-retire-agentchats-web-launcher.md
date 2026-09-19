@@ -1,6 +1,6 @@
 # 0006: Retire the AgentChats web launcher
 
-Accepted 2026-09-15.
+Superseded by [0007](0007-retire-local-web-kiosk-launchers.md), accepted 2026-09-15.
 
 AgentVoice now owns the transcript UI implementation. AgentChats retires its
 web reader while retaining its CLI, MCP, archive/index/search, and OpenTUI resume

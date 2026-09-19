@@ -147,7 +147,7 @@ FUNK_ROOT="$funk_root" "$funk_root/libexec/converge-brewfile"
 "$funk_command" stow
 "$funk_command" install-noizey
 "$funk_command" install-android-launchers
-"$funk_command" install-kiosk-launchers
+"$funk_root/libexec/retire-kiosk-launchers"
 "$funk_root/libexec/initialize-configs"
 "$funk_command" install-ghostty-terminfo
 "$funk_command" install-ghostty-themes

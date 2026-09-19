@@ -4,9 +4,10 @@
 | --- | --- | --- |
 | [0002: Machine configuration and tool-owned state](0002-machine-configuration-and-tool-owned-state.md) | Retrospective | Local consequences of the existing Funk/AgentStart boundary. |
 | [0003: Tracked theme with local picker override](0003-tracked-theme-with-local-picker-override.md) | Retrospective | One tracked named theme; accepted local override and symlink protection. |
-| [0004: Kiosk persistence lifecycle and instance identity](0004-kiosk-persistence-lifecycle-and-instance-identity.md) | Accepted | Stable single-window persistence ownership and bounded page flush on termination. |
-| [0005: Square kiosk windows](0005-square-kiosk-windows.md) | Accepted | Public borderless frame and explicit native drag, resize, focus and Close behavior. |
-| [0006: Retire the AgentChats web launcher](0006-retire-agentchats-web-launcher.md) | Accepted | AgentVoice owns transcript UI; the AgentChats terminal picker and indexing remain. |
+| [0004: Kiosk persistence lifecycle and instance identity](0004-kiosk-persistence-lifecycle-and-instance-identity.md) | Superseded by 0007 | Historical WebKit launcher persistence contract. |
+| [0005: Square kiosk windows](0005-square-kiosk-windows.md) | Superseded by 0007 | Historical native kiosk-window behavior. |
+| [0006: Retire the AgentChats web launcher](0006-retire-agentchats-web-launcher.md) | Superseded by 0007 | Historical partial kiosk retirement. |
+| [0007: Retire local web kiosk launchers](0007-retire-local-web-kiosk-launchers.md) | Accepted | Retire the remaining wrappers with exact-owner cleanup. |
 
 The initial records were captured on 2026-09-08 from existing constraints. Current
 procedures live in [configuration guidance](../configuration.md).

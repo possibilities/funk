@@ -91,8 +91,6 @@ funk stow            # link config packages into $HOME
 funk chuchu-theme    # build and push Signal Room to Chuchu Lab
 funk install-android-launchers
                      # converge the four Screen Copy applications
-funk install-kiosk-launchers
-                     # converge the three local web applications
 funk install-ghostty-terminfo
                      # expose Ghostty capabilities to remote shells
 funk install-noizey  # build and install the global terminal sound mixer
@@ -108,14 +106,13 @@ connection; emulators are ignored and multiple authorized USB devices are
 rejected as ambiguous. If neither USB nor wireless is available, the launcher
 posts a macOS notification instead of failing invisibly.
 
-`AgentVoice Transcripts.app`, `AgentVoice TEST Transcripts.app`, and `AgentHUD.app`
-open their fixed `.localhost` services in borderless native WebKit windows. The TEST launcher has its own
-bundle identifier and opens `https://agentvoice-test.localhost`, keeping it
-separate from the production AgentVoice launcher. Its reversed-color AgentVoice
-icon makes the launch surfaces visibly distinct. Web content extends beneath a
-transparent hidden title bar, the traffic-light controls are hidden, and native
-full-screen Spaces are disabled. Each small launcher uses the system WebKit
-framework instead of starting another Chrome process tree.
+Funk no longer installs local web-wrapper applications. The underlying services
+remain available at `https://agenthud.localhost/`,
+`https://agentvoice.localhost/`, and `https://agentvoice-test.localhost` in a
+regular browser. During `./install` and `funk update`, Funk removes only its
+three former wrapper bundles when both their exact paths and bundle identifiers
+prove ownership; it leaves native `~/Applications/AgentVoice.app`, browser
+profiles, and WebKit data untouched.
 
 Noizey's native terminal executable is built from the clean `~/code/noizey`
 checkout into `~/.local/lib/noizey/noizey`. Funk's `bin` Stow package exposes

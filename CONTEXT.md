@@ -57,12 +57,6 @@ an application by launchers such as Raycast. It replaces the retired Raycast
 script commands and is the only supported Android launch surface.
 _Avoid_: Raycast Android launcher, script command.
 
-**Kiosk launcher application** — One of the per-user macOS application bundles
-under `~/Applications` that opens a fixed local web application edge-to-edge in
-a native WebKit window and is indexed by application launchers. It hides the
-native title-bar furniture and disables full-screen macOS Spaces.
-_Avoid_: kiosk bookmark, Raycast kiosk command.
-
 **Fork-and-adapt** — what this repository offers a reader who is not the account
 it converges. `./install` is written for one machine and its recorded facts, so
 the useful thing to take is a part of it, not a run of it.
