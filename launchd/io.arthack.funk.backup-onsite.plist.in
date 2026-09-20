@@ -18,6 +18,8 @@
     <string>__FUNK_HOME__</string>
     <key>FUNK_BACKUP_LOG</key>
     <string>__FUNK_LOG_PATH__</string>
+    <key>GOMAXPROCS</key>
+    <string>2</string>
   </dict>
   <key>RunAtLoad</key>
   <true/>

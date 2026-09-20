@@ -176,6 +176,36 @@ Stow symlink resolves to the exact former script path in the running Funk
 checkout.
 
 
+## Comprehensive backup resource bounds
+
+The hourly `io.arthack.funk.backup-onsite` LaunchAgent sets `GOMAXPROCS=2` for
+its process tree. Restic otherwise uses every CPU core available to the Go
+runtime; it also sizes tree-saving, blob-upload and index-loading worker pools
+from that value. Two cores keep the comprehensive 48-root traversal, hashing,
+compression, encryption, repository locking and verification behavior intact
+while bounding its CPU concurrency. The existing `ProcessType=Background` and
+`LowPriorityIO=true` settings continue to lower scheduling and I/O priority.
+
+This is a concurrency bound rather than a hard memory limit. Restic documents
+that a lower `GOMAXPROCS` can reduce memory use, but repository indexes and
+buffers still determine the resident set. A hard memory ceiling could kill a
+valid backup before it publishes a complete snapshot, so the LaunchAgent does
+not set one. The daily offsite job is unchanged because this bound responds to
+the high-frequency, broad onsite workload.
+
+After changing the bound, run `funk install-backups`; the guarded installer
+renders and reloads the owned LaunchAgent. Confirm the live value with:
+
+```sh
+launchctl print gui/$(id -u)/io.arthack.funk.backup-onsite
+```
+
+The wrapper's per-tier lock still rejects a concurrent manual invocation, and
+launchd never starts a second instance of an already-running job. Long SQLite
+staging before the `starting onsite Restic backup` log line is separate from
+Restic resource use; the largest current staged database can dominate total
+wall time even when the Restic phase remains bounded.
+
 ## Process headroom warnings
 
 `funk install-process-warning` installs `io.arthack.funk.warn-process-headroom`,
