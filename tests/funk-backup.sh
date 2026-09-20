@@ -4,15 +4,22 @@ set -euo pipefail
 
 root=$(cd -P -- "$(dirname -- "$0")/.." && pwd)
 backup="$root/bin/.local/bin/funk-backup"
+vault="$root/bin/.local/bin/transcript-vault"
 fake_restic="$root/tests/fixtures/restic"
+fake_agentchats="$root/tests/fixtures/agentchats-fail"
 test_home=$(mktemp -d "${TMPDIR:-/tmp}/funk-backup-test.XXXXXX")
 trap 'rm -rf "$test_home"' EXIT
 credentials="$test_home/restic.env"
 scratch_cache="$test_home/scratch-cache"
 scratch_stage="$scratch_cache/funk/backup-staging/onsite"
+backup_lock="$test_home/backup.lock"
 mkdir "$test_home/.config" "$test_home/.codex" "$test_home/code" \
     "$test_home/Documents" "$test_home/Downloads" "$scratch_cache"
 mkdir "$test_home/code/jobsearch"
+mkdir -p "$test_home/.claude/projects/project" "$test_home/.local/bin"
+printf '%s\n' 'preserved conversation' >"$test_home/.claude/projects/project/transcript.jsonl"
+printf '%s\n' 'preserved history' >"$test_home/.claude/history.jsonl"
+install -m 755 "$fake_agentchats" "$test_home/.local/bin/agentchats"
 /usr/bin/sqlite3 "$test_home/code/jobsearch/jobsearch.db" \
     'CREATE TABLE durable (value TEXT); INSERT INTO durable VALUES ("kept");'
 printf 'RESTIC_REPOSITORY=test\nRESTIC_PASSWORD=test\n' >"$credentials"
@@ -54,6 +61,10 @@ fi
 # from protecting the unrelated roots that are available.
 chmod 600 "$credentials"
 restic_log="$test_home/restic.log"
+agentchats_log="$test_home/agentchats.log"
+archive_root="$test_home/transcript-archive"
+vault_lock="$test_home/transcript-vault.lock"
+mkdir -p "$archive_root"
 legacy_stage="$test_home/.local/state/funk/backup-staging/onsite"
 mkdir -p "$legacy_stage"
 touch "$legacy_stage/legacy-marker"
@@ -63,14 +74,28 @@ if HOME="$test_home" \
     FUNK_BACKUP_CREDENTIALS="$credentials" \
     FUNK_BACKUP_SCRATCH_CACHE_ROOT="$scratch_cache" \
     FUNK_BACKUP_LOG="$test_home/backup.log" \
-    FUNK_TRANSCRIPT_VAULT_BIN=/usr/bin/true \
+    FUNK_BACKUP_LOCK_DIR="$backup_lock" \
+    FUNK_TRANSCRIPT_VAULT_BIN="$vault" \
+    TRANSCRIPT_VAULT_ARCHIVE_ROOT="$archive_root" \
+    TRANSCRIPT_VAULT_LOCK_DIR="$vault_lock" \
+    FUNK_TEST_AGENTCHATS_LOG="$agentchats_log" \
     FUNK_TEST_RESTIC_LOG="$restic_log" \
-    "$backup" onsite >/dev/null 2>&1; then
+    "$backup" onsite >"$test_home/onsite-output" 2>&1; then
     printf 'funk-backup test: degraded application snapshots were accepted\n' >&2
     exit 1
 fi
 grep -F -- '--tag funk-home-onsite' "$restic_log" >/dev/null \
     || { printf 'funk-backup test: preflight failure blocked Restic\n' >&2; exit 1; }
+! [ -e "$agentchats_log" ] \
+    || { printf 'funk-backup test: backup invoked the disabled AgentChats indexer\n' >&2; exit 1; }
+[ -f "$archive_root/home/.claude/projects/project/transcript.jsonl" ] \
+    || { printf 'funk-backup test: disabled indexing blocked transcript archiving\n' >&2; exit 1; }
+cmp "$test_home/.claude/projects/project/transcript.jsonl" \
+    "$archive_root/home/.claude/projects/project/transcript.jsonl" \
+    || { printf 'funk-backup test: archived transcript differs from live source\n' >&2; exit 1; }
+grep -F 'index deferred: legacy ingest disabled pending bounded runner' \
+    "$test_home/onsite-output" >/dev/null \
+    || { printf 'funk-backup test: backup did not disclose deferred search freshness\n' >&2; exit 1; }
 grep -F -- "$scratch_stage" "$restic_log" >/dev/null \
     || { printf 'funk-backup test: external staging was not passed to Restic\n' >&2; exit 1; }
 find "$scratch_cache/funk/backup-staging" "$test_home/.local/state/funk/backup-staging" \
@@ -87,6 +112,7 @@ if HOME="$test_home" \
     FUNK_BACKUP_CREDENTIALS="$credentials" \
     FUNK_BACKUP_SCRATCH_CACHE_ROOT="$scratch_cache" \
     FUNK_BACKUP_LOG="$test_home/backup.log" \
+    FUNK_BACKUP_LOCK_DIR="$backup_lock" \
     FUNK_TEST_RESTIC_LOG="$restic_log" \
     "$backup" offsite >/dev/null 2>&1; then
     printf 'funk-backup test: degraded offsite snapshots were accepted\n' >&2
@@ -113,6 +139,7 @@ if HOME="$test_home" \
     FUNK_BACKUP_CREDENTIALS="$credentials" \
     FUNK_BACKUP_SCRATCH_CACHE_ROOT="$scratch_cache" \
     FUNK_BACKUP_LOG="$test_home/backup.log" \
+    FUNK_BACKUP_LOCK_DIR="$backup_lock" \
     FUNK_TRANSCRIPT_VAULT_BIN=/usr/bin/true \
     FUNK_TEST_RESTIC_LOG="$restic_log" \
     FUNK_TEST_RESTIC_EXIT=9 \
@@ -128,6 +155,7 @@ HOME="$test_home" \
     FUNK_BACKUP_CREDENTIALS="$credentials" \
     FUNK_BACKUP_SCRATCH_CACHE_ROOT="$scratch_cache" \
     FUNK_BACKUP_LOG="$test_home/backup.log" \
+    FUNK_BACKUP_LOCK_DIR="$backup_lock" \
     FUNK_TRANSCRIPT_VAULT_BIN=/usr/bin/true \
     FUNK_TEST_RESTIC_LOG="$restic_log" \
     "$backup" onsite >/dev/null
@@ -142,6 +170,7 @@ HOME="$test_home" \
     FUNK_BACKUP_CREDENTIALS="$credentials" \
     FUNK_BACKUP_SCRATCH_CACHE_ROOT="$missing_scratch_cache" \
     FUNK_BACKUP_LOG="$test_home/backup.log" \
+    FUNK_BACKUP_LOCK_DIR="$backup_lock" \
     FUNK_TRANSCRIPT_VAULT_BIN=/usr/bin/true \
     FUNK_TEST_RESTIC_LOG="$restic_log" \
     "$backup" onsite >/dev/null

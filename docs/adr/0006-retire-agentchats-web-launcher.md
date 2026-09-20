@@ -15,4 +15,5 @@ generic WebKit persistence and square-window behavior remain supported.
 Existing installed bundles and WebKit storage are not silently removed, and no
 running application is terminated. Removing an already installed AgentChats kiosk
 is an explicit operator cleanup after closing it. The transcript-vault archive
-and AgentChats index refresh remain untouched.
+remains untouched; its former automatic AgentChats index refresh is superseded
+by [0009](0009-preserve-transcripts-independently-of-search-freshness.md).
