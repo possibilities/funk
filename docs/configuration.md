@@ -104,6 +104,23 @@ Repair state that makes Homebrew elevate instead of letting it recur:
 and `libexec/repair-cask-artifacts` for Caskroom state left by an aborted
 upgrade.
 
+## Firewall postures
+
+`funk install-hardening` installs the root-owned helper and boot service. Boot
+always applies `travel`, which blocks unsolicited inbound traffic on every
+physical interface while preserving loopback, outbound state, and Tailscale.
+
+At home, the operator may explicitly run `funk harden home`. That posture adds
+one IPv4 exception on `en6` for `192.168.50.0/24`, immediately before `en6`'s
+quick inbound block; every unrelated physical interface keeps the travel
+rules. The helper does not identify the network or switch posture on its own,
+and it refuses `home` if the trusted interface is unavailable or the fixed
+policy fails validation.
+
+`funk harden status` reports the selected posture, trusted interface and
+subnet, and the effective rule shape for every physical interface. Run
+`funk harden travel` to restore the exact boot posture.
+
 ## Harness preferences and guidance
 
 Personal Codex preferences are an authored-source exception, tracked in

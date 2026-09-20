@@ -61,7 +61,7 @@ Commands:
                       Confirm Funk's health alerts can reach the screen
   verify-obs-camera   Confirm macOS enabled the OBS Virtual Camera extension
   configure-system   Apply Funk's privileged machine-wide settings
-  harden <action>    Show status or reapply the travel firewall posture
+  harden <action>    Show or select the travel/home firewall posture
   install-hardening  Install the root-owned hardening service
   yabai <action>     Show or maintain the Yabai scripting-addition layer
   reload-karabiner   Restart Karabiner so it re-reads the Stow-linked config
