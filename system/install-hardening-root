@@ -11,6 +11,7 @@ daemon_target="/Library/LaunchDaemons/$daemon_label.plist"
 legacy_daemon_target="/Library/LaunchDaemons/$legacy_daemon_label.plist"
 pf_conf=/etc/pf.conf
 anchor_line='anchor "com.arthack.funk.travel"'
+anchor_regex='^[[:space:]]*anchor[[:space:]]+"com\.arthack\.funk\.travel"[[:space:]]*(#.*)?$'
 
 die() {
     printf 'funk hardening installer: %s\n' "$*" >&2
@@ -28,6 +29,10 @@ guard_root_directory() {
     mode=$(stat -f '%Lp' "$directory")
     [ "$owner" = root ] || die "$directory must be root-owned"
     [ $((8#$mode & 8#022)) -eq 0 ] || die "$directory must not be group/world-writable"
+}
+
+pf_conf_traverses_anchor() {
+    grep -Eq "$anchor_regex" "$1"
 }
 
 target_user=
@@ -134,7 +139,7 @@ pf_mode=$(stat -f '%Lp' "$pf_conf")
 
 tmpdir=$(mktemp -d /private/tmp/funk-hardening-install.XXXXXX)
 
-if ! grep -Eq '^[[:space:]]*anchor[[:space:]]+"com\\.arthack\\.funk\\.travel"' "$pf_conf"; then
+if ! pf_conf_traverses_anchor "$pf_conf"; then
     pf_candidate="$tmpdir/pf.conf"
     cp "$pf_conf" "$pf_candidate"
     printf '\n# Funk fail-closed travel posture\n%s\n' "$anchor_line" >> "$pf_candidate"
