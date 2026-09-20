@@ -335,6 +335,15 @@ offsite_backup_plist=launchd/io.arthack.funk.backup-offsite.plist.in
 [ "$(plist_buddy -c 'Print :RunAtLoad' "$onsite_backup_plist")" = true ] \
     && [ "$(plist_buddy -c 'Print :StartInterval' "$onsite_backup_plist")" = 3600 ] \
     || fail "onsite backup agent does not run hourly and at login"
+[ "$(plist_buddy -c 'Print :EnvironmentVariables:GOMAXPROCS' "$onsite_backup_plist")" = 2 ] \
+    || fail "onsite backup agent does not bound Go CPU concurrency"
+[ "$(plist_buddy -c 'Print :ProcessType' "$onsite_backup_plist")" = Background ] \
+    && [ "$(plist_buddy -c 'Print :LowPriorityIO' "$onsite_backup_plist")" = true ] \
+    || fail "onsite backup agent lost its background scheduling policy"
+if plist_buddy -c 'Print :EnvironmentVariables:GOMAXPROCS' \
+    "$offsite_backup_plist" >/dev/null 2>&1; then
+    fail "offsite backup agent unexpectedly inherited the onsite CPU bound"
+fi
 [ "$(plist_buddy -c 'Print :StartCalendarInterval:Hour' "$offsite_backup_plist")" = 4 ] \
     && [ "$(plist_buddy -c 'Print :StartCalendarInterval:Minute' "$offsite_backup_plist")" = 0 ] \
     || fail "offsite backup agent does not run daily at 04:00"

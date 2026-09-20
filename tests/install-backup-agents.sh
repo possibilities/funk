@@ -85,6 +85,13 @@ for label in io.arthack.funk.backup-onsite io.arthack.funk.backup-offsite; do
     [ -f "$agent_dir/$label.plist" ] && [ -f "$state/$label" ] \
         || fail "canonical job was not installed and loaded: $label"
 done
+[ "$(/usr/libexec/PlistBuddy -c 'Print :EnvironmentVariables:GOMAXPROCS' \
+    "$agent_dir/io.arthack.funk.backup-onsite.plist")" = 2 ] \
+    || fail 'installed onsite job does not retain its Go CPU-concurrency bound'
+if /usr/libexec/PlistBuddy -c 'Print :EnvironmentVariables:GOMAXPROCS' \
+    "$agent_dir/io.arthack.funk.backup-offsite.plist" >/dev/null 2>&1; then
+    fail 'installed offsite job unexpectedly inherited the onsite CPU bound'
+fi
 [ ! -e "$agent_dir/backup.snapshot-silverbird.plist" ] \
     && [ ! -e "$agent_dir/backup.snapshot.plist" ] \
     || fail 'recognized historical definitions survived migration'
