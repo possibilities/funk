@@ -1,0 +1,6 @@
+#!/bin/bash
+
+set -euo pipefail
+
+printf '%s\n' "$*" >>"${FUNK_TEST_AGENTCHATS_LOG:?}"
+exit "${FUNK_TEST_AGENTCHATS_EXIT:-75}"

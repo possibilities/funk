@@ -41,7 +41,7 @@ if [ "$tier" = onsite ] && [ -d "$scratch_cache_root" ]; then
     stage_is_external=1
 fi
 log_path="${FUNK_BACKUP_LOG:-$HOME/Library/Logs/Funk/backup-$tier.log}"
-lock_dir="/tmp/funk-backup-$tier.$(id -u).lock"
+lock_dir="${FUNK_BACKUP_LOCK_DIR:-/tmp/funk-backup-$tier.$(id -u).lock}"
 
 log() {
     printf '[%s] %s\n' "$(date '+%Y-%m-%dT%H:%M:%S')" "$*"

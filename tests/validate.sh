@@ -357,6 +357,12 @@ grep -F 'PRAGMA quick_check;' bin/.local/bin/funk-backup >/dev/null \
 if sed 's/#.*//' bin/.local/bin/transcript-vault | grep -F -- '--delete' >/dev/null; then
     fail "transcript vault contains a deletion path"
 fi
+if sed 's/#.*//' bin/.local/bin/transcript-vault \
+    | grep -F -- 'agentchats index --json' >/dev/null; then
+    fail "transcript vault invokes the AgentChats indexer"
+fi
+grep -F 'does not establish search freshness' bin/.local/bin/transcript-vault >/dev/null \
+    || fail "transcript vault does not disclose deferred search freshness"
 # shellcheck disable=SC2016 # The installer's literal source line is the subject.
 grep -F '"$funk_command" install-backups' install >/dev/null \
     || fail "installer does not install comprehensive backup agents"
