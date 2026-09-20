@@ -29,6 +29,69 @@ physical_interfaces() {
 # shellcheck disable=SC2034
 ifconfig=fixture_ifconfig
 
+# The helper must recognise the exact directive the installer writes. In
+# particular, the ERE is sourced from the production helper so a second
+# install does not append another Funk anchor to an unchanged pf.conf.
+pf_conf=$test_dir/pf.conf
+cat > "$pf_conf" <<'PF_CONF'
+set block-policy drop
+# macOS anchor traversal
+anchor "com.apple/*"
+# Funk fail-closed travel posture
+anchor "com.arthack.funk.travel"
+PF_CONF
+pf_conf_traverses_anchor "$pf_conf" \
+    || fail "helper did not recognise an existing Funk anchor"
+
+pf_conf_before=$(cat "$pf_conf")
+if ! pf_conf_traverses_anchor "$pf_conf"; then
+    printf '\n# Funk fail-closed travel posture\nanchor "com.arthack.funk.travel"\n' >> "$pf_conf"
+fi
+[ "$(cat "$pf_conf")" = "$pf_conf_before" ] \
+    || fail "helper matcher would append a duplicate Funk anchor"
+
+if printf 'anchor "com.arthack.funk.travel" extra\n' > "$pf_conf" \
+    && pf_conf_traverses_anchor "$pf_conf"; then
+    fail "helper accepted a malformed Funk anchor"
+fi
+if printf 'anchor "com.arthack.funk.traveler"\n' > "$pf_conf" \
+    && pf_conf_traverses_anchor "$pf_conf"; then
+    fail "helper accepted a foreign anchor"
+fi
+
+# Load the installer's matcher from its production source without crossing its
+# root-only installation boundary. It must make the same repeat-install
+# decision and leave an existing pf.conf byte-for-byte unchanged.
+installer_matcher=$test_dir/install-hardening-matcher.sh
+sed -n '1,/^target_user=$/p' "$root/system/install-hardening-root" > "$installer_matcher"
+# shellcheck disable=SC1090
+source "$installer_matcher"
+pf_conf=$test_dir/installer-pf.conf
+cat > "$pf_conf" <<'PF_CONF'
+set block-policy drop
+# macOS anchor traversal
+anchor "com.apple/*"
+# Funk fail-closed travel posture
+anchor "com.arthack.funk.travel"
+# Funk fail-closed travel posture
+anchor "com.arthack.funk.travel"
+PF_CONF
+pf_conf_before=$(cat "$pf_conf")
+if ! pf_conf_traverses_anchor "$pf_conf"; then
+    printf '\n# Funk fail-closed travel posture\nanchor "com.arthack.funk.travel"\n' >> "$pf_conf"
+fi
+[ "$(cat "$pf_conf")" = "$pf_conf_before" ] \
+    || fail "installer matcher would append an anchor on repeat install"
+
+if printf 'anchor "com.arthack.funk.travel" extra\n' > "$pf_conf" \
+    && pf_conf_traverses_anchor "$pf_conf"; then
+    fail "installer accepted a malformed Funk anchor"
+fi
+if printf 'anchor "com.arthack.funk.traveler"\n' > "$pf_conf" \
+    && pf_conf_traverses_anchor "$pf_conf"; then
+    fail "installer accepted a foreign anchor"
+fi
+
 expected_travel='set skip on lo0
 set block-policy drop
 pass out all keep state

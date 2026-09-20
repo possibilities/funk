@@ -8,6 +8,7 @@ pfctl=/sbin/pfctl
 ifconfig=/sbin/ifconfig
 anchor=com.arthack.funk.travel
 pf_conf=/etc/pf.conf
+anchor_regex='^[[:space:]]*anchor[[:space:]]+"com\.arthack\.funk\.travel"[[:space:]]*(#.*)?$'
 state_dir=/var/db/funk
 posture_file="$state_dir/hardening-posture"
 home_interface=en6
@@ -110,6 +111,10 @@ validate_rules() {
     "$pfctl" -a "$anchor" -nf "$rules_file" >/dev/null
 }
 
+pf_conf_traverses_anchor() {
+    grep -Eq "$anchor_regex" "$1"
+}
+
 with_rendered_rules() {
     local posture="$1"
     local callback="$2"
@@ -137,7 +142,7 @@ apply_posture() {
 
     validate_rules "$rules_file" || die "generated $posture rules failed PF validation"
     validate_expected_policy "$posture" "$(<"$rules_file")"
-    grep -Eq '^[[:space:]]*anchor[[:space:]]+"com\\.arthack\\.funk\\.travel"' "$pf_conf" \
+    pf_conf_traverses_anchor "$pf_conf" \
         || die "$pf_conf does not traverse the $anchor anchor"
 
     "$pfctl" -f "$pf_conf" >/dev/null \
