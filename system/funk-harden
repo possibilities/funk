@@ -10,6 +10,8 @@ anchor=com.arthack.funk.travel
 pf_conf=/etc/pf.conf
 state_dir=/var/db/funk
 posture_file="$state_dir/hardening-posture"
+home_interface=en6
+home_ipv4_subnet=192.168.50.0/24
 work_dir=
 
 log() {
@@ -48,8 +50,28 @@ physical_interfaces() {
     done
 }
 
-render_travel_rules() {
+validate_home_policy() {
+    [ "$home_interface" = en6 ] \
+        || die "refusing unexpected home interface: $home_interface"
+    [ "$home_ipv4_subnet" = 192.168.50.0/24 ] \
+        || die "refusing unexpected home IPv4 subnet: $home_ipv4_subnet"
+    "$ifconfig" "$home_interface" >/dev/null 2>&1 \
+        || die "trusted home interface is unavailable: $home_interface"
+}
+
+render_rules() {
+    local posture="$1"
     local interface
+
+    case "$posture" in
+        travel) ;;
+        home)
+            validate_home_policy
+            ;;
+        *)
+            die "refusing invalid posture: $posture"
+            ;;
+    esac
 
     printf '%s\n' \
         'set skip on lo0' \
@@ -66,9 +88,21 @@ render_travel_rules() {
             "pass in quick on $interface proto udp to 224.0.0.251 port 5353" \
             "pass in quick on $interface inet6 proto udp to ff02::fb port 5353" \
             "pass in quick on $interface inet6 proto udp from fe80::/10 port 547 to any port 546" \
-            "pass in quick on $interface inet6 proto icmp6 icmp6-type { neighbrsol neighbradv routeradv routersol echoreq echorep toobig timex unreach }" \
-            "block in quick on $interface all"
+            "pass in quick on $interface inet6 proto icmp6 icmp6-type { neighbrsol neighbradv routeradv routersol echoreq echorep toobig timex unreach }"
+        if [ "$posture" = home ] && [ "$interface" = "$home_interface" ]; then
+            printf '%s\n' \
+                "pass in quick on $interface inet from $home_ipv4_subnet to any"
+        fi
+        printf '%s\n' "block in quick on $interface all"
     done < <(physical_interfaces)
+}
+
+render_travel_rules() {
+    render_rules travel
+}
+
+render_home_rules() {
+    render_rules home
 }
 
 validate_rules() {
@@ -77,27 +111,32 @@ validate_rules() {
 }
 
 with_rendered_rules() {
-    local callback="$1"
+    local posture="$1"
+    local callback="$2"
     local rules_file
 
     work_dir=$(mktemp -d /private/tmp/funk-harden.XXXXXX)
-    rules_file="$work_dir/travel.pf"
-    render_travel_rules > "$rules_file"
-    "$callback" "$rules_file"
+    rules_file="$work_dir/$posture.pf"
+    render_rules "$posture" > "$rules_file"
+    "$callback" "$posture" "$rules_file"
     rm -rf "$work_dir"
     work_dir=
 }
 
 validate_posture() {
-    local rules_file="$1"
-    validate_rules "$rules_file" || die "generated travel rules failed PF validation"
-    log "travel rules validated"
+    local posture="$1"
+    local rules_file="$2"
+    validate_rules "$rules_file" || die "generated $posture rules failed PF validation"
+    validate_expected_policy "$posture" "$(<"$rules_file")"
+    log "$posture rules validated"
 }
 
 apply_posture() {
-    local rules_file="$1"
+    local posture="$1"
+    local rules_file="$2"
 
-    validate_rules "$rules_file" || die "generated travel rules failed PF validation"
+    validate_rules "$rules_file" || die "generated $posture rules failed PF validation"
+    validate_expected_policy "$posture" "$(<"$rules_file")"
     grep -Eq '^[[:space:]]*anchor[[:space:]]+"com\\.arthack\\.funk\\.travel"' "$pf_conf" \
         || die "$pf_conf does not traverse the $anchor anchor"
 
@@ -110,10 +149,64 @@ apply_posture() {
         || die "could not load the travel anchor"
 
     ensure_state_directory
-    printf 'travel\n' > "$posture_file"
+    printf '%s\n' "$posture" > "$posture_file"
     /usr/sbin/chown root:wheel "$posture_file"
     /bin/chmod 0644 "$posture_file"
-    log "travel posture applied to: $(physical_interfaces | tr '\n' ' ')"
+    log "$posture posture applied to: $(physical_interfaces | tr '\n' ' ')"
+}
+
+line_number() {
+    local rules="$1"
+    local rule="$2"
+
+    printf '%s\n' "$rules" \
+        | /usr/bin/awk -v rule="$rule" 'index($0, rule) { print NR; exit }'
+}
+
+block_line_number() {
+    local rules="$1"
+    local interface="$2"
+
+    printf '%s\n' "$rules" | /usr/bin/awk -v interface="$interface" '
+        $0 ~ ("block.*in quick on " interface " all") { print NR; exit }
+    '
+}
+
+validate_expected_policy() {
+    local posture="$1"
+    local rules="$2"
+    local interface
+    local allow_line
+    local block_line
+    local home_interface_found=0
+
+    case "$posture" in
+        travel|home) ;;
+        *) die "refusing invalid posture: $posture" ;;
+    esac
+
+    while IFS= read -r interface; do
+        [ -n "$interface" ] || continue
+        if [ "$interface" = "$home_interface" ]; then
+            home_interface_found=1
+        fi
+        block_line=$(block_line_number "$rules" "$interface")
+        [ -n "$block_line" ] \
+            || die "$posture rules do not block inbound on $interface"
+
+        allow_line=$(line_number "$rules" \
+            "pass in quick on $interface inet from $home_ipv4_subnet to any")
+        if [ "$posture" = home ] && [ "$interface" = "$home_interface" ]; then
+            [ -n "$allow_line" ] && [ "$allow_line" -lt "$block_line" ] \
+                || die "home allow rule is missing or follows the $interface block"
+        elif [ -n "$allow_line" ]; then
+            die "$posture rules unexpectedly trust $home_ipv4_subnet on $interface"
+        fi
+    done < <(physical_interfaces)
+
+    if [ "$posture" = home ] && [ "$home_interface_found" -ne 1 ]; then
+        die "trusted home interface is unavailable: $home_interface"
+    fi
 }
 
 status() {
@@ -122,6 +215,9 @@ status() {
     local info
     local rules
     local posture=missing
+    local allow_line
+    local block_line
+    local home_interface_found=0
 
     info=$("$pfctl" -s info 2>/dev/null) || die "could not read PF status"
     rules=$("$pfctl" -a "$anchor" -sr 2>/dev/null) || die "could not read $anchor rules"
@@ -135,28 +231,57 @@ status() {
     fi
 
     printf 'Posture marker: %s\n' "$posture"
-    if [ "$posture" != travel ]; then
-        failed=1
-    fi
+    printf 'Home interface: %s\n' "$home_interface"
+    printf 'Trusted IPv4 subnet: %s\n' "$home_ipv4_subnet"
+    case "$posture" in
+        travel|home) ;;
+        *) failed=1 ;;
+    esac
 
     printf 'Physical interfaces:\n'
     while IFS= read -r interface; do
         [ -n "$interface" ] || continue
-        if printf '%s\n' "$rules" | grep -Eq "block.*in quick on $interface all"; then
+        if [ "$interface" = "$home_interface" ]; then
+            home_interface_found=1
+        fi
+        block_line=$(block_line_number "$rules" "$interface")
+        allow_line=$(line_number "$rules" \
+            "pass in quick on $interface inet from $home_ipv4_subnet to any")
+        if [ "$posture" = home ] && [ "$interface" = "$home_interface" ]; then
+            if [ -n "$allow_line" ] && [ -n "$block_line" ] \
+                && [ "$allow_line" -lt "$block_line" ]; then
+                printf '  %s: permits inbound IPv4 from %s; otherwise blocked\n' \
+                    "$interface" "$home_ipv4_subnet"
+            else
+                printf '  %s: policy does not match %s posture\n' "$interface" "$posture"
+                failed=1
+            fi
+        elif [ -n "$block_line" ] && [ -z "$allow_line" ]; then
             printf '  %s: blocked inbound\n' "$interface"
         else
-            printf '  %s: MISSING travel block\n' "$interface"
+            printf '  %s: policy does not match %s posture\n' "$interface" "$posture"
             failed=1
         fi
     done < <(physical_interfaces)
 
+    if [ "$posture" = home ] && [ "$home_interface_found" -ne 1 ]; then
+        printf '  %s: trusted home interface unavailable\n' "$home_interface"
+        failed=1
+    fi
+
     return "$failed"
 }
+
+[ "${BASH_SOURCE[0]}" = "$0" ] || return 0
 
 [ "$#" -eq 1 ] || die "expected exactly one action"
 
 if [ "$1" = render ]; then
     render_travel_rules
+    exit 0
+fi
+if [ "$1" = render-home ]; then
+    render_home_rules
     exit 0
 fi
 
@@ -168,10 +293,15 @@ case "$1" in
         status
         ;;
     travel|boot)
-        with_rendered_rules apply_posture
+        with_rendered_rules travel apply_posture
+        ;;
+    home)
+        with_rendered_rules home apply_posture
         ;;
     validate)
-        with_rendered_rules validate_posture
+        with_rendered_rules travel validate_posture
+        validate_home_policy
+        with_rendered_rules home validate_posture
         ;;
     *)
         die "unknown action: $1"

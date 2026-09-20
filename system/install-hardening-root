@@ -152,6 +152,7 @@ fi
 sudoers_candidate="$tmpdir/sudoers"
 printf '%s ALL=(root) NOPASSWD: %s status\n' "$target_user" "$helper_target" > "$sudoers_candidate"
 printf '%s ALL=(root) NOPASSWD: %s travel\n' "$target_user" "$helper_target" >> "$sudoers_candidate"
+printf '%s ALL=(root) NOPASSWD: %s home\n' "$target_user" "$helper_target" >> "$sudoers_candidate"
 /bin/chmod 0440 "$sudoers_candidate"
 /usr/sbin/visudo -cf "$sudoers_candidate" >/dev/null \
     || die "generated sudoers rules failed validation"

@@ -12,6 +12,7 @@ fail() {
 
 python3 -B tests/process-headroom.py
 python3 -B tests/artbird-browser-watchdog.py
+tests/funk-harden.sh
 
 skipped=""
 skip() {
@@ -95,6 +96,7 @@ tests/chuchu-theme.sh
 tests/ghostty-terminfo.sh
 tests/noizey.sh
 tests/home-awake.sh
+tests/funk-harden.sh
 tests/ssh-tailnet-config.sh
 tests/retire-kiosk-launchers.sh
 tests/tailscale-online.sh
@@ -1675,8 +1677,9 @@ fi
 # actually parses, so this is the other check that stays macOS-only.
 if [ "$(uname -s)" = Darwin ] && [ -x /sbin/pfctl ]; then
     "$root/system/funk-harden" render | /sbin/pfctl -nf - >/dev/null 2>&1
+    "$root/system/funk-harden" render-home | /sbin/pfctl -nf - >/dev/null 2>&1
 else
-    skip "travel firewall ruleset parse (system/funk-harden render | pfctl -nf -)" \
+    skip "travel/home firewall ruleset parse (system/funk-harden render* | pfctl -nf -)" \
         "needs macOS pfctl"
 fi
 
