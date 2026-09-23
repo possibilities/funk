@@ -48,8 +48,8 @@ Commands:
                       Install the login/five-minute Tailscale recovery agent
   home-awake [option] Converge or report home-network sleep and screen lock
   install-home-awake  Install the home-network sleep and screen-lock agent
-  install-agentlaunch-shims
-                      Install PATH shims that balance bare claude/codex launches
+  install-harness-shims
+                      Install PATH shims that set default claude/codex permissions
   verify-local-services
                       Show owner-reported Funk and fleet launchd health
   launchd-status      Show Funk launchd ownership, state, and log sizes
@@ -128,13 +128,13 @@ case "$command_name" in
         shift
         exec "$FUNK_ROOT/libexec/install-home-awake" "$@"
         ;;
-    install-agentlaunch-shims)
+    install-harness-shims)
         shift
         # AgentStart owns the fleet-facing installers; this stays a funk
         # subcommand for muscle memory and delegates.
-        agentstart_shims="$HOME/code/agentstart/scripts/install-agentlaunch-shims"
+        agentstart_shims="$HOME/code/agentstart/scripts/install-harness-shims"
         if [ ! -x "$agentstart_shims" ]; then
-            printf 'funk: AgentStart owns the AgentLaunch shims and is missing: %s\n' \
+            printf 'funk: AgentStart owns the harness shims and is missing: %s\n' \
                 "$agentstart_shims" >&2
             exit 66
         fi

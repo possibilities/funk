@@ -1043,13 +1043,13 @@ done
     || fail "Herdr config.toml is AgentStart's generated theme config, not Funk's"
 HOME="$stow_home" "$root/bin/funk" stow --check >/dev/null 2>&1
 # AgentStart owns balanced launch shims; Funk keeps only a convenience
-# delegation and the shell PATH entry for the installed AgentLaunch directory.
+# delegation and the shell PATH entry for the installed AgentStart shims.
 # shellcheck disable=SC2016 # Match the literal delegation path in bin/funk.
-grep -F 'agentstart_shims="$HOME/code/agentstart/scripts/install-agentlaunch-shims"' \
+grep -F 'agentstart_shims="$HOME/code/agentstart/scripts/install-harness-shims"' \
     bin/funk >/dev/null \
-    || fail "funk install-agentlaunch-shims does not delegate to AgentStart"
-grep -F '$HOME/.local/share/agentlaunch/shims' zsh/.zshrc >/dev/null \
-    || fail "the shell does not prefer AgentLaunch's balanced harness shims"
+    || fail "funk install-harness-shims does not delegate to AgentStart"
+grep -F '$HOME/.local/share/agentstart/shims' zsh/.zshrc >/dev/null \
+    || fail "the shell does not prefer AgentStart's permission shims"
 
 mcd_path="$stow_home/mcd parent/mcd child"
 cmkdir_path="$stow_home/cmkdir parent/cmkdir child"

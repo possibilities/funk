@@ -9,10 +9,10 @@ ulimit -n 16384 2>/dev/null
 export NVM_DIR="$HOME/.nvm"
 export PATH="$NVM_DIR/versions/node/v24.16.0/bin:$PATH"
 
-# Balanced harness launches: AgentLaunch shims outrank the real binaries
-# (`funk install-agentlaunch-shims`). Guarded so machines without them are
+# Native unattended permission defaults: AgentStart shims outrank the real binaries
+# (`funk install-harness-shims`). Guarded so machines without them are
 # untouched; must stay below every other bin-dir prepend to win.
-[ -d "$HOME/.local/share/agentlaunch/shims" ] && export PATH="$HOME/.local/share/agentlaunch/shims:$PATH"
+[ -d "$HOME/.local/share/agentstart/shims" ] && export PATH="$HOME/.local/share/agentstart/shims:$PATH"
 nvm() {
   unfunction nvm
   [ -s "$HOMEBREW_PREFIX/opt/nvm/nvm.sh" ] && \. "$HOMEBREW_PREFIX/opt/nvm/nvm.sh"

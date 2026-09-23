@@ -124,15 +124,16 @@ subnet, and the effective rule shape for every physical interface. Run
 ## Harness preferences and guidance
 
 Personal Codex preferences are an authored-source exception, tracked in
-`config/harnesses/codex.toml`. AgentStart's Codex shim copies that file into a
+`config/harnesses/codex.toml`. AgentStart's optional Codex invocation helper copies that file into a
 private native profile for each invocation and adds temporary cwd/project
-trust; it owns the wrapper and its installation. The source is never Stowed
+trust; it owns the helper and its installation. Bare permission shims do not
+load these preferences. The source is never Stowed
 over the live config, and trust, credentials, generated integrations, and
 session state never belong in it. See `config/harnesses/README.md`.
 
 Personal Claude preferences are the corresponding Stow exception:
 `claude/.claude/preferences.json` links to `~/.claude/preferences.json`.
-AgentStart's managed Claude shim loads it with native `--settings` and records
+AgentStart's optional Claude invocation helper loads it with native `--settings` and records
 workspace trust in local Claude state under Claude's config lock. Never adopt
 `settings.json` or `.claude.json`: generated integrations, classifier state,
 credentials, and project history stay local. The package uses `--no-folding`
