@@ -1048,10 +1048,8 @@ done
     || fail "the extension prompts are AgentStart's; nothing in Funk may stow ~/.config/arthack"
 [ ! -e "$stow_home/Library/Application Support/io.datasette.llm" ] \
     || fail "the llm configuration is AgentStart's; nothing in Funk may stow into io.datasette.llm"
-[ -L "$stow_home/.config/herdr/agent-mem.sh" ] \
-    || fail "Funk's machine-owned Herdr memory helper was not stowed"
-[ ! -e "$stow_home/.config/herdr/config.toml" ] \
-    || fail "Herdr config.toml is AgentStart's generated theme config, not Funk's"
+[ ! -e "$stow_home/.config/herdr" ] \
+    || fail "Funk still stows Herdr configuration"
 HOME="$stow_home" "$root/bin/funk" stow --check >/dev/null 2>&1
 # AgentStart owns balanced launch shims; Funk keeps only a convenience
 # delegation and the shell PATH entry for the installed AgentStart shims.

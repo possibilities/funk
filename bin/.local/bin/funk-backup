@@ -163,7 +163,6 @@ done
 if [ "$tier" = onsite ]; then
     for root in \
         "$HOME/source" \
-        "$HOME/.herdr/worktrees" \
         "$HOME/Desktop" \
         "$HOME/Documents" \
         "$HOME/Downloads" \
@@ -210,7 +209,6 @@ excludes=(
     --exclude "$HOME/.local/state/agentchats"
     --exclude "$HOME/.local/state/agentscrape/runtime"
     --exclude "$HOME/.local/state/agentmux"
-    --exclude "$HOME/.local/state/herdr"
     --exclude "$HOME/.local/state/agentvoice/runs"
     --exclude "$HOME/.local/state/funk/chrome-kiosk"
     --exclude "$HOME/.codex/packages"

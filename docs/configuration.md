@@ -49,7 +49,6 @@ Paths below are relative to the repository root unless explicitly absolute.
 | `tmuxctl` | `~/.config/tmuxctl/` | yes |
 | `bin` | `~/.local/bin/` | yes |
 | `btop` | `~/.config/btop/` | no |
-| `herdr` | `~/.config/herdr/` | yes |
 | `claude` | `~/.claude/preferences.json` | yes |
 
 A `--no-folding` package's target directory stays a real directory, so it can
@@ -152,10 +151,7 @@ or `~/code/agentstart/config/` instead.
 
 Configuration another program writes is overlaid, never adopted. The llm CLI
 and its model configuration are AgentStart's (`config/llm/`, and the formula
-left the Brewfile with them). Herdr's live `config.toml` is also AgentStart's:
-`scripts/herdr-config` renders it from that checkout's tracked source, while
-Funk's `herdr` package retains only the machine-owned `agent-mem.sh` helper.
-Adopt a file only when Funk is its sole writer.
+left the Brewfile with them). Adopt a file only when Funk is its sole writer.
 
 ## Retired local web wrappers
 

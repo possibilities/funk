@@ -17,8 +17,8 @@ window-padding-y = 0
 window-padding-balance = true
 unfocused-split-opacity = 1
 bell-features = no-attention,no-title,no-system,no-audio,no-border
-# Native Ghostty splits mirror the directional pane controls used in tmux and
-# Herdr, without capturing their unmodified Option bindings.
+# Native Ghostty splits mirror the directional pane controls used in tmux,
+# without capturing its unmodified Option bindings.
 keybind = cmd+alt+\=new_split:right
 keybind = cmd+alt+-=new_split:down
 keybind = cmd+alt+h=goto_split:left
