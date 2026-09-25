@@ -456,6 +456,8 @@ fi
 
 expected_brewfile='tap "asmvik/formulae"
 tap "oven-sh/bun"
+# OpenCode 2 Desktop has no upstream cask; Funk carries its verified bootstrap cask.
+tap "arthack/funk", "file://#{__dir__}"
 brew "git-delta"
 brew "bat"
 brew "neovim"
@@ -496,10 +498,19 @@ cask "raycast", greedy: true
 cask "android-platform-tools", greedy: true
 cask "karabiner-elements", greedy: true
 cask "font-geist-mono-nerd-font", greedy: true
-cask "finetune", greedy: true'
+cask "finetune", greedy: true
+cask "arthack/funk/opencode2-desktop"'
 actual_brewfile=$(grep -Ev '^[[:space:]]*$' Brewfile)
 [ "$actual_brewfile" = "$expected_brewfile" ] \
     || fail "Brewfile declarations differ from the approved set"
+
+grep -Fx '  version "2.0.16"' Casks/opencode2-desktop.rb >/dev/null \
+    || fail "OpenCode 2 Desktop lost its verified bootstrap version"
+grep -Fx '  sha256 "e3176475f0db74ed80875c68e57bb19de9a03f4043b90386050944e2f66b21fa"' \
+    Casks/opencode2-desktop.rb >/dev/null \
+    || fail "OpenCode 2 Desktop lost its verified Apple silicon checksum"
+grep -Fx '  auto_updates true' Casks/opencode2-desktop.rb >/dev/null \
+    || fail "OpenCode 2 Desktop must not compete with its own updater"
 
 if command -v brew >/dev/null 2>&1; then
     HOMEBREW_NO_AUTO_UPDATE=1 brew bundle list --file=Brewfile --formula >/dev/null

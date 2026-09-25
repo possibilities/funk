@@ -139,7 +139,7 @@ every globally managed skill — belongs in AgentStart, and the machine itself �
 Homebrew, Stow, launchd, macOS settings, account migration — stays here.
 
 Concretely, Funk keeps the AI *desktop applications* (the claude and chatgpt
-casks, converged from `./install`). `./install` then
+casks plus the local OpenCode 2 desktop cask, converged from `./install`). `./install` then
 calls `~/code/agentstart/scripts/install.sh --install` and refuses to finish
 if that checkout is missing; the scheduled updater calls
 `~/code/agentstart/scripts/sync-skills` the same way. Do not grow a second

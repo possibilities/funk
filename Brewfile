@@ -1,5 +1,7 @@
 tap "asmvik/formulae"
 tap "oven-sh/bun"
+# OpenCode 2 Desktop has no upstream cask; Funk carries its verified bootstrap cask.
+tap "arthack/funk", "file://#{__dir__}"
 
 brew "git-delta"
 brew "bat"
@@ -43,3 +45,4 @@ cask "android-platform-tools", greedy: true
 cask "karabiner-elements", greedy: true
 cask "font-geist-mono-nerd-font", greedy: true
 cask "finetune", greedy: true
+cask "arthack/funk/opencode2-desktop"
