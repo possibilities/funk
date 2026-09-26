@@ -499,6 +499,8 @@ cask "android-platform-tools", greedy: true
 cask "karabiner-elements", greedy: true
 cask "font-geist-mono-nerd-font", greedy: true
 cask "finetune", greedy: true
+# Zen Browser; AgentStart owns the container-open managed policy and zen-open CLI.
+cask "zen", greedy: true
 cask "arthack/funk/opencode2-desktop"'
 actual_brewfile=$(grep -Ev '^[[:space:]]*$' Brewfile)
 [ "$actual_brewfile" = "$expected_brewfile" ] \
