@@ -1,0 +1,44 @@
+#!/bin/bash
+# Install-only convergence: Obsidian owns updates and enablement thereafter.
+set -euo pipefail
+
+die() { printf 'install-obsidian-plugin: %s\n' "$*" >&2; exit 1; }
+[ "$#" -eq 0 ] || die 'usage: funk install-obsidian-plugin'
+vault="$HOME/obsidian/work"
+if [ ! -d "$vault/.obsidian" ]; then
+    printf 'LiveSync plugin deferred: work vault is not present.\n'
+    exit 0
+fi
+plugins="$vault/.obsidian/plugins"
+target="$plugins/obsidian-livesync"
+if [ -e "$target" ] || [ -L "$target" ]; then
+    [ -f "$target/manifest.json" ] &&
+        [ "$(jq -r .id "$target/manifest.json")" = obsidian-livesync ] \
+        || die 'existing plugin directory is not LiveSync; refusing to replace it'
+    printf 'LiveSync plugin already installed; Obsidian owns updates.\n'
+    exit 0
+fi
+command -v gh >/dev/null || die 'gh is required to download the official release'
+command -v jq >/dev/null || die 'jq is required to verify the manifest'
+
+# Pin the initial release and its GitHub-published SHA-256 digests; Obsidian's
+# updater manages subsequent versions. Never copy partial downloads into a vault.
+tmp=$(mktemp -d "${TMPDIR:-/tmp}/funk-obsidian-plugin.XXXXXXXX")
+trap 'rm -rf -- "$tmp"' EXIT
+gh release download 1.0.32 -R vrtmrz/obsidian-livesync \
+    --dir "$tmp" --pattern main.js --pattern manifest.json --pattern styles.css
+(
+    cd "$tmp"
+    shasum -a 256 -c <<'EOF'
+47a9bc36f1efc78844ecfaa227024f3a0edf37b2673add4c091c60827935f0dd  main.js
+c8571c0a727e57893de946b9cfd5bfaf30629b08f1bd4d7a8901f92ade08e29d  manifest.json
+4ba00bef417ee98d9a62dd9febb792dc6555949cfc9e8e069450ad699ab2b9f0  styles.css
+EOF
+)
+[ "$(jq -r .id "$tmp/manifest.json")" = obsidian-livesync ] \
+    || die 'downloaded manifest has an unexpected plugin ID'
+mkdir -p "$plugins"
+[ ! -e "$target" ] && [ ! -L "$target" ] || die 'plugin appeared during download; refusing to replace it'
+mkdir "$target"
+cp "$tmp/main.js" "$tmp/manifest.json" "$tmp/styles.css" "$target/"
+printf 'LiveSync plugin installed; enable it in Obsidian Community Plugins.\n'

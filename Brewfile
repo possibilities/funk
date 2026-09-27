@@ -18,6 +18,8 @@ brew "poppler"
 brew "yq"
 # Encrypted comprehensive onsite and offsite account backups.
 brew "restic"
+# Private, tailnet-only Obsidian LiveSync remote.
+brew "couchdb"
 brew "ripgrep"
 brew "fzf"
 brew "btop"

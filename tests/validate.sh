@@ -473,6 +473,8 @@ brew "poppler"
 brew "yq"
 # Encrypted comprehensive onsite and offsite account backups.
 brew "restic"
+# Private, tailnet-only Obsidian LiveSync remote.
+brew "couchdb"
 brew "ripgrep"
 brew "fzf"
 brew "btop"
@@ -1523,6 +1525,7 @@ grep -Fx 'cask "android-platform-tools", greedy: true' Brewfile >/dev/null \
     || fail "Android Platform Tools are missing from the Brewfile"
 "$root/tests/tailscale-online.sh"
 "$root/tests/ssh-tailnet-config.sh"
+"$root/tests/obsidian-push.sh"
 if [ "$(uname -s)" = Darwin ]; then
     "$root/tests/launchd-status.sh"
 else

@@ -55,7 +55,12 @@ Commands:
   launchd-status      Show Funk launchd ownership, state, and log sizes
   transcript-vault   Refresh the additive Claude transcript archive once now
   backup <tier>      Back up durable account data to onsite or offsite Restic
-  install-backups    Install hourly onsite and daily offsite backup agents
+   install-backups    Install hourly onsite and daily offsite backup agents
+   install-obsidian-sync
+                       Converge the private CouchDB LiveSync remote
+   install-obsidian-plugin
+                       Install the LiveSync community plugin when missing
+   obsidian-push       Commit and push vault notes/media on demand
   configure-macos    Apply Funk's user-level macOS preferences
   verify-notifications
                       Confirm Funk's health alerts can reach the screen
@@ -167,6 +172,18 @@ case "$command_name" in
     install-backups)
         shift
         exec "$FUNK_ROOT/libexec/install-backup-agents" "$@"
+        ;;
+    install-obsidian-sync)
+        shift
+        exec "$FUNK_ROOT/libexec/install-obsidian-sync" "$@"
+        ;;
+    install-obsidian-plugin)
+        shift
+        exec "$FUNK_ROOT/libexec/install-obsidian-plugin" "$@"
+        ;;
+    obsidian-push)
+        shift
+        exec "$FUNK_ROOT/bin/.local/bin/obsidian-push" "$@"
         ;;
     configure-macos)
         shift

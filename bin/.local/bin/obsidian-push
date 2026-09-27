@@ -1,0 +1,64 @@
+#!/bin/bash
+# Manual-only GitHub snapshot of the work vault. Never add Obsidian's writable
+# configuration: plugin data can contain remote credentials and Setup URIs.
+set -euo pipefail
+
+die() { printf 'obsidian-push: %s\n' "$*" >&2; exit 1; }
+[ "$#" -eq 0 ] || die 'usage: obsidian-push'
+vault="$HOME/obsidian/work"
+[ -d "$vault/.obsidian" ] || die "vault is missing: $vault"
+[ -d "$vault/.git" ] || die "not a Git repository: $vault (see docs/configuration.md)"
+[ ! -L "$vault" ] || die 'refusing a symlinked vault'
+cd "$vault"
+
+remote=$(git remote get-url origin) || die 'origin is not configured'
+case "$remote" in
+    https://github.com/possibilities/obsidian-work|https://github.com/possibilities/obsidian-work.git|git@github.com:possibilities/obsidian-work.git) ;;
+    *) die 'origin is not the dedicated obsidian-work repository' ;;
+esac
+[ "$(gh repo view possibilities/obsidian-work --json visibility --jq .visibility)" = PRIVATE ] \
+    || die 'GitHub repository is not private (or could not be verified)'
+
+# This file is generated only if absent; never replace a vault owner's edits.
+if [ ! -e .gitignore ]; then
+    cat >.gitignore <<'EOF'
+# Obsidian state and hidden directories may contain connection credentials.
+*
+!*/
+!*.md
+!*.canvas
+!*.png
+!*.jpg
+!*.jpeg
+!*.gif
+!*.webp
+!*.svg
+!*.pdf
+!.gitignore
+.*/
+EOF
+fi
+
+# The default ignore file admits only notes and media. The tracked-file check
+# below is authoritative even when the vault owner changes that ignore file.
+git add -A -- .
+
+# Fail closed if an earlier commit or a manual staging operation included an
+# unexpected path. Ignore rules do not protect already-tracked files.
+while IFS= read -r -d '' file; do
+    case "$file" in
+        .gitignore|*.md|*.canvas|*.png|*.jpg|*.jpeg|*.gif|*.webp|*.svg|*.pdf) ;;
+        *) die "unexpected tracked path: $file" ;;
+    esac
+    case "$file" in
+        .obsidian/*|.trash/*|.*/?*|*/.*/?*) die "hidden path cannot be published: $file" ;;
+    esac
+done < <(git ls-files -z)
+if git ls-files --stage | grep -q '^120000 '; then
+    die 'refusing to publish symlinks'
+fi
+
+if ! git diff --cached --quiet; then
+    git commit -m "Snapshot Obsidian work vault $(date +%Y-%m-%d)"
+fi
+git push -u origin HEAD:main

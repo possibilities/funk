@@ -153,6 +153,45 @@ Configuration another program writes is overlaid, never adopted. The llm CLI
 and its model configuration are AgentStart's (`config/llm/`, and the formula
 left the Brewfile with them). Adopt a file only when Funk is its sole writer.
 
+## Obsidian LiveSync and on-demand GitHub snapshots
+
+`~/obsidian/work` is the work vault. `./install` installs CouchDB from the
+`Brewfile` and runs `funk install-obsidian-sync`, which starts the user service,
+generates a local-only administrator password, and adds a tailnet-only Tailscale
+Serve HTTPS endpoint on port 8448. The CouchDB config under Homebrew's current
+`etc/local.d` is generated and reinstalled after a formula upgrade; the password
+in `~/Library/Application Support/Funk/obsidian-livesync/admin-password` is
+private (0600) and never enters Funk or the vault. Do not use Funnel or expose
+port 5984 directly. Greybird must be online for the phone to sync. The CouchDB
+data directory and local credential directory are included in Funk's Restic
+roots, but a live database copy still needs a restore test. GitHub is a note
+snapshot, not a CouchDB backup.
+
+`funk install-obsidian-plugin` installs a verified upstream release into the
+work vault only if the plugin is missing. Obsidian owns upgrades and its own
+plugin enablement; installing files does not enable or reload a running app.
+
+Back up both vaults, install/enable the upstream `obsidian-livesync` community
+plugin in the work vault on each device, then follow the upstream
+[CouchDB quick setup](https://github.com/vrtmrz/obsidian-livesync/blob/main/docs/quick_setup.md).
+Use greybird's Tailscale HTTPS hostname on port 8448, administrator `obsidian`,
+the private password file above, and a new `obsidian-work` database. Enable
+end-to-end encryption; retain its separate passphrase securely. Initialise the
+new remote from greybird only, then generate a new encrypted Setup URI there for
+smolbird. Protect the URI and its distinct URI passphrase separately. Do not
+overwrite an existing phone vault without reviewing its unsynchronised notes.
+Verify an ordinary note in each direction before enabling hidden-file or
+customisation sync (neither is needed for GitHub snapshots).
+
+GitHub snapshots are **never scheduled**. Initialise Git in the vault and set
+`origin` to the dedicated private `possibilities/obsidian-work` repository,
+then run `funk obsidian-push` whenever a snapshot is wanted. It stages only
+Markdown, canvas files, common media and `.gitignore`; it refuses a non-private
+destination, hidden paths, unexpected tracked files, or symlinks. Obsidian's
+`.obsidian` and plugin state are not published. Review the prospective tracked
+files before the first push. The vault and its Git history are app/user-owned,
+not Stow packages; the Funk helper is the durable policy.
+
 ## Retired local web wrappers
 
 AgentChats' search CLI and terminal resume picker remain available, but Funk

@@ -136,6 +136,7 @@ for root in \
     "$HOME/.bash_history" \
     "$HOME/wiki" \
     "$HOME/obsidian" \
+    "$HOME/Library/Application Support/Funk/obsidian-livesync" \
     "$HOME/docs" \
     "$HOME/handoffs" \
     "$HOME/workspaces" \
@@ -155,6 +156,12 @@ for root in \
     "$HOME/Library/Application Support/.com.raycast.macos.backups"; do
     add_root "$root"
 done
+
+# CouchDB is the LiveSync transport, not the canonical authored vault. Include
+# its user-owned data when present so Restic can retain recovery material; a
+# live file-level copy is not a substitute for verifying a database restore.
+add_root /opt/homebrew/var/couchdb/data
+add_root /usr/local/var/couchdb/data
 
 # Large human data and local development recovery stay on roomy Silverbird.
 # B2 retains code, conversations, small authored stores, configuration, and

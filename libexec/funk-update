@@ -48,6 +48,7 @@ terminfo_installer="$funk_root/libexec/install-ghostty-terminfo"
 android_launcher_installer="$funk_root/libexec/install-android-launchers"
 retire_kiosk_launchers="$funk_root/libexec/retire-kiosk-launchers"
 noizey_installer="$funk_root/libexec/install-noizey"
+obsidian_sync_installer="$funk_root/libexec/install-obsidian-sync"
 obs_camera_verifier="$funk_root/libexec/verify-obs-camera"
 # AgentStart owns the globally managed agent skills; its sync-skills is the
 # no-download convergence path this scheduled run is allowed to take. The
@@ -232,6 +233,13 @@ fi
 status=0
 log "starting: $brew_bin bundle install --upgrade --file=$brewfile"
 "$brewfile_installer" || status=$?
+# CouchDB's formula keeps local.d inside its versioned Cellar. After an upgrade,
+# restore only Funk's generated override using the existing local credentials;
+# never create a new secret or change a Tailscale port on a virgin scheduled run.
+if [ "$status" -eq 0 ] \
+    && [ -f "$HOME/Library/Application Support/Funk/obsidian-livesync/admin-password" ]; then
+    "$obsidian_sync_installer" || status=$?
+fi
 # Ghostty advertises xterm-ghostty to local and remote shells, but its cask
 # keeps that definition inside the app bundle. Refresh the standard per-user
 # database after Homebrew so SSH logins retain Ghostty's full capabilities.
