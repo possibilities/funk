@@ -121,6 +121,7 @@ for root in \
     "$HOME/.local/share" \
     "$HOME/.local/state" \
     "$HOME/code" \
+    "$HOME/personal" \
     "$HOME/.config" \
     "$HOME/.claude" \
     "$HOME/.claude.json" \
@@ -253,7 +254,7 @@ for database in \
     "$HOME/.local/state/agentweb/control.sqlite3" \
     "$HOME/.local/state/agenteditor/agenteditor.sqlite3" \
     "$HOME/.local/share/opencode/opencode.db" \
-    "$HOME/code/jobsearch/jobsearch.db" \
+    "$HOME/personal/jobsearch/jobsearch.db" \
     "$HOME/Library/Application Support/codex-swap/codex-swap.db"; do
     excludes+=(--exclude "$database" --exclude "$database-wal" --exclude "$database-shm")
 done
@@ -368,7 +369,7 @@ fi
 replace_file_snapshot agentattention \
     "$HOME/.local/state/agentattention/agentattention.sqlite3" agentattention.sqlite3
 replace_file_snapshot opencode "$HOME/.local/share/opencode/opencode.db" opencode.sqlite3
-replace_file_snapshot jobsearch "$HOME/code/jobsearch/jobsearch.db" jobsearch.sqlite3
+replace_file_snapshot jobsearch "$HOME/personal/jobsearch/jobsearch.db" jobsearch.sqlite3
 replace_file_snapshot codex-swap \
     "$HOME/Library/Application Support/codex-swap/codex-swap.db" codex-swap.sqlite3
 replace_file_snapshot agentwiki \

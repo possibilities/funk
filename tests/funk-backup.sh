@@ -15,12 +15,12 @@ scratch_stage="$scratch_cache/funk/backup-staging/onsite"
 backup_lock="$test_home/backup.lock"
 mkdir "$test_home/.config" "$test_home/.codex" "$test_home/code" \
     "$test_home/Documents" "$test_home/Downloads" "$scratch_cache"
-mkdir "$test_home/code/jobsearch"
+mkdir -p "$test_home/personal/jobsearch"
 mkdir -p "$test_home/.claude/projects/project" "$test_home/.local/bin"
 printf '%s\n' 'preserved conversation' >"$test_home/.claude/projects/project/transcript.jsonl"
 printf '%s\n' 'preserved history' >"$test_home/.claude/history.jsonl"
 install -m 755 "$fake_agentchats" "$test_home/.local/bin/agentchats"
-/usr/bin/sqlite3 "$test_home/code/jobsearch/jobsearch.db" \
+/usr/bin/sqlite3 "$test_home/personal/jobsearch/jobsearch.db" \
     'CREATE TABLE durable (value TEXT); INSERT INTO durable VALUES ("kept");'
 printf 'RESTIC_REPOSITORY=test\nRESTIC_PASSWORD=test\n' >"$credentials"
 chmod 600 "$credentials"
@@ -98,6 +98,8 @@ grep -F 'index deferred: legacy ingest disabled pending bounded runner' \
     || { printf 'funk-backup test: backup did not disclose deferred search freshness\n' >&2; exit 1; }
 grep -F -- "$scratch_stage" "$restic_log" >/dev/null \
     || { printf 'funk-backup test: external staging was not passed to Restic\n' >&2; exit 1; }
+grep -F -- "$test_home/personal" "$restic_log" >/dev/null \
+    || { printf 'funk-backup test: personal projects were not included in Restic\n' >&2; exit 1; }
 find "$scratch_cache/funk/backup-staging" "$test_home/.local/state/funk/backup-staging" \
     -type f \( -name '.*-wal' -o -name '.*-shm' \) | grep . >/dev/null \
     && { printf 'funk-backup test: SQLite verification left temp sidecars\n' >&2; exit 1; }
