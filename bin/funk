@@ -30,8 +30,8 @@ Commands:
   chuchu-theme       Build/reinstall Chuchu Lab with the Signal Room theme
   install-android-launchers [--check]
                       Install the four native Android launcher applications
-  install-kiosk-launchers [--check]
-                      Install the three local web launcher applications
+  retire-kiosk-launchers [--check]
+                      Remove Funk-owned AgentHUD and AgentVoice kiosk wrappers
   install-ghostty-terminfo
                       Install Ghostty's terminal definition for remote shells
   install-ghostty-themes
@@ -94,9 +94,9 @@ case "$command_name" in
         shift
         exec "$FUNK_ROOT/libexec/install-android-launchers" "$@"
         ;;
-    install-kiosk-launchers)
+    retire-kiosk-launchers)
         shift
-        exec "$FUNK_ROOT/libexec/install-kiosk-launchers" "$@"
+        exec "$FUNK_ROOT/libexec/retire-kiosk-launchers" "$@"
         ;;
     install-ghostty-terminfo)
         shift

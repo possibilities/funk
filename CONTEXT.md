@@ -57,11 +57,12 @@ an application by launchers such as Raycast. It replaces the retired Raycast
 script commands and is the only supported Android launch surface.
 _Avoid_: Raycast Android launcher, script command.
 
-**Kiosk launcher application** — One of the per-user macOS application bundles
-under `~/Applications` that opens a fixed local web application edge-to-edge in
-a native WebKit window and is indexed by application launchers. It hides the
-native title-bar furniture and disables full-screen macOS Spaces.
-_Avoid_: kiosk bookmark, Raycast kiosk command.
+**Retired kiosk launcher application** — Funk no longer owns per-user WebKit or
+Raycast wrappers for AgentHUD or AgentVoice transcripts. Direct `.localhost`
+browser URLs, native `AgentVoice.app`, and existing WebKit/Chrome profile data
+remain. Convergence deletes only the three verified `com.arthack.funk.kiosk.*`
+bundles and their known transaction remnants.
+_Avoid_: kiosk launcher application, kiosk bookmark, Raycast kiosk command.
 
 **Fork-and-adapt** — what this repository offers a reader who is not the account
 it converges. `./install` is written for one machine and its recorded facts, so

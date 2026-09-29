@@ -1,0 +1,175 @@
+#!/bin/bash
+
+set -euo pipefail
+
+die() {
+    printf 'funk retire-kiosk-launchers: %s\n' "$*" >&2
+    exit 1
+}
+
+usage() {
+    printf 'Usage: funk retire-kiosk-launchers [--check]\n' >&2
+}
+
+check_only=0
+case "${1:-}" in
+    '') ;;
+    --check) [ "$#" -eq 1 ] || { usage; exit 64; }; check_only=1 ;;
+    *) usage; exit 64 ;;
+esac
+
+[ "$(uname -s)" = Darwin ] || die "macOS is required"
+[ "$(id -u)" -ne 0 ] || die "run this command as the target user, not root"
+[ -n "${HOME:-}" ] && [ -d "$HOME" ] || die "HOME is not an existing directory"
+
+applications_dir=${FUNK_KIOSK_APPLICATIONS_DIR:-"$HOME/Applications"}
+case "$applications_dir" in
+    /*) ;;
+    *) die "applications directory must be an absolute path: $applications_dir" ;;
+esac
+
+lock_file=
+lock_acquired=0
+
+cleanup() {
+    if [ "$lock_acquired" -eq 1 ]; then
+        /bin/rm -f "$lock_file"
+    fi
+}
+trap cleanup EXIT
+
+bundle_identifier() {
+    /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$1/Contents/Info.plist" 2>/dev/null || true
+}
+
+expected_target() {
+    case "$1" in
+        "$applications_dir/AgentVoice Transcripts.app"|\
+        "$applications_dir/AgentVoice TEST Transcripts.app"|\
+        "$applications_dir/AgentHUD.app") return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+retire_transaction() {
+    local name=$1 identifier=$2
+    local transaction="$applications_dir/.$name.app.funk-transaction"
+    local owner_file="$transaction/owner"
+    local owner="funk-kiosk-launcher-transaction-v1:$identifier"
+    local incoming="$transaction/incoming.app"
+    local backup="$transaction/backup.app"
+    local artifact_identifier unexpected
+
+    [ -e "$transaction" ] || return 0
+    [ -d "$transaction" ] && [ ! -L "$transaction" ] \
+        || die "refusing invalid application transaction: $transaction"
+    unexpected=$(
+        /usr/bin/find "$transaction" -mindepth 1 -maxdepth 1 \
+            ! -name owner ! -name incoming.app ! -name backup.app \
+            -print -quit
+    )
+    [ -z "$unexpected" ] \
+        || die "application transaction has an unexpected artifact: $unexpected"
+
+    if [ ! -e "$incoming" ] && [ ! -e "$backup" ] && [ ! -e "$owner_file" ]; then
+        if [ "$check_only" -eq 1 ]; then
+            printf 'Would remove incomplete application transaction %s\n' "$transaction"
+            return 0
+        fi
+        /bin/rmdir "$transaction" \
+            || die "could not recover incomplete application transaction: $transaction"
+        printf 'Removed incomplete application transaction %s\n' "$transaction"
+        return 0
+    fi
+
+    [ -f "$owner_file" ] && [ ! -L "$owner_file" ] \
+        && [ "$(cat "$owner_file")" = "$owner" ] \
+        || die "refusing foreign application transaction: $transaction"
+
+    if [ -e "$backup" ]; then
+        [ -d "$backup" ] && [ ! -L "$backup" ] \
+            || die "application transaction has an invalid backup: $backup"
+        artifact_identifier=$(bundle_identifier "$backup")
+        [ "$artifact_identifier" = "$identifier" ] \
+            || die "application transaction backup does not belong to $name: $backup"
+    fi
+    if [ -e "$incoming" ]; then
+        [ -d "$incoming" ] && [ ! -L "$incoming" ] \
+            || die "application transaction has an invalid incoming bundle: $incoming"
+        artifact_identifier=$(bundle_identifier "$incoming")
+        [ "$artifact_identifier" = "$identifier" ] \
+            || die "application transaction incoming bundle does not belong to $name: $incoming"
+    fi
+
+    if [ "$check_only" -eq 1 ]; then
+        printf 'Would remove application transaction %s\n' "$transaction"
+        return 0
+    fi
+    [ ! -e "$backup" ] || /bin/rm -rf "$backup"
+    [ ! -e "$incoming" ] || /bin/rm -rf "$incoming"
+    /bin/rm "$owner_file"
+    /bin/rmdir "$transaction" \
+        || die "could not finish application transaction: $transaction"
+    printf 'Removed application transaction %s\n' "$transaction"
+}
+
+retire_bundle() {
+    local name=$1 identifier=$2
+    local target="$applications_dir/$name.app"
+    local existing_identifier
+
+    expected_target "$target" \
+        || die "refusing unexpected application target: $target"
+
+    retire_transaction "$name" "$identifier"
+
+    if [ ! -e "$target" ]; then
+        printf 'Already retired %s\n' "$target"
+        return 0
+    fi
+    [ ! -L "$target" ] || die "refusing to remove symlink: $target"
+    [ -d "$target" ] || die "refusing to remove non-application path: $target"
+    existing_identifier=$(bundle_identifier "$target")
+    if [ "$existing_identifier" != "$identifier" ]; then
+        printf 'Preserved unrelated application: %s\n' "$target"
+        return 0
+    fi
+    if [ "$check_only" -eq 1 ]; then
+        printf 'Would remove %s\n' "$target"
+        return 0
+    fi
+    /bin/rm -rf "$target"
+    [ ! -e "$target" ] || die "could not remove application: $target"
+    printf 'Removed %s\n' "$target"
+}
+
+if [ ! -e "$applications_dir" ]; then
+    printf 'Kiosk launcher wrappers are already retired.\n'
+    exit 0
+fi
+[ ! -L "$applications_dir" ] \
+    || die "refusing to retire through a symlink: $applications_dir"
+[ -d "$applications_dir" ] \
+    || die "applications directory is not a directory: $applications_dir"
+
+if [ "$check_only" -eq 0 ]; then
+    lock_file="$applications_dir/.com.arthack.funk.kiosk-launchers.lock"
+    shlock_bin=${SHLOCK:-/usr/bin/shlock}
+    [ -x "$shlock_bin" ] || die "cannot serialize application retirement because shlock is missing"
+    attempts=0
+    until "$shlock_bin" -f "$lock_file" -p "$$"; do
+        attempts=$((attempts + 1))
+        [ "$attempts" -lt 10 ] || die "another kiosk launcher installer is still running"
+        sleep 1
+    done
+    lock_acquired=1
+fi
+
+while IFS='|' read -r name identifier; do
+    [ -n "$name" ] || continue
+    retire_bundle "$name" "$identifier"
+done <<'EOF'
+AgentVoice Transcripts|com.arthack.funk.kiosk.agentvoice
+AgentVoice TEST Transcripts|com.arthack.funk.kiosk.agentvoice-test
+AgentHUD|com.arthack.funk.kiosk.agenthud
+EOF

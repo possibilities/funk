@@ -1,6 +1,6 @@
 # 0004: Kiosk persistence lifecycle and instance identity
 
-- Status: Accepted
+- Status: Superseded by [0007](0007-retire-agent-app-kiosk-wrappers.md)
 - Date: 2026-09-14
 
 ## Context
@@ -46,5 +46,5 @@ termination dispatch, and bundle-identifier isolation without opening a visible
 window or using either installed kiosk profile.
 
 AgentChats web launcher ownership is retired by
-[0006](0006-retire-agentchats-web-launcher.md); the remaining kiosk persistence
-boundaries are unchanged.
+[0006](0006-retire-agentchats-web-launcher.md). All remaining Funk-owned kiosk
+wrappers are retired by [0007](0007-retire-agent-app-kiosk-wrappers.md).

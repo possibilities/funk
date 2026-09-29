@@ -139,47 +139,23 @@ left the Brewfile with them). Herdr's live `config.toml` is also AgentStart's:
 Funk's `herdr` package retains only the machine-owned `agent-mem.sh` helper.
 Adopt a file only when Funk is its sole writer.
 
-## Kiosk launcher applications
+## Retired kiosk launcher applications
 
-AgentChats retired its web reader; its search CLI and terminal resume picker
-remain available. Funk no longer builds or installs the AgentChats kiosk.
-Existing installed bundles and their WebKit data are retained until an explicit
-operator cleanup; this change never terminates a running kiosk or clears data.
+Funk no longer builds or installs WebKit or Raycast wrappers for AgentHUD or
+AgentVoice transcripts. AgentChats already retired its web reader; its search
+CLI and terminal resume picker remain available. The underlying services stay
+reachable in a normal browser at `https://agenthud.localhost/`,
+`https://agentvoice.localhost/`, and `https://agentvoice-test.localhost`.
+Native `AgentVoice.app` is not a Funk kiosk wrapper and is not retired here.
 
-`funk install-kiosk-launchers` renders the production and TEST AgentVoice
-transcript applications and the AgentHUD work dashboard into `~/Applications`.
-The AgentVoice launchers have
-distinct bundle identifiers and fixed URLs; the TEST launcher opens
-`https://agentvoice-test.localhost`. The TEST icon reverses the tracked
-AgentVoice mark's foreground and background colors so it remains recognizable
-and is visibly distinct from production. All URLs are fixed resources inside
-the ad-hoc-signed bundles. A small AppKit executable hosts each URL in the system
-WebKit framework with an edge-to-edge content view, square borderless corners,
-and native full-screen Spaces disabled.
-The top 20 points provide an invisible native drag region; the outer 6 points
-resize from any edge or corner, with a 640×400 minimum. These native hit regions
-have cursor feedback and exclude ordinary web event routing. The remaining page
-keeps its normal text-selection and pointer behavior. Native shadows remain
-enabled.
-The window explicitly accepts keyboard focus and exposes accessibility frame
-changes plus Close/Minimize actions. Window → Close keeps the web view alive
-through the same termination handshake as Quit. Its standard
-Edit menu routes Undo, Redo, Cut, Copy, Paste, and Select All through the native
-responder chain, so the focused web control owns each command. Before AppKit
-terminates the single window, the launcher dispatches a standard `pagehide`
-event so the page can synchronously flush in-progress state; a 500 ms fallback
-keeps a hung web process from blocking termination.
-
-At document start in the main frame, the launcher exposes the nonsecret stable
-`window.funkKiosk.persistenceInstanceId` value
-`<CFBundleIdentifier>:main`. A page may use this optional value only when it
-needs persistence ownership to survive a kiosk process restart. Ordinary
-browsers do not receive it, and the `:main` suffix records the launcher's
-single-window constraint. Canonical SVG marks in
-`assets/kiosk-icons` are rendered into multi-resolution macOS icons during
-convergence. The installer refuses to replace a bundle unless its identifier
-proves Funk owns it, and both `./install` and the scheduled path converge the
-applications without elevation.
+`funk retire-kiosk-launchers` is the exact-owner convergence path. It deletes
+only `AgentHUD.app`, `AgentVoice Transcripts.app`, and
+`AgentVoice TEST Transcripts.app` when each bundle identifier is the matching
+`com.arthack.funk.kiosk.*` value, plus safe known
+`.*.app.funk-transaction` remnants for those same owners. Foreign applications
+at those names, unrelated apps, WebKit storage, and Chrome profile data are
+left in place. The helper never terminates a running application or inspects
+browser data. Both `./install` and the scheduled path run it without elevation.
 
 
 ## Process headroom warnings
