@@ -1415,17 +1415,10 @@ actual_float_rules=$(
 )
 [ "$actual_float_rules" = "$expected_float_rules" ] \
     || fail "Yabai floating rules do not match the reviewed set"
-grep -Fx 'yabai -m rule --add app="^.*$" subrole="^AX(Dialog|SystemDialog|FloatingWindow)$" manage=off' \
-    yabai/.config/yabai/yabairc >/dev/null \
-    || fail "common macOS dialogs and panels are missing their Yabai floating rule"
 if grep -E '^yabai -m rule --add ' yabai/.config/yabai/yabairc \
     | grep -qv 'app="\^'; then
     fail "a Yabai rule is not scoped to a named application"
 fi
-# AltTab's switcher windows should float instead of entering the tiling stack.
-grep -Fx 'yabai -m rule --add app="^AltTab$" manage=off' \
-    yabai/.config/yabai/yabairc >/dev/null \
-    || fail "AltTab is missing its Yabai floating rule"
 # browserctl-display belonged to the retired virtual-display viewer.
 if grep -F 'app="^browserctl-display$"' \
     yabai/.config/yabai/yabairc >/dev/null; then
@@ -1568,13 +1561,6 @@ if grep -R -F '@raycast.title Android' bin/.local/bin/raycast >/dev/null; then
 fi
 grep -Fx 'cask "google-chrome", greedy: true' Brewfile >/dev/null \
     || fail "Google Chrome is missing from the Brewfile"
-# The mirror window keeps the device aspect ratio and refuses resize, so the
-# stack layout must never hand it a tile. Matching on the application alone
-# covers the plain and --new-display native application variants.
-grep -Fx 'yabai -m rule --add app="^scrcpy$" manage=off' \
-    yabai/.config/yabai/yabairc >/dev/null \
-    || fail "scrcpy is missing its Yabai floating rule"
-
 # shellcheck disable=SC2016 # Match literal Brewfile convergence variables.
 grep -F '"$brew_bin" bundle install --upgrade --file="$brewfile"' \
     libexec/converge-brewfile >/dev/null \
