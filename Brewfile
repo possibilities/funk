@@ -1,5 +1,6 @@
 tap "asmvik/formulae"
 tap "oven-sh/bun"
+tap "renerocksai/tap"
 # OpenCode 2 Desktop has no upstream cask; Funk carries its verified bootstrap cask.
 tap "arthack/funk", "file://#{__dir__}"
 
@@ -20,6 +21,8 @@ brew "yq"
 brew "restic"
 # Private, tailnet-only Obsidian LiveSync remote.
 brew "couchdb"
+# Omajot notes CLI and optional local hub; hub setup is operator-owned.
+brew "renerocksai/tap/omajot", trusted: true
 brew "ripgrep"
 brew "fzf"
 brew "btop"
