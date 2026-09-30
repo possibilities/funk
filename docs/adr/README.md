@@ -12,6 +12,7 @@
 | [0009: Preserve transcripts independently of search freshness](0009-preserve-transcripts-independently-of-search-freshness.md) | Accepted | Keep archive copying and Restic independent from derived AgentChats indexing. |
 | [0010: Install OpenCode 2 Desktop with a local cask](0010-install-opencode-2-desktop-with-local-cask.md) | Accepted | Bootstrap the V2 macOS app without Homebrew's V1 desktop cask. |
 | [0011: Private LiveSync remote and manual vault snapshots](0011-private-livesync-and-manual-vault-snapshots.md) | Accepted | Tailnet-only CouchDB and explicit private GitHub note snapshots. |
+| [0012: Transient internal backup workspaces](0012-transient-internal-backup-workspaces.md) | Accepted | One supervised internal staging generation, explicit no-cache, and owned cleanup. |
 
 The initial records were captured on 2026-09-08 from existing constraints. Current
 procedures live in [configuration guidance](../configuration.md).

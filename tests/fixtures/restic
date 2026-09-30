@@ -2,4 +2,33 @@
 
 set -euo pipefail
 printf '%s\n' "$*" >>"${FUNK_TEST_RESTIC_LOG:?}"
+if [ -n "${FUNK_TEST_REAL_RESTIC:-}" ]; then
+    # Exercise the real local repository without reading the wrapper's optional
+    # hardcoded CouchDB/Scratch roots on the operator's machine.
+    arguments=()
+    for argument in "$@"; do
+        case "$argument" in
+            "$HOME"/*) arguments+=("$argument") ;;
+            /*) ;;
+            *) arguments+=("$argument") ;;
+        esac
+    done
+    exec "$FUNK_TEST_REAL_RESTIC" "${arguments[@]}"
+fi
+if [ -n "${FUNK_TEST_RESTIC_COPY:-}" ]; then
+    for argument in "$@"; do
+        if [ -d "$argument" ] && [ -f "$argument/jobsearch.sqlite3" ]; then
+            cp "$argument/jobsearch.sqlite3" "$FUNK_TEST_RESTIC_COPY"
+        fi
+    done
+fi
+if [ -n "${FUNK_TEST_RESTIC_READY:-}" ]; then
+    printf '%s\n' "$$" >"$FUNK_TEST_RESTIC_READY"
+    # An uncooperative transport must not survive caught wrapper termination.
+    trap '' TERM INT
+    while :; do
+        printf 'writing\n' >>"$FUNK_TEST_RESTIC_READY.writes"
+        sleep 0.05
+    done
+fi
 exit "${FUNK_TEST_RESTIC_EXIT:-0}"

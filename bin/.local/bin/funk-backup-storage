@@ -1,0 +1,381 @@
+#!/usr/bin/python3
+"""Private workspace, capacity supervision and SQLite snapshots for funk-backup.
+
+The aggregate limit is sampled, not a filesystem quota. See backup-storage.md.
+"""
+
+import fcntl
+import os
+from pathlib import Path
+import re
+import resource
+import shutil
+import signal
+import sqlite3
+import stat
+import subprocess
+import sys
+import time
+import uuid
+
+GIB = 1024 ** 3
+MARGIN = 64 * 1024 ** 2
+MARKER = "funk-backup-workspace-v1"
+
+
+class CapacityError(RuntimeError):
+    pass
+
+
+SOURCES = [
+    (".local/state/agentattention/agentattention.sqlite3", "agentattention.sqlite3"),
+    (".local/share/opencode/opencode.db", "opencode.sqlite3"),
+    ("personal/jobsearch/jobsearch.db", "jobsearch.sqlite3"),
+    ("Library/Application Support/codex-swap/codex-swap.db", "codex-swap.sqlite3"),
+    (".local/share/agentwiki/manifest.sqlite3", "agentwiki-manifest.sqlite3"),
+    (".local/state/agentweb/control.sqlite3", "agentweb.sqlite3"),
+    (".local/state/agenteditor/agenteditor.sqlite3", "agenteditor.sqlite3"),
+] + [(f".codex/{name}.sqlite", f"{name}.sqlite") for name in
+     ("state_5", "thread_history_1", "goals_1", "memories_1", "queue_1")]
+
+
+def log(message):
+    print(f"[{time.strftime('%Y-%m-%dT%H:%M:%S')}] {message}", flush=True)
+
+
+def controls():
+    def value(name, default):
+        raw = os.environ.get(name, str(default))
+        if not re.fullmatch(r"[0-9]+", raw) or int(raw) > 2 ** 63 - 1:
+            raise ValueError(f"{name} must be a nonnegative byte count")
+        return int(raw)
+    budget = value("FUNK_BACKUP_STAGING_BUDGET_BYTES", 8 * GIB)
+    reserve = value("FUNK_BACKUP_FREE_RESERVE_BYTES", 20 * GIB)
+    if budget <= MARGIN:
+        raise ValueError("staging budget must exceed the 64 MiB supervision margin")
+    return budget, reserve
+
+
+def safe_path(path, create=False):
+    """Reject symlinks (including ancestors), foreign owners and external devices."""
+    path = Path(path)
+    if not path.is_absolute() or ".." in path.parts:
+        raise ValueError(f"workspace path must be absolute: {path}")
+    internal = Path("/System/Volumes/Data") if sys.platform == "darwin" else Path("/")
+    device = internal.stat().st_dev
+    current = Path(path.anchor)
+    for part in path.parts[1:]:
+        current = current / part
+        if not current.exists() and not current.is_symlink():
+            if not create:
+                break
+            current.mkdir(mode=0o700)
+        info = current.lstat()
+        # macOS's read-only root volume is separate from the internal data volume.
+        if not stat.S_ISDIR(info.st_mode) or (current != Path("/") and
+                info.st_dev != device and current != Path("/System") and
+                current != Path("/System/Volumes")):
+            raise ValueError(f"workspace must use real internal directories: {current}")
+        home = Path(os.environ["HOME"])
+        if current == home or home in current.parents:
+            if info.st_uid != os.getuid() or info.st_mode & 0o022:
+                raise ValueError(f"workspace ancestor has unsafe ownership/mode: {current}")
+    return path
+
+
+def size(path):
+    """Logical file lengths; per-file rlimits separately cover unlinked files."""
+    total = 0
+    for directory, _, files in os.walk(path, followlinks=False):
+        for name in files:
+            try:
+                info = os.lstat(os.path.join(directory, name))
+                if stat.S_ISREG(info.st_mode):
+                    total += info.st_size
+            except FileNotFoundError:
+                pass
+    return total
+
+
+def db_size(home, relative):
+    # No SQLite connection to a live source during --check/preflight.
+    return sum((home / (relative + suffix)).stat().st_size
+               for suffix in ("", "-wal") if (home / (relative + suffix)).is_file())
+
+
+def plan(tier):
+    home = safe_path(os.environ["HOME"])
+    root = safe_path(home / ".local/state/funk/backup-work")
+    budget, reserve = controls()
+    database_bytes = sum(db_size(home, source) for source, _ in SOURCES
+                         if tier == "onsite" or "thread_history_1" not in source)
+    brain = db_size(home, ".local/share/agentbrain/research.db")
+    board = db_size(home, ".local/share/agentboard/board.sqlite3")
+    # Agentbrain VACUUM + restore/FTS rebuild precedes all other snapshots.
+    # Five source lengths allow snapshot, restore, rollback/WAL and FTS growth.
+    # Board JSON may expand blobs/escaping: eight source lengths + 16 MiB.
+    export = board * 8 + 16 * 1024 ** 2
+    peak = max(brain * 5 + MARGIN, brain + database_bytes + export + MARGIN)
+    ancestor = root
+    while not ancestor.exists():
+        ancestor = ancestor.parent
+    free = shutil.disk_usage(ancestor).free
+    log(f"capacity: estimated peak {peak / GIB:.2f} GiB; budget {budget / GIB:.2f} GiB; "
+        f"free {free / GIB:.2f} GiB; reserve {reserve / GIB:.2f} GiB")
+    return root, budget, reserve, peak, free
+
+
+def owned_run(path):
+    if not re.fullmatch(r"run-[0-9a-f]{32}", path.name):
+        return False
+    try:
+        info = path.lstat()
+        marker = path / ".owner"
+        marker_info = marker.lstat()
+        return (stat.S_ISDIR(info.st_mode) and info.st_uid == os.getuid()
+                and stat.S_IMODE(info.st_mode) == 0o700
+                and stat.S_ISREG(marker_info.st_mode) and marker_info.st_nlink == 1
+                and marker_info.st_uid == os.getuid() and marker_info.st_size < 200
+                and marker.read_text() == f"{MARKER}\n{os.getuid()}\n{path.name}\n")
+    except (OSError, UnicodeError):
+        return False
+
+
+def terminate(process, grace=True):
+    """The shell and every producer/transport inherit one private process group."""
+    try:
+        os.killpg(process.pid, signal.SIGTERM if grace else signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+    if grace:
+        time.sleep(2)
+    def live_group():
+        rows = subprocess.check_output(["/bin/ps", "-axo", "pgid=,stat="], text=True)
+        return any(parts[0] == str(process.pid) and not parts[1].startswith("Z")
+                   for row in rows.splitlines() if len(parts := row.split()) >= 2)
+    # Darwin returns EPERM, rather than ESRCH, when killpg sees only zombies.
+    if not live_group():
+        process.wait()
+        return
+    try:
+        os.killpg(process.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+    for _ in range(20):
+        if not live_group():
+            process.wait()
+            return
+        time.sleep(0.1)
+    raise RuntimeError("producer process group did not stop; preserving workspace")
+
+
+def run(script, tier):
+    root, budget, reserve, peak, _ = plan(tier)
+    root = safe_path(root, create=True)
+    lock_path = Path(os.environ.get("FUNK_BACKUP_LOCK_DIR", str(root / ".lock")))
+    safe_path(lock_path.parent, create=True)
+    fd = os.open(lock_path, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+    info = os.fstat(fd)
+    if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid()
+            or info.st_nlink != 1 or stat.S_IMODE(info.st_mode) != 0o600):
+        raise ValueError("backup lock file has unsafe ownership/mode")
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        log("DEFERRED: another onsite/offsite backup holds the shared workspace lock")
+        return 75
+    # Never unlink the lock inode. The kernel releases it even after SIGKILL;
+    # PID reuse and stale-pid removal races therefore cannot apply.
+    for candidate in root.iterdir():
+        if owned_run(candidate):
+            shutil.rmtree(candidate)
+            log(f"recovered owned stale staging: {candidate.name}")
+    free = shutil.disk_usage(root).free
+    if peak > budget or free < reserve + peak:
+        log("DEFERRED: staging estimate exceeds budget or free-space reserve")
+        return 75
+    directory = root / f"run-{uuid.uuid4().hex}"
+    directory.mkdir(mode=0o700)
+    (directory / ".owner").write_text(f"{MARKER}\n{os.getuid()}\n{directory.name}\n")
+    (directory / "snapshots").mkdir(mode=0o700)
+    (directory / "tmp").mkdir(mode=0o700)
+    env = dict(os.environ, FUNK_BACKUP_RUN_DIR=str(directory), TMPDIR=str(directory / "tmp"),
+               SQLITE_TMPDIR=str(directory / "tmp"), FUNK_BACKUP_LOCK_FD=str(fd))
+    interrupted = []
+    def catch(number, _frame):
+        interrupted.append(number)
+    signal.signal(signal.SIGINT, catch)
+    signal.signal(signal.SIGTERM, catch)
+    process = None
+    peak_observed = 0
+    cleanup = True
+    try:
+        # Keep the process-group leader alive until teardown. Its unreaped PID
+        # cannot be reused as an unrelated group between completion and killpg.
+        process = subprocess.Popen([sys.executable, __file__, "worker", script, tier],
+                                   env=env, start_new_session=True, pass_fds=(fd,))
+        result = directory / ".result"
+        while not result.exists():
+            used = max(size(directory), free - shutil.disk_usage(root).free)
+            peak_observed = max(peak_observed, used)
+            if interrupted or used > budget - MARGIN or shutil.disk_usage(root).free < reserve + MARGIN:
+                reason = "termination requested" if interrupted else "staging budget/free-space guard tripped"
+                log(f"DEFERRED: {reason}")
+                terminate(process, grace=bool(interrupted))
+                return 128 + interrupted[0] if interrupted else 75
+            if process.poll() is not None:
+                # Unexpected loss of the group leader means no safe PID-based
+                # teardown authority. Descendants inherit the lock; retain files.
+                cleanup = False
+                log("ERROR: workspace supervisor exited unexpectedly; preserving staging")
+                return 1
+            time.sleep(0.1)
+        status = int(result.read_text())
+        peak_observed = max(peak_observed, size(directory), free - shutil.disk_usage(root).free)
+        if peak_observed > budget - MARGIN or shutil.disk_usage(root).free < reserve + MARGIN:
+            log("DEFERRED: staging budget/free-space guard tripped at completion")
+            status = 75
+        terminate(process)
+        return status
+    except BaseException:
+        if process is not None:
+            try:
+                terminate(process)
+            except BaseException:
+                cleanup = False
+        raise
+    finally:
+        log(f"staging observed peak: {peak_observed / GIB:.3f} GiB (100 ms samples)")
+        if cleanup and owned_run(directory):
+            shutil.rmtree(directory)
+        os.close(fd)
+
+
+def workspace():
+    directory = safe_path(os.environ["FUNK_BACKUP_RUN_DIR"])
+    fd = int(os.environ["FUNK_BACKUP_LOCK_FD"])
+    os.fstat(fd)
+    if directory.parent != Path(os.environ["HOME"]) / ".local/state/funk/backup-work" or not owned_run(directory):
+        raise ValueError("invalid owned backup workspace")
+    return directory
+
+
+def limit_file(maximum=None):
+    directory = workspace()
+    budget, _ = controls()
+    available = max(1, budget - MARGIN - size(directory))
+    if maximum is not None:
+        available = min(available, maximum)
+    resource.setrlimit(resource.RLIMIT_FSIZE, (available, available))
+    return directory
+
+
+def snapshot(source, destination):
+    directory = limit_file()
+    budget, reserve = controls()
+    source_path = Path(source)
+    destination_path = Path(destination)
+    if destination_path.parent != directory / "snapshots":
+        raise ValueError("SQLite destination is outside the snapshot workspace")
+    src = sqlite3.connect(source_path.as_uri() + "?mode=ro", uri=True, timeout=10)
+    dst = sqlite3.connect(destination)
+    page_size = src.execute("PRAGMA page_size").fetchone()[0]
+    other_bytes = size(directory) - destination_path.stat().st_size
+    def progress(_status, _remaining, total):
+        if (other_bytes + total * page_size > budget - MARGIN
+                or size(directory) > budget - MARGIN
+                or shutil.disk_usage(directory).free < reserve + MARGIN):
+            raise CapacityError("SQLite snapshot exceeded staging budget/free-space allowance")
+    try:
+        # At most 64 pages are copied before the first check (<=4 MiB).
+        src.backup(dst, pages=64, progress=progress, sleep=0.05)
+        if dst.execute("PRAGMA quick_check;").fetchall() != [("ok",)]:
+            raise RuntimeError("SQLite quick_check failed")
+    finally:
+        dst.close()
+        src.close()
+
+
+def command(seconds, args):
+    maximum = None
+    home = Path(os.environ["HOME"])
+    if Path(args[0]).name == "agentbrain":
+        maximum = db_size(home, ".local/share/agentbrain/research.db") * 2 + 16 * 1024 ** 2
+    elif Path(args[0]).name == "agentboard":
+        maximum = db_size(home, ".local/share/agentboard/board.sqlite3") * 8 + 16 * 1024 ** 2
+    limit_file(maximum)
+    process = subprocess.Popen(args, pass_fds=(int(os.environ["FUNK_BACKUP_LOCK_FD"]),))
+    try:
+        status = process.wait(timeout=int(seconds))
+        return 128 - status if status < 0 else status
+    except subprocess.TimeoutExpired:
+        log("ERROR: backup producer/Restic deadline exceeded")
+        # The manager waits for the entire group before workspace deletion.
+        os.killpg(os.getpgrp(), signal.SIGTERM)
+        return 142
+
+
+def worker(script, tier):
+    directory = workspace()
+    parent = os.getppid()
+    # Keep the group leader alive during the manager's graceful teardown. Also
+    # detect a lost manager while waiting for a producer: otherwise SIGKILL of
+    # the manager could leave an uncooperative transport holding the lock forever.
+    signal.signal(signal.SIGTERM, lambda *_: None)
+    signal.signal(signal.SIGINT, lambda *_: None)
+
+    def check_parent():
+        if os.getppid() != parent:
+            os.killpg(os.getpgrp(), signal.SIGTERM)
+            time.sleep(2)
+            os.killpg(os.getpgrp(), signal.SIGKILL)
+
+    process = subprocess.Popen(["/bin/bash", script, tier, "--worker"],
+                               pass_fds=(int(os.environ["FUNK_BACKUP_LOCK_FD"]),))
+    while True:
+        check_parent()
+        try:
+            status = process.wait(timeout=0.1)
+            break
+        except subprocess.TimeoutExpired:
+            pass
+    temporary = directory / ".result.tmp"
+    temporary.write_text(str(128 - status if status < 0 else status))
+    temporary.rename(directory / ".result")
+    while True:
+        check_parent()
+        time.sleep(0.1)
+
+
+def main():
+    action = sys.argv[1]
+    if action == "plan":
+        _, budget, reserve, peak, free = plan(sys.argv[2])
+        if peak > budget or free < reserve + peak:
+            log("DEFERRED: staging estimate exceeds budget or free-space reserve")
+            return 75
+        return 0
+    if action == "run":
+        return run(sys.argv[2], sys.argv[3])
+    if action == "validate":
+        workspace()
+        return 0
+    if action == "worker":
+        return worker(sys.argv[2], sys.argv[3])
+    if action == "snapshot":
+        snapshot(sys.argv[2], sys.argv[3])
+        return 0
+    if action == "command":
+        return command(sys.argv[2], sys.argv[3:])
+    raise ValueError("unknown storage operation")
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except CapacityError as error:
+        log(f"DEFERRED: {error}")
+        sys.exit(75)
+    except (OSError, ValueError, RuntimeError, sqlite3.Error) as error:
+        log(f"ERROR: {error}")
+        sys.exit(1)

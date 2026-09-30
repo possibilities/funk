@@ -68,13 +68,8 @@ LaunchAgent access, and a raw Keychain copy is not a portable secret export;
 independent credential escrow remains the authoritative disaster-recovery path.
 
 Before Restic reads the filesystem, `funk backup` refreshes verified recovery
-copies of live SQLite data. The hourly onsite job stages them under
-`/Volumes/Scratch/cache/funk/backup-staging/onsite` when the known Scratch cache
-directory is mounted, falling back to
-`~/.local/state/funk/backup-staging/onsite`; offsite staging remains under the
-same internal `backup-staging` tree. A failed application snapshot is reported
-after the remaining home data is backed up; it never blocks unrelated data as
-the retired backup pipeline did.
+copies of live SQLite data. See [backup working storage](docs/backup-storage.md)
+for the internal staging lifecycle, capacity controls, and migration procedure.
 
 There is deliberately no automatic `forget` or `prune` yet. Inspect real
 growth first, then add a separately reviewed, repository- and tag-scoped

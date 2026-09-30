@@ -7,6 +7,9 @@ installer="$root/libexec/install-backup-agents"
 fake_launchctl="$root/tests/fixtures/launchctl-install"
 plist_tool="$root/tests/lib/plist"
 test_home=$(mktemp -d "${TMPDIR:-/tmp}/funk-backup-install-test.XXXXXX")
+# Exercise the production location policy using the real directory, not macOS's
+# /var alias. The installer fixture is internal even when TMPDIR uses that alias.
+test_home=$(cd -P "$test_home" && pwd)
 trap 'rm -rf "$test_home"' EXIT
 agent_dir="$test_home/Library/LaunchAgents"
 log_dir="$test_home/Library/Logs/Funk"

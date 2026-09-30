@@ -5,6 +5,14 @@ set -euo pipefail
 case "$*" in
     'backup create --output '*)
         mkdir -p "$4"
+        if [ "${FUNK_TEST_BRAIN_GROW:-0}" -eq 1 ]; then
+            # Many individually small files exercise the aggregate guard, not
+            # merely the per-file rlimit or a post-production du measurement.
+            for index in $(seq 1 80); do
+                dd if=/dev/zero of="$4/part-$index" bs=1048576 count=2 2>/dev/null
+                sleep 0.03
+            done
+        fi
         printf 'test recovery snapshot\n' >"$4/recovery.txt"
         ;;
     'backup verify '*)

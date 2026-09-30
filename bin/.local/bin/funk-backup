@@ -11,6 +11,7 @@ umask 077
 PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$HOME/.local/bin"
 script_dir=$(cd -P -- "$(dirname -- "$0")" && pwd)
 transcript_helper="${FUNK_TRANSCRIPT_VAULT_BIN:-$script_dir/transcript-vault}"
+storage_helper="$script_dir/funk-backup-storage"
 
 usage() {
     printf 'Usage: funk backup onsite|offsite [--check]\n'
@@ -26,22 +27,15 @@ tier=$1
 case "${2:-}" in
     "") check_only=0 ;;
     --check) check_only=1 ;;
+    --worker) check_only=0; "$storage_helper" validate || exit 1 ;;
     *) usage >&2; exit 64 ;;
 esac
 [ "$#" -le 2 ] || { usage >&2; exit 64; }
 
 credentials="${FUNK_BACKUP_CREDENTIALS:-$HOME/.config/restic/$repository_name.env}"
 state_root="$HOME/.local/state/funk"
-internal_stage_root="$state_root/backup-staging/$tier"
-scratch_cache_root="${FUNK_BACKUP_SCRATCH_CACHE_ROOT:-/Volumes/Scratch/cache}"
-stage_root="$internal_stage_root"
-stage_is_external=0
-if [ "$tier" = onsite ] && [ -d "$scratch_cache_root" ]; then
-    stage_root="$scratch_cache_root/funk/backup-staging/$tier"
-    stage_is_external=1
-fi
+stage_root="${FUNK_BACKUP_RUN_DIR:-$state_root/backup-work/unstarted}/snapshots"
 log_path="${FUNK_BACKUP_LOG:-$HOME/Library/Logs/Funk/backup-$tier.log}"
-lock_dir="${FUNK_BACKUP_LOCK_DIR:-/tmp/funk-backup-$tier.$(id -u).lock}"
 
 log() {
     printf '[%s] %s\n' "$(date '+%Y-%m-%dT%H:%M:%S')" "$*"
@@ -57,41 +51,9 @@ defer() {
     exit 75
 }
 
-# macOS has no timeout(1). Run the network operation in its own process group
-# so the deadline terminates Restic and every transport child together.
+# The storage supervisor owns the private process group, deadlines and teardown.
 guard() {
-    local seconds="$1"
-    shift
-    /usr/bin/perl -MPOSIX=:sys_wait_h,setpgid -e '
-        my $seconds = shift @ARGV;
-        my $pid = fork();
-        exit 127 unless defined $pid;
-        if ($pid == 0) {
-            setpgid(0, 0);
-            exec { $ARGV[0] } @ARGV or exit 127;
-        }
-        setpgid($pid, $pid);
-        my $timed_out = 0;
-        local $SIG{ALRM} = sub {
-            $timed_out = 1;
-            kill "TERM", -$pid;
-            sleep 2;
-            kill "KILL", -$pid if kill 0, -$pid;
-        };
-        alarm $seconds;
-        my $status;
-        while (1) {
-            my $waited = waitpid($pid, 0);
-            if ($waited == $pid) { $status = $?; last; }
-            next if $!{EINTR};
-            exit 127;
-        }
-        alarm 0;
-        exit 142 if $timed_out;
-        exit WEXITSTATUS($status) if WIFEXITED($status);
-        exit 128 + WTERMSIG($status) if WIFSIGNALED($status);
-        exit 1;
-    ' "$seconds" "$@"
+    "$storage_helper" command "$@"
 }
 
 restic_bin="${FUNK_RESTIC_BIN:-$(command -v restic 2>/dev/null || true)}"
@@ -184,9 +146,6 @@ if [ "$tier" = onsite ]; then
         /Volumes/Scratch/claude-archive; do
         add_root "$root"
     done
-    if [ "$stage_is_external" -eq 1 ]; then
-        roots+=("$stage_root")
-    fi
 fi
 
 excludes=(
@@ -244,6 +203,8 @@ excludes=(
     --exclude '*.merge-tmp'
     --exclude '*.session'
     --exclude '*.session-journal'
+    --exclude "$state_root/backup-staging"
+    --exclude "$state_root/backup-work/.lock"
 )
 
 # These live SQLite stores are represented by consistent staged copies below.
@@ -282,10 +243,20 @@ for database in \
 done
 
 if [ "$check_only" -eq 1 ]; then
+    "$storage_helper" plan "$tier" || exit $?
     printf '%s backup configuration is ready: %s roots, credentials mode %s\n' \
         "$tier" "${#roots[@]}" "$credentials_mode"
     exit 0
 fi
+
+if [ "${2:-}" != --worker ]; then
+    exec "$storage_helper" run "$0" "$tier"
+fi
+# Credential files must not redirect producer temporary files or enable caching.
+export TMPDIR="$FUNK_BACKUP_RUN_DIR/tmp" SQLITE_TMPDIR="$FUNK_BACKUP_RUN_DIR/tmp"
+unset RESTIC_CACHE_DIR
+roots+=("$stage_root")
+excludes+=(--exclude "$FUNK_BACKUP_RUN_DIR/tmp" --exclude "$FUNK_BACKUP_RUN_DIR/.owner")
 
 mkdir -p "$(dirname "$log_path")"
 if [ -f "$log_path" ] && [ ! -L "$log_path" ]; then
@@ -296,50 +267,32 @@ if [ -f "$log_path" ] && [ ! -L "$log_path" ]; then
     fi
 fi
 
-if ! mkdir "$lock_dir" 2>/dev/null; then
-    other=$(cat "$lock_dir/pid" 2>/dev/null || true)
-    if [ -n "$other" ] && kill -0 "$other" 2>/dev/null; then
-        fail "another $tier backup is active as pid $other"
-    fi
-    rm -rf -- "$lock_dir"
-    mkdir "$lock_dir" || fail "could not acquire $tier backup lock"
-fi
-printf '%s\n' "$$" >"$lock_dir/pid"
-trap 'rm -rf -- "$lock_dir"' EXIT
-
-mkdir -p "$(dirname "$stage_root")" "$stage_root"
-chmod 700 "$(dirname "$stage_root")" "$stage_root"
 preflight_failures=0
 
 replace_directory_snapshot() {
-    local name="$1" destination="$stage_root/$1" temporary="$stage_root/.$1.$$"
+    local name="$1" destination="$stage_root/$1"
     shift
-    rm -rf -- "$temporary"
-    if "$@" --output "$temporary" >/dev/null \
+    if guard 3600 "$@" --output "$destination" >/dev/null \
         && { [ "$name" != agentbrain ] \
-            || agentbrain backup verify "$temporary" >/dev/null; }; then
-        rm -rf -- "$destination"
-        mv "$temporary" "$destination"
+            || guard 3600 agentbrain backup verify "$destination" >/dev/null; }; then
         log "$name recovery snapshot refreshed"
     else
-        rm -rf -- "$temporary"
+        rm -rf -- "$destination"
         log "WARNING: $name recovery snapshot failed; continuing with other data"
         preflight_failures=$((preflight_failures + 1))
     fi
 }
 
 replace_file_snapshot() {
-    local name="$1" source="$2" destination="$stage_root/$3" temporary="$stage_root/.$3.$$"
+    local name="$1" source="$2" destination="$stage_root/$3"
     [ -f "$source" ] || return 0
-    rm -f -- "$temporary" "$temporary-wal" "$temporary-shm"
-    if /usr/bin/sqlite3 "$source" ".timeout 10000" ".backup '$temporary'" >/dev/null 2>&1 \
-        && [ "$(/usr/bin/sqlite3 "$temporary" 'PRAGMA quick_check;' 2>/dev/null)" = ok ]; then
-        rm -f -- "$temporary-wal" "$temporary-shm"
-        chmod 600 "$temporary"
-        mv -f "$temporary" "$destination"
+    if guard 3600 "$storage_helper" snapshot "$source" "$destination"; then
+        chmod 600 "$destination"
         log "$name database snapshot refreshed"
     else
-        rm -f -- "$temporary" "$temporary-wal" "$temporary-shm"
+        local status=$?
+        rm -f -- "$destination" "$destination-wal" "$destination-shm" "$destination-journal"
+        [ "$status" -ne 75 ] || defer "$name snapshot exceeded capacity allowance"
         log "WARNING: $name database snapshot failed; continuing with other data"
         preflight_failures=$((preflight_failures + 1))
     fi
@@ -348,12 +301,12 @@ replace_file_snapshot() {
 if command -v agentbrain >/dev/null 2>&1; then
     replace_directory_snapshot agentbrain agentbrain backup create
 else
-    log 'WARNING: agentbrain is unavailable; retaining any prior recovery snapshot'
+    log 'WARNING: agentbrain is unavailable; this run has no research database snapshot'
     preflight_failures=$((preflight_failures + 1))
 fi
 if command -v agentboard >/dev/null 2>&1; then
     board_tmp="$stage_root/.agentboard.jsonl.$$"
-    if agentboard export --out "$board_tmp" >/dev/null 2>&1; then
+    if guard 3600 agentboard export --out "$board_tmp" >/dev/null 2>&1; then
         chmod 600 "$board_tmp"
         mv -f "$board_tmp" "$stage_root/agentboard.jsonl"
         log 'agentboard export refreshed'
@@ -363,7 +316,7 @@ if command -v agentboard >/dev/null 2>&1; then
         preflight_failures=$((preflight_failures + 1))
     fi
 else
-    log 'WARNING: agentboard is unavailable; retaining any prior export'
+    log 'WARNING: agentboard is unavailable; this run has no board export'
     preflight_failures=$((preflight_failures + 1))
 fi
 replace_file_snapshot agentattention \
@@ -385,22 +338,15 @@ for codex_database in state_5 thread_history_1 goals_1 memories_1 queue_1; do
 done
 
 if [ "$tier" = onsite ] && [ -x "$transcript_helper" ]; then
-    if ! "$transcript_helper"; then
+    if ! guard 3600 "$transcript_helper"; then
         log 'WARNING: transcript archive refresh failed; continuing with the comprehensive backup'
         preflight_failures=$((preflight_failures + 1))
     fi
 fi
 
-if [ -d "$scratch_cache_root" ]; then
-    export RESTIC_CACHE_DIR="$scratch_cache_root/restic"
-else
-    export RESTIC_CACHE_DIR="$HOME/Library/Caches/Funk/restic"
-    mkdir -p "$RESTIC_CACHE_DIR"
-fi
-
 log "starting $tier Restic backup of ${#roots[@]} roots"
 backup_status=0
-guard "$backup_deadline" "$restic_bin" backup --quiet --retry-lock 5m --tag "funk-home-$tier" \
+guard "$backup_deadline" "$restic_bin" --no-cache backup --quiet --retry-lock 5m --tag "funk-home-$tier" \
     "${excludes[@]}" "${roots[@]}" || backup_status=$?
 if [ "$backup_status" -eq 0 ]; then
     log "$tier Restic backup complete"
@@ -412,8 +358,4 @@ if [ "$backup_status" -ne 0 ]; then
     exit "$backup_status"
 fi
 [ "$preflight_failures" -eq 0 ] || exit 1
-if [ "$stage_is_external" -eq 1 ] && [ -d "$internal_stage_root" ]; then
-    rm -rf -- "$internal_stage_root"
-    log 'removed legacy internal onsite recovery staging'
-fi
 exit 0

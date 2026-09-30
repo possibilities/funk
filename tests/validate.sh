@@ -361,7 +361,7 @@ if sed 's/#.*//' bin/.local/bin/funk-backup | grep -E -- "--exclude.*['\"]\.git"
 fi
 grep -F 'agentbrain backup verify' bin/.local/bin/funk-backup >/dev/null \
     || fail "comprehensive backup does not verify Agentbrain recovery snapshots"
-grep -F 'PRAGMA quick_check;' bin/.local/bin/funk-backup >/dev/null \
+grep -F 'PRAGMA quick_check;' bin/.local/bin/funk-backup-storage >/dev/null \
     || fail "comprehensive backup does not verify staged SQLite databases"
 if sed 's/#.*//' bin/.local/bin/transcript-vault | grep -F -- '--delete' >/dev/null; then
     fail "transcript vault contains a deletion path"
