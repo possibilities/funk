@@ -1530,7 +1530,12 @@ else
         "needs macOS: native plist ownership checks"
 fi
 "$root/tests/funk-notify.sh"
-"$root/tests/verify-notifications.sh"
+if [ "$(uname -s)" = Darwin ]; then
+    "$root/tests/verify-notifications.sh"
+else
+    skip "managed notifier policy diagnosis" \
+        "needs macOS: verify-notifications requires Darwin"
+fi
 "$root/tests/verify-obs-camera.sh"
 # home-awake asserts a root helper's installability through BSD stat -f and
 # drives pmset and caffeinate, so it only means anything on macOS.
