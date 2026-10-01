@@ -1,0 +1,87 @@
+#!/usr/bin/env python3
+"""Isolated OpenCode API contract; record requests, never reach a real server."""
+import json
+import os
+from pathlib import Path
+import sys
+
+state_path = Path(os.environ['FUNK_TEST_OPENCODE_STATE'])
+state = json.loads(state_path.read_text())
+args = sys.argv[1:]
+assert args.pop(0) == 'api', 'fixture only implements opencode api'
+server = None
+if args[0] == '--server':
+    args.pop(0)
+    server = args.pop(0)
+method, path = args.pop(0).upper(), args.pop(0)
+payload = None
+if args:
+    assert args.pop(0) == '--data'
+    payload = json.loads(args.pop(0))
+assert not args
+state.setdefault('requests', []).append({'method': method, 'path': path,
+                                       'payload': payload, 'server': server})
+
+
+def respond(body=None, code=0, stderr='', raw=None):
+    temporary = state_path.with_suffix('.tmp')
+    temporary.write_text(json.dumps(state))
+    temporary.replace(state_path)
+    if raw is not None:
+        sys.stdout.write(raw)
+    elif body is not None:
+        print(json.dumps(body))
+    if stderr:
+        print(stderr, file=sys.stderr)
+    sys.exit(code)
+
+
+def fault(after):
+    for index, item in enumerate(state.get('faults', [])):
+        if (item['method'] == method and item.get('path', path) == path
+                and item.get('after', False) == after):
+            state['faults'].pop(index)
+            respond(item.get('body'), item.get('code', 1), item.get('stderr', ''), item.get('raw'))
+
+
+fault(False)
+body = None
+if method == 'GET' and path == '/api/debug/location':
+    state['scan_count'] = state.get('scan_count', 0) + 1
+    scans = state.get('scans')
+    if scans:
+        body = scans.pop(0) if len(scans) > 1 else scans[0]
+    else:
+        body = state.get('locations', [])
+elif method == 'GET' and path.startswith('/api/session/'):
+    identifier = path.rsplit('/', 1)[1]
+    info = state.setdefault('sessions', {}).get(identifier)
+    if info is None:
+        respond({'_tag': 'SessionNotFoundError', 'sessionID': identifier,
+                 'message': 'Session not found: ' + identifier}, 1, 'HTTP 404 Not Found')
+    body = {'data': info}
+elif method == 'POST' and path == '/api/session':
+    assert set(payload) == {'id', 'title', 'location', 'metadata'}
+    identifier = payload['id']
+    assert identifier.startswith('ses')
+    assert payload['title'], 'empty title is not a model-free heartbeat'
+    assert set(payload['location']) == {'directory'}
+    sessions = state.setdefault('sessions', {})
+    if identifier not in sessions:
+        info = dict(payload, projectID='project_fixture', cost=0,
+                    tokens={'input': 0, 'output': 0, 'reasoning': 0, 'cache': {'read': 0, 'write': 0}},
+                    time={'created': 1, 'updated': 1})
+        # Model a concurrent create returning the already-recorded identity.
+        info.update(state.pop('create_collision', {}))
+        sessions[identifier] = info
+        state.setdefault('created', []).append(identifier)
+    body = {'data': sessions[identifier]}
+elif method == 'PATCH' and path.startswith('/api/session/'):
+    assert set(payload) == {'title'} and payload['title']
+    info = state['sessions'][path.rsplit('/', 1)[1]]
+    info['title'] = payload['title']
+    info['time']['updated'] += 1
+else:
+    respond(code=1, stderr='fixture refuses an unsupported API action')
+fault(True)
+respond(body)

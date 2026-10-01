@@ -41,6 +41,8 @@ Commands:
                       Set this account's commit name and address, once
   install-process-warning [--check] [--context FILE]
                       Install the five-minute process-headroom warning
+  opencode-keepalive [--once | --dry-run] [--interval SECONDS] [--server URL]
+                      Manually heartbeat currently loaded OpenCode V2 locations
   install-updater    Install and load Funk's four-times-daily user LaunchAgent
   install-tailscale-recovery
                       Install the login/five-minute Tailscale recovery agent
@@ -162,6 +164,10 @@ case "$command_name" in
     install-process-warning)
         shift
         exec /usr/bin/python3 "$FUNK_ROOT/libexec/install-process-headroom-agent.py" "$@"
+        ;;
+    opencode-keepalive)
+        shift
+        exec /usr/bin/python3 "$FUNK_ROOT/libexec/opencode-keepalive.py" "$@"
         ;;
     install-backups)
         shift

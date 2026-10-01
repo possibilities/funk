@@ -11,6 +11,7 @@ fail() {
 }
 
 python3 -B tests/process-headroom.py
+python3 -B tests/opencode-keepalive.py
 tests/funk-harden.sh
 
 skipped=""
