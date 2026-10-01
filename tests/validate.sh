@@ -11,7 +11,6 @@ fail() {
 }
 
 python3 -B tests/process-headroom.py
-python3 -B tests/artbird-browser-watchdog.py
 tests/funk-harden.sh
 
 skipped=""

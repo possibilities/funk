@@ -41,8 +41,6 @@ Commands:
                       Set this account's commit name and address, once
   install-process-warning [--check] [--context FILE]
                       Install the five-minute process-headroom warning
-  install-artbird-watchdog [--check] [--host HOST]
-                      Install the five-minute Artbird browser watchdog
   install-updater    Install and load Funk's four-times-daily user LaunchAgent
   install-tailscale-recovery
                       Install the login/five-minute Tailscale recovery agent
@@ -164,10 +162,6 @@ case "$command_name" in
     install-process-warning)
         shift
         exec /usr/bin/python3 "$FUNK_ROOT/libexec/install-process-headroom-agent.py" "$@"
-        ;;
-    install-artbird-watchdog)
-        shift
-        exec /usr/bin/python3 "$FUNK_ROOT/libexec/install-artbird-browser-watchdog-agent.py" "$@"
         ;;
     install-backups)
         shift

@@ -172,7 +172,6 @@ agentstart_root="$HOME/code/agentstart"
 "$funk_command" install-obsidian-sync
 "$funk_command" install-obsidian-plugin
 "$funk_command" install-process-warning
-"$funk_command" install-artbird-watchdog
 "$funk_command" configure-macos
 
 # ~/.ssh/config.d is generated from live Tailscale state rather than tracked, so
