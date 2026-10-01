@@ -52,7 +52,7 @@ jobs:
         # lint step to carry.
         run: |
           sudo apt-get update
-          sudo apt-get install --yes shellcheck stow zsh jq
+          sudo apt-get install --yes shellcheck stow zsh jq ripgrep
           shellcheck --version | sed -n 2p
 
       - name: Validate
