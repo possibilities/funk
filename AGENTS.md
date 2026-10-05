@@ -86,7 +86,7 @@ so restoring it is not a convenience fix either.
 `pfctl` parse of the travel firewall, Gatekeeper quarantine xattrs, the
 Homebrew cask helpers that read ownership with BSD `stat -f`, the `funk update`
 path through AgentStart's Darwin-gated skill sync, retired-tool and LaunchAgent
-ownership/status checks, and the home-awake and Android launcher suites — skip themselves
+ownership/status checks, and the home-awake, Omajot hub and Android launcher suites — skip themselves
 off Darwin and print what they skipped, and the summary line repeats the list.
 Everything else is portable:
 the policy greps, `bash -n` over every shell file, shellcheck, and the launchd

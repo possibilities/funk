@@ -153,35 +153,52 @@ Configuration another program writes is overlaid, never adopted. The llm CLI
 and its model configuration are AgentStart's (`config/llm/`, and the formula
 left the Brewfile with them). Adopt a file only when Funk is its sole writer.
 
-## Obsidian LiveSync and on-demand GitHub snapshots
+## Omajot desktop app
 
-`~/obsidian/work` is the work vault. `./install` installs CouchDB from the
-`Brewfile` and runs `funk install-obsidian-sync`, which starts the user service,
-generates a local-only administrator password, and adds a tailnet-only Tailscale
-Serve HTTPS endpoint on port 8448. The CouchDB config under Homebrew's current
-`etc/local.d` is generated and reinstalled after a formula upgrade; the password
-in `~/Library/Application Support/Funk/obsidian-livesync/admin-password` is
-private (0600) and never enters Funk or the vault. Do not use Funnel or expose
-port 5984 directly. Greybird must be online for the phone to sync. The CouchDB
-data directory and local credential directory are included in Funk's Restic
-roots, but a live database copy still needs a restore test. GitHub is a note
-snapshot, not a CouchDB backup.
+The `Brewfile` installs `renerocksai/tap/omajot`. On macOS the complete desktop
+interface is its web app, not a native application bundle. `./install` runs
+`funk install-omajot`, which renders the owned
+`io.arthack.funk.omajot-hub` LaunchAgent and starts the hub at login. Open
+`http://127.0.0.1:8797` in a desktop browser. `funk install-omajot --check`
+validates the rendering without loading a service. Converged runs preserve a
+running hub rather than restarting an active notes session.
 
-`funk install-obsidian-plugin` installs a verified upstream release into the
-work vault only if the plugin is missing. Obsidian owns upgrades and its own
-plugin enablement; installing files does not enable or reload a running app.
+This first stage is **desktop-only**: `--no-auth`, explicitly bound to loopback,
+with no Tailscale Serve/Funnel route. The installer refuses an existing
+Tailscale proxy to that port. Port 8797 avoids existing services and the older
+Serve route to 8787. Never proxy this unauthenticated listener; Android/remote
+access needs a separate, explicitly authorised authenticated configuration.
+Migration and phone setup are not part of installation.
 
-Back up both vaults, install/enable the upstream `obsidian-livesync` community
-plugin in the work vault on each device, then follow the upstream
-[CouchDB quick setup](https://github.com/vrtmrz/obsidian-livesync/blob/main/docs/quick_setup.md).
-Use greybird's Tailscale HTTPS hostname on port 8448, administrator `obsidian`,
-the private password file above, and a new `obsidian-work` database. Enable
-end-to-end encryption; retain its separate passphrase securely. Initialise the
-new remote from greybird only, then generate a new encrypted Setup URI there for
-smolbird. Protect the URI and its distinct URI passphrase separately. Do not
-overwrite an existing phone vault without reviewing its unsynchronised notes.
-Verify an ordinary note in each direction before enabling hidden-file or
-customisation sync (neither is needed for GitHub snapshots).
+The hub keeps `batches.jsonl` and `blobs/` in `~/omajot-data`, and its log is
+`~/Library/Logs/Funk/omajot-hub.log`. The CLI's separate replica is in
+`~/.local/share/omajot`. Both data directories are Restic roots. Existing
+Omajot data is preserved. These are application-owned state, not Stow packages;
+any future Tailscale login or hostname configuration must remain machine-local.
+
+## Retired Obsidian LiveSync and on-demand GitHub snapshots
+
+LiveSync was retired in favour of the desktop-only Omajot installation. Neither
+`./install` nor the scheduled path installs its plugin, CouchDB, or a sync
+endpoint. The desktop Obsidian application and `~/obsidian/work` remain available
+as source material until migration is separately requested.
+
+For an existing installation, close Obsidian and stop the user CouchDB service
+before taking a verified private backup of the entire vault (including hidden
+files and Git history), Obsidian application state, CouchDB data, generated
+configuration and local credentials. Only then remove the `obsidian-livesync`
+entry from `community-plugins.json` and its manifest-verified plugin directory.
+Remove only the HTTPS 8448 Serve route whose `/` handler is
+`http://127.0.0.1:5984`, never reset Serve or alter unrelated routes. Remove the
+generated override only when its first line is
+`; Funk Obsidian LiveSync (generated; do not commit)`, uninstall the dedicated
+CouchDB formula, and remove its backed-up data and
+`~/Library/Application Support/Funk/obsidian-livesync`. Preserve notes, the
+private GitHub repository, and unrelated Obsidian plugins/application state.
+
+Android removal targets the verified `md.obsidian` package through an explicitly
+selected ADB serial. Uninstall without `-k` so app-private data is removed;
+shared-storage documents are not a reason to delete arbitrary phone directories.
 
 GitHub snapshots are **never scheduled**. Initialise Git in the vault and set
 `origin` to the dedicated private `possibilities/obsidian-work` repository,

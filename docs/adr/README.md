@@ -11,8 +11,9 @@
 | [0008: Explicit home firewall posture](0008-explicit-home-firewall-posture.md) | Accepted | Keep travel as the boot default and allow trusted LAN traffic only after a manual action. |
 | [0009: Preserve transcripts independently of search freshness](0009-preserve-transcripts-independently-of-search-freshness.md) | Accepted | Keep archive copying and Restic independent from derived AgentChats indexing. |
 | [0010: Install OpenCode 2 Desktop with a local cask](0010-install-opencode-2-desktop-with-local-cask.md) | Accepted | Bootstrap the V2 macOS app without Homebrew's V1 desktop cask. |
-| [0011: Private LiveSync remote and manual vault snapshots](0011-private-livesync-and-manual-vault-snapshots.md) | Accepted | Tailnet-only CouchDB and explicit private GitHub note snapshots. |
+| [0011: Private LiveSync remote and manual vault snapshots](0011-private-livesync-and-manual-vault-snapshots.md) | Partially superseded by 0013 | Retired CouchDB transport; manual private GitHub snapshots remain accepted. |
 | [0012: Transient internal backup workspaces](0012-transient-internal-backup-workspaces.md) | Accepted | One supervised internal staging generation, explicit no-cache, and owned cleanup. |
+| [0013: Retire LiveSync and install Omajot locally](0013-retire-livesync-and-install-omajot-locally.md) | Accepted | Verified backups before removal; desktop-only loopback hub, with migration and Android access deferred. |
 
 The initial records were captured on 2026-09-08 from existing constraints. Current
 procedures live in [configuration guidance](../configuration.md).

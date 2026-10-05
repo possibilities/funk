@@ -194,6 +194,7 @@ plist_lint launchd/io.arthack.funk.backup-offsite.plist.in >/dev/null
 plist_lint system/io.arthack.funk.harden-boot.plist >/dev/null
 plist_lint launchd/io.arthack.funk.keep-home-awake.plist.in >/dev/null
 plist_lint launchd/io.arthack.funk.caffeinate.plist >/dev/null
+plist_lint launchd/io.arthack.funk.omajot-hub.plist.in >/dev/null
 for plist in launchd/io.arthack.funk.*.plist* system/io.arthack.funk.*.plist; do
     label=$(plist_buddy -c 'Print :Label' "$plist")
     printf '%s\n' "$label" | grep -Eq '^io\.arthack\.funk\.[a-z][a-z0-9-]*$' \
@@ -201,6 +202,20 @@ for plist in launchd/io.arthack.funk.*.plist* system/io.arthack.funk.*.plist; do
     [ "$(plist_buddy -c 'Print :FunkInstallerOwner' "$plist")" = "$label.v1" ] \
         || fail "$plist lacks its exact Funk ownership marker"
 done
+# The no-auth desktop app must remain loopback-only. This is a configuration
+# security contract, independent of the renderer and generic launchd ownership.
+/usr/bin/python3 - launchd/io.arthack.funk.omajot-hub.plist.in <<'PYTHON'
+import plistlib
+import sys
+with open(sys.argv[1], 'rb') as handle:
+    args = plistlib.load(handle)['ProgramArguments']
+assert args[1] == 'hub'
+assert '--no-auth' in args
+assert args[args.index('--bind') + 1] == '127.0.0.1'
+assert args[args.index('--port') + 1] == '8797'
+assert args[args.index('--url') + 1] == 'http://127.0.0.1:8797'
+assert '--login' not in args
+PYTHON
 grep -F 'legacy_daemon_preloaded' system/install-hardening-root >/dev/null \
     || fail "hardening migration does not detect cached legacy jobs"
 grep -F 'rollback_daemon' system/install-hardening-root >/dev/null \
@@ -473,9 +488,7 @@ brew "poppler"
 brew "yq"
 # Encrypted comprehensive onsite and offsite account backups.
 brew "restic"
-# Private, tailnet-only Obsidian LiveSync remote.
-brew "couchdb"
-# Omajot notes CLI and optional local hub; hub setup is operator-owned.
+# Omajot notes CLI and desktop-only local web app; remote access is operator-owned.
 brew "renerocksai/tap/omajot", trusted: true
 brew "ripgrep"
 brew "fzf"
@@ -1523,6 +1536,11 @@ grep -Fx 'cask "android-platform-tools", greedy: true' Brewfile >/dev/null \
 "$root/tests/tailscale-online.sh"
 "$root/tests/ssh-tailnet-config.sh"
 "$root/tests/obsidian-push.sh"
+if [ "$(uname -s)" = Darwin ]; then
+    "$root/tests/omajot.sh"
+else
+    skip "Omajot desktop hub installer" "needs macOS: native LaunchAgent rendering"
+fi
 if [ "$(uname -s)" = Darwin ]; then
     "$root/tests/launchd-status.sh"
 else

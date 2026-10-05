@@ -1,0 +1,73 @@
+#!/bin/bash
+
+# Desktop-only web app. Remote access needs authenticated hub configuration,
+# not a proxy to this no-auth loopback listener.
+set -euo pipefail
+
+die() { printf 'funk install-omajot: %s\n' "$*" >&2; exit 1; }
+check_only=0
+case "${1:-}" in
+    "") [ "$#" -eq 0 ] || die 'usage: funk install-omajot [--check]' ;;
+    --check) [ "$#" -eq 1 ] || die 'usage: funk install-omajot [--check]'; check_only=1 ;;
+    *) die 'usage: funk install-omajot [--check]' ;;
+esac
+[ "$(uname -s)" = Darwin ] || die 'macOS is required'
+[ "$(id -u)" -ne 0 ] || die 'run as the target user'
+command -v brew >/dev/null || die 'Homebrew is missing'
+funk_root=${FUNK_ROOT:?FUNK_ROOT is not set}
+binary="$(brew --prefix)/opt/omajot/bin/omajot"
+[ -x "$binary" ] || die 'Omajot is missing; run ./install'
+label=io.arthack.funk.omajot-hub
+agent="$HOME/Library/LaunchAgents/$label.plist"
+log_dir="$HOME/Library/Logs/Funk"
+data="$HOME/omajot-data"
+[ ! -L "$data" ] || die 'refusing a symlinked hub data directory'
+
+# A loopback-only no-auth listener must not be reachable through Serve/Funnel.
+if command -v tailscale >/dev/null; then
+    serve=$(tailscale serve status --json 2>/dev/null) \
+        || die 'cannot verify Tailscale routes; refusing to start a no-auth hub'
+    printf '%s' "$serve" | jq -e 'type == "object"' >/dev/null \
+        || die 'invalid Tailscale route status; refusing to start a no-auth hub'
+    if printf '%s' "$serve" | jq -e \
+        '.. | strings | select(test("^(https?://)?(127\\.0\\.0\\.1|localhost|\\[::1\\]):8797(/|$)"))' >/dev/null; then
+        die 'port 8797 is proxied by Tailscale; remove that route before using a no-auth hub'
+    fi
+fi
+
+tmpdir=$(mktemp -d "${TMPDIR:-/tmp}/funk-omajot.XXXXXX")
+trap 'rm -rf "$tmpdir"' EXIT
+rendered="$tmpdir/$label.plist"
+/usr/bin/python3 - "$funk_root/launchd/$label.plist.in" "$rendered" "$binary" "$HOME" "$log_dir" <<'PYTHON'
+import plistlib
+import sys
+template, output, binary, home, logs = sys.argv[1:]
+with open(template, 'rb') as handle:
+    plist = plistlib.load(handle)
+plist['ProgramArguments'][0] = binary
+plist['ProgramArguments'][plist['ProgramArguments'].index('__OMAJOT_DATA__')] = home + '/omajot-data'
+plist['EnvironmentVariables']['HOME'] = home
+plist['StandardOutPath'] = plist['StandardErrorPath'] = logs + '/omajot-hub.log'
+with open(output, 'wb') as handle:
+    plistlib.dump(plist, handle)
+PYTHON
+/usr/bin/plutil -lint "$rendered" >/dev/null
+if [ "$check_only" -eq 1 ]; then
+    printf 'Omajot desktop hub renders successfully (127.0.0.1:8797 only).\n'
+    exit 0
+fi
+
+# Converged installs must not interrupt an active notes session.
+launchctl_bin=${FUNK_LAUNCHCTL_BIN:-/bin/launchctl}
+if [ -f "$agent" ] && [ ! -L "$agent" ] && cmp -s "$rendered" "$agent" \
+    && "$launchctl_bin" print "gui/$(id -u)/$label" >/dev/null 2>&1; then
+    printf 'Omajot desktop hub is already installed: http://127.0.0.1:8797\n'
+    exit 0
+fi
+if "$launchctl_bin" print "gui/$(id -u)/$label" >/dev/null 2>&1; then
+    die 'hub configuration changed while running; stop the hub explicitly before reinstalling'
+fi
+mkdir -p "$data"
+"$funk_root/libexec/install-user-launchagent" \
+    "$label" com.arthack.funk.omajot-hub "$rendered" "$log_dir"
+printf 'Omajot desktop app: http://127.0.0.1:8797\n'

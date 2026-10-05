@@ -19,9 +19,7 @@ brew "poppler"
 brew "yq"
 # Encrypted comprehensive onsite and offsite account backups.
 brew "restic"
-# Private, tailnet-only Obsidian LiveSync remote.
-brew "couchdb"
-# Omajot notes CLI and optional local hub; hub setup is operator-owned.
+# Omajot notes CLI and desktop-only local web app; remote access is operator-owned.
 brew "renerocksai/tap/omajot", trusted: true
 brew "ripgrep"
 brew "fzf"

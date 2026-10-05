@@ -2,6 +2,10 @@
 
 Status: Accepted, 2026-09-27.
 
+The LiveSync transport and installation policy below are superseded by
+[0013: Retire LiveSync and install Omajot locally](0013-retire-livesync-and-install-omajot-locally.md),
+2026-10-04. The manual private GitHub snapshot policy remains accepted.
+
 The work vault synchronises between greybird and smolbird through a CouchDB
 instance on greybird, exposed only through Tailscale Serve HTTPS. Android needs
 valid HTTPS; loopback-only CouchDB avoids a second LAN/public listener. This
@@ -24,4 +28,4 @@ operator must verify recovery from the separate Restic roots for the vault and
 database, since Git snapshots are neither a remote database nor a full
 application-state backup.
 
-See [the installation and recovery procedure](../configuration.md#obsidian-livesync-and-on-demand-github-snapshots).
+See [the retirement and retained snapshot procedure](../configuration.md#retired-obsidian-livesync-and-on-demand-github-snapshots).

@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- funk-installer-owned: io.arthack.funk.omajot-hub.v1 -->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>io.arthack.funk.omajot-hub</string>
+  <key>FunkInstallerOwner</key>
+  <string>io.arthack.funk.omajot-hub.v1</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>__OMAJOT_BINARY__</string>
+    <string>hub</string>
+    <string>--bind</string>
+    <string>127.0.0.1</string>
+    <string>--port</string>
+    <string>8797</string>
+    <string>--data</string>
+    <string>__OMAJOT_DATA__</string>
+    <string>--no-auth</string>
+    <string>--url</string>
+    <string>http://127.0.0.1:8797</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key>
+    <string>__FUNK_HOME__</string>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>ProcessType</key>
+  <string>Background</string>
+  <key>StandardOutPath</key>
+  <string>__FUNK_LOG_PATH__</string>
+  <key>StandardErrorPath</key>
+  <string>__FUNK_LOG_PATH__</string>
+</dict>
+</plist>
