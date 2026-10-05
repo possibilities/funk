@@ -172,6 +172,7 @@ AgentStart-owned toolchain, run:
 ~/code/agentstart/scripts/install.sh --install
 ```
 
-Then compare the installed `collab` manifest with its agentguidance source
-template.
-Do not substitute a manual copy or a second helper for this convergence check.
+Then run `~/code/agentstart/scripts/sync-skills --check` to inspect the
+current skill-sync plan and check the installed default Role plugin when it is
+available. Do not substitute a manual copy or a second helper for this
+convergence check.
