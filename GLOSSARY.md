@@ -1,4 +1,4 @@
-# Context
+# funk glossary
 
 Funk's own vocabulary. Use these terms in code, commits, and documentation.
 

@@ -1,6 +1,6 @@
 # Funk agent guidance
 
-Read [CONTEXT.md](CONTEXT.md) for the machine/configuration terms and the
+Read [GLOSSARY.md](GLOSSARY.md) for the machine/configuration terms and the
 [decision log](docs/adr/README.md) before changing ownership or theme policy.
 Per-application procedures live in [configuration guidance](docs/configuration.md).
 
