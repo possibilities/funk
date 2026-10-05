@@ -562,7 +562,10 @@ update_node_bin=$(command -v node) \
 mkdir -p \
     "$update_home" \
     "$update_code_root/agentfixture/skills/fixture" \
+    "$update_code_root/agentguidance/fragments" \
     "$update_brew_prefix/bin"
+printf 'Fixture domain guidance.\n' \
+    >"$update_code_root/agentguidance/fragments/domain-model.md"
 # funk-update prepends Homebrew's bin directory to launchd's minimal PATH. Seed
 # the fake prefix the same way so AgentStart's Node-based policy renderer tests
 # the production path contract instead of inheriting the invoking shell's PATH.
