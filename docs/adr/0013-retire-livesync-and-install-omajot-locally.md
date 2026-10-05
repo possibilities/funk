@@ -2,6 +2,10 @@
 
 Status: Accepted, 2026-10-04.
 
+The initial independent CLI replica and port 8797 are corrected by
+[0014: One local Omajot hub for all desktop clients](0014-one-local-omajot-hub-for-all-desktop-clients.md).
+The LiveSync retirement and desktop-only access boundary remain accepted.
+
 The operator explicitly retired Obsidian LiveSync and requested a desktop
 backup, removal of the Android Obsidian application, and installation of
 Omajot. Content migration and Android access are separate later work.

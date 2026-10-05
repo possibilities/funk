@@ -212,8 +212,8 @@ with open(sys.argv[1], 'rb') as handle:
 assert args[1] == 'hub'
 assert '--no-auth' in args
 assert args[args.index('--bind') + 1] == '127.0.0.1'
-assert args[args.index('--port') + 1] == '8797'
-assert args[args.index('--url') + 1] == 'http://127.0.0.1:8797'
+assert args[args.index('--port') + 1] == '8799'
+assert args[args.index('--url') + 1] == 'http://127.0.0.1:8799'
 assert '--login' not in args
 PYTHON
 grep -F 'legacy_daemon_preloaded' system/install-hardening-root >/dev/null \

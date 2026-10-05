@@ -14,6 +14,7 @@
 | [0011: Private LiveSync remote and manual vault snapshots](0011-private-livesync-and-manual-vault-snapshots.md) | Partially superseded by 0013 | Retired CouchDB transport; manual private GitHub snapshots remain accepted. |
 | [0012: Transient internal backup workspaces](0012-transient-internal-backup-workspaces.md) | Accepted | One supervised internal staging generation, explicit no-cache, and owned cleanup. |
 | [0013: Retire LiveSync and install Omajot locally](0013-retire-livesync-and-install-omajot-locally.md) | Accepted | Verified backups before removal; desktop-only loopback hub, with migration and Android access deferred. |
+| [0014: One local Omajot hub for all desktop clients](0014-one-local-omajot-hub-for-all-desktop-clients.md) | Accepted | Shared hub configuration for TUI/web and an explicitly requested one-time fresh start without stale browser replicas. |
 
 The initial records were captured on 2026-09-08 from existing constraints. Current
 procedures live in [configuration guidance](../configuration.md).

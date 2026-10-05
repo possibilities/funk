@@ -21,7 +21,11 @@ label=io.arthack.funk.omajot-hub
 agent="$HOME/Library/LaunchAgents/$label.plist"
 log_dir="$HOME/Library/Logs/Funk"
 data="$HOME/omajot-data"
+url=http://127.0.0.1:8799
 [ ! -L "$data" ] || die 'refusing a symlinked hub data directory'
+configure_client() {
+    /usr/bin/python3 "$funk_root/libexec/configure-omajot-client.py" "$url" "$@"
+}
 
 # A loopback-only no-auth listener must not be reachable through Serve/Funnel.
 if command -v tailscale >/dev/null; then
@@ -30,8 +34,8 @@ if command -v tailscale >/dev/null; then
     printf '%s' "$serve" | jq -e 'type == "object"' >/dev/null \
         || die 'invalid Tailscale route status; refusing to start a no-auth hub'
     if printf '%s' "$serve" | jq -e \
-        '.. | strings | select(test("^(https?://)?(127\\.0\\.0\\.1|localhost|\\[::1\\]):8797(/|$)"))' >/dev/null; then
-        die 'port 8797 is proxied by Tailscale; remove that route before using a no-auth hub'
+        '.. | strings | select(test("^(https?://)?(127\\.0\\.0\\.1|localhost|\\[::1\\]):8799(/|$)"))' >/dev/null; then
+        die 'port 8799 is proxied by Tailscale; remove that route before using a no-auth hub'
     fi
 fi
 
@@ -53,7 +57,8 @@ with open(output, 'wb') as handle:
 PYTHON
 /usr/bin/plutil -lint "$rendered" >/dev/null
 if [ "$check_only" -eq 1 ]; then
-    printf 'Omajot desktop hub renders successfully (127.0.0.1:8797 only).\n'
+    configure_client --check
+    printf 'Omajot desktop hub and client config validate (127.0.0.1:8799 only).\n'
     exit 0
 fi
 
@@ -61,13 +66,15 @@ fi
 launchctl_bin=${FUNK_LAUNCHCTL_BIN:-/bin/launchctl}
 if [ -f "$agent" ] && [ ! -L "$agent" ] && cmp -s "$rendered" "$agent" \
     && "$launchctl_bin" print "gui/$(id -u)/$label" >/dev/null 2>&1; then
-    printf 'Omajot desktop hub is already installed: http://127.0.0.1:8797\n'
+    configure_client
+    printf 'Omajot desktop hub is already installed: %s\n' "$url"
     exit 0
 fi
 if "$launchctl_bin" print "gui/$(id -u)/$label" >/dev/null 2>&1; then
     die 'hub configuration changed while running; stop the hub explicitly before reinstalling'
 fi
+configure_client
 mkdir -p "$data"
 "$funk_root/libexec/install-user-launchagent" \
     "$label" com.arthack.funk.omajot-hub "$rendered" "$log_dir"
-printf 'Omajot desktop app: http://127.0.0.1:8797\n'
+printf 'Omajot desktop app: %s\n' "$url"

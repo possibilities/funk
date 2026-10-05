@@ -159,21 +159,43 @@ The `Brewfile` installs `renerocksai/tap/omajot`. On macOS the complete desktop
 interface is its web app, not a native application bundle. `./install` runs
 `funk install-omajot`, which renders the owned
 `io.arthack.funk.omajot-hub` LaunchAgent and starts the hub at login. Open
-`http://127.0.0.1:8797` in a desktop browser. `funk install-omajot --check`
-validates the rendering without loading a service. Converged runs preserve a
-running hub rather than restarting an active notes session.
+`http://127.0.0.1:8799` in a desktop browser. `funk install-omajot --check`
+validates the rendering and client configuration without changing either.
+Converged runs preserve a running hub rather than restarting an active notes
+session.
 
 This first stage is **desktop-only**: `--no-auth`, explicitly bound to loopback,
 with no Tailscale Serve/Funnel route. The installer refuses an existing
-Tailscale proxy to that port. Port 8797 avoids existing services and the older
-Serve route to 8787. Never proxy this unauthenticated listener; Android/remote
-access needs a separate, explicitly authorised authenticated configuration.
+Tailscale proxy to that port. Port 8799 avoids existing services, the older
+Serve route to 8787, and the first trial's offline browser replica on port 8797.
+Never proxy this unauthenticated listener; Android/remote access needs a separate,
+explicitly authorised authenticated configuration.
 Migration and phone setup are not part of installation.
 
 The hub keeps `batches.jsonl` and `blobs/` in `~/omajot-data`, and its log is
 `~/Library/Logs/Funk/omajot-hub.log`. The CLI's separate replica is in
-`~/.local/share/omajot`. Both data directories are Restic roots. Existing
-Omajot data is preserved. These are application-owned state, not Stow packages;
+`~/.local/share/omajot`. These are intentionally different storage formats, not
+two independent notebooks: `funk install-omajot` overlays
+`"hub": "http://127.0.0.1:8799"` in
+`${XDG_CONFIG_HOME:-~/.config}/omajot/config.json`, so the CLI/TUI replica and
+every web replica synchronize through the same hub. The upstream reader is
+`src/daemon/paths.zig` (`configPath`, `readConfig`, `resolve`), shared by the
+daemon and note commands. Other configuration fields are preserved; symlinked
+configuration and a different hub URL are refused rather than adopted or
+overwritten. Restart an existing daemon explicitly after changing its hub;
+the scheduled path does not interrupt a running TUI.
+
+Both data directories are Restic roots. Normal installation preserves content;
+the operator-requested fresh start is not repeated on convergence. Before a
+reset, close every TUI/web client, stop the exact owned hub and background
+daemon, and retain a verified private recovery copy of both stores. Reset both
+stores together, never point the hub at the CLI's different-format directory.
+A browser also owns an IndexedDB replica: either clear only Omajot's old origin
+or use a genuinely fresh local origin. Otherwise old queued changes can return,
+or a cursor ahead of the reset hub can leave it in conflict. Verify a CLI-created
+note in the web app and a web edit in the CLI, then leave the requested empty
+workspace after removing verification content and resetting all test replicas.
+These are application-owned state, not Stow packages;
 any future Tailscale login or hostname configuration must remain machine-local.
 
 ## Retired Obsidian LiveSync and on-demand GitHub snapshots

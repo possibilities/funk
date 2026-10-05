@@ -14,12 +14,12 @@
     <string>--bind</string>
     <string>127.0.0.1</string>
     <string>--port</string>
-    <string>8797</string>
+    <string>8799</string>
     <string>--data</string>
     <string>__OMAJOT_DATA__</string>
     <string>--no-auth</string>
     <string>--url</string>
-    <string>http://127.0.0.1:8797</string>
+    <string>http://127.0.0.1:8799</string>
   </array>
   <key>EnvironmentVariables</key>
   <dict>
