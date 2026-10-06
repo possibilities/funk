@@ -4,7 +4,9 @@ Status: Accepted, 2026-10-04.
 
 The initial independent CLI replica and port 8797 are corrected by
 [0014: One local Omajot hub for all desktop clients](0014-one-local-omajot-hub-for-all-desktop-clients.md).
-The LiveSync retirement and desktop-only access boundary remain accepted.
+The desktop-only access boundary is superseded by
+[0015: Authenticated Omajot access for Android](0015-authenticated-omajot-access-for-android.md).
+The LiveSync retirement remains accepted.
 
 The operator explicitly retired Obsidian LiveSync and requested a desktop
 backup, removal of the Android Obsidian application, and installation of
@@ -31,4 +33,4 @@ Retain existing Omajot state and include both its hub and CLI replica in Restic
 roots. The alternative—configuring a remote hub immediately—would silently
 expand this installation into the explicitly deferred phone/access stage.
 
-See [the desktop installation procedure](../configuration.md#omajot-desktop-app).
+See [the current installation procedure](../configuration.md#omajot-tui-and-android-pwa).

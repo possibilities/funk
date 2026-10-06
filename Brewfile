@@ -19,7 +19,7 @@ brew "poppler"
 brew "yq"
 # Encrypted comprehensive onsite and offsite account backups.
 brew "restic"
-# Omajot notes CLI and desktop-only local web app; remote access is operator-owned.
+# Omajot TUI and PWA; Funk supplies the private authenticated hub.
 brew "renerocksai/tap/omajot", trusted: true
 brew "ripgrep"
 brew "fzf"

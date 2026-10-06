@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Overlay the desktop hub URL without adopting Omajot's writable config."""
+"""Overlay the authenticated hub identity without adopting writable app config."""
 
 import argparse
 import json
@@ -11,6 +11,7 @@ import tempfile
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("hub")
+    parser.add_argument("--login", required=True)
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args()
     base = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config")
@@ -30,15 +31,20 @@ def main():
             parser.error("Omajot configuration is unreadable or invalid JSON")
         if not isinstance(config, dict):
             parser.error("Omajot configuration must be a JSON object")
-    # Only our previous desktop URL may be replaced automatically. A future
-    # authenticated remote configuration needs its own explicit policy change.
-    if config.get("hub") not in (None, "", "http://127.0.0.1:8797", args.hub):
+    # Only Funk's previous local endpoints may migrate automatically. Never
+    # silently switch another notebook or an explicitly configured identity.
+    if config.get("hub") not in (
+        None, "", "http://127.0.0.1:8797", "http://127.0.0.1:8799", args.hub,
+    ):
         parser.error("Omajot already targets another hub; refusing to replace it")
+    if config.get("hub_login") not in (None, "", args.login):
+        parser.error("Omajot already trusts another identity; refusing to replace it")
     if args.check:
         return
-    if config.get("hub") == args.hub:
+    if config.get("hub") == args.hub and config.get("hub_login") == args.login:
         return
     config["hub"] = args.hub
+    config["hub_login"] = args.login
     path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     fd, temporary = tempfile.mkstemp(prefix=".config.", dir=path.parent)
     try:
@@ -51,7 +57,7 @@ def main():
     finally:
         if os.path.exists(temporary):
             os.unlink(temporary)
-    print(f"Configured Omajot CLI/TUI: {args.hub}")
+    print("Configured Omajot client and hub identity (machine-local).")
 
 
 if __name__ == "__main__":

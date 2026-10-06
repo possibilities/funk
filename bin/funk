@@ -56,7 +56,7 @@ Commands:
   transcript-vault   Refresh the additive Claude transcript archive once now
   backup <tier>      Back up durable account data to onsite or offsite Restic
    install-backups    Install hourly onsite and daily offsite backup agents
-   install-omajot      Install the desktop-only Omajot hub LaunchAgent
+   install-omajot      Converge the private Omajot hub for TUI and Android
    obsidian-push       Commit and push vault notes/media on demand
   configure-macos    Apply Funk's user-level macOS preferences
   verify-notifications

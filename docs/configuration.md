@@ -153,37 +153,53 @@ Configuration another program writes is overlaid, never adopted. The llm CLI
 and its model configuration are AgentStart's (`config/llm/`, and the formula
 left the Brewfile with them). Adopt a file only when Funk is its sole writer.
 
-## Omajot desktop app
+## Omajot TUI and Android PWA
 
-The `Brewfile` installs `renerocksai/tap/omajot`. On macOS the complete desktop
-interface is its web app, not a native application bundle. `./install` runs
-`funk install-omajot`, which renders the owned
-`io.arthack.funk.omajot-hub` LaunchAgent and starts the hub at login. Open
-`http://127.0.0.1:8799` in a desktop browser. `funk install-omajot --check`
-validates the rendering and client configuration without changing either.
-Converged runs preserve a running hub rather than restarting an active notes
-session.
+The `Brewfile` installs `renerocksai/tap/omajot`. Run `omajot tui` on the Mac;
+Android uses the same hub's installable web app (PWA). A desktop browser is
+optional, not a separate setup requirement. `./install` runs
+`funk install-omajot`, which renders the owned `io.arthack.funk.omajot-hub`
+LaunchAgent and starts the hub at login. `funk install-omajot --check` validates
+the identity, client configuration and route plan without changing anything.
+Converged runs preserve the running hub and do not restart an active TUI.
 
-This first stage is **desktop-only**: `--no-auth`, explicitly bound to loopback,
-with no Tailscale Serve/Funnel route. The installer refuses an existing
-Tailscale proxy to that port. Port 8799 avoids existing services, the older
-Serve route to 8787, and the first trial's offline browser replica on port 8797.
-Never proxy this unauthenticated listener; Android/remote access needs a separate,
-explicitly authorised authenticated configuration.
-Migration and phone setup are not part of installation.
+The hub listens only on `127.0.0.1:8799` and checks `Tailscale-User-Login` on
+every API request. Tailscale Serve supplies that identity and HTTPS on dedicated
+port **8448**; this endpoint must never have Funnel enabled. The installer
+derives the machine's DNS name and user login from the signed-in Tailscale
+profile, never tracked account/hostname values. It refuses a foreign listener,
+extra handler, raw TCP forward, alternate proxy to the hub, or Funnel grant
+rather than replacing it. Unrelated routes and their Funnel settings remain
+unchanged. There is no `--no-auth` fallback if identity or routes are unavailable.
+Before publishing, the installer verifies that the actual loopback API rejects
+unauthenticated requests with 403.
+
+On Android, connect Tailscale to the same account, open the generated HTTPS URL
+(`omajot qr` prints it), then install Omajot from Chrome's menu. Keep Chrome's
+site storage: it contains the offline replica. Reading and editing can work
+offline after the initial load; changes synchronize when the app is running
+and the Mac hub is reachable. The Mac must be awake and logged in to sync.
+Use one Omajot window per phone; close its ordinary browser tab after installing
+the PWA. If a leftover window owns the replica, the app offers **Use here**.
+Phone installation is an explicitly leased operation, not an ADB side effect
+of `./install`. Never create another hub or reset notes to add a phone.
 
 The hub keeps `batches.jsonl` and `blobs/` in `~/omajot-data`, and its log is
 `~/Library/Logs/Funk/omajot-hub.log`. The CLI's separate replica is in
 `~/.local/share/omajot`. These are intentionally different storage formats, not
-two independent notebooks: `funk install-omajot` overlays
-`"hub": "http://127.0.0.1:8799"` in
-`${XDG_CONFIG_HOME:-~/.config}/omajot/config.json`, so the CLI/TUI replica and
-every web replica synchronize through the same hub. The upstream reader is
+two independent notebooks: `funk install-omajot` overlays the generated HTTPS
+`hub` URL and `hub_login` in `${XDG_CONFIG_HOME:-~/.config}/omajot/config.json`,
+so the CLI/TUI replica and every web replica synchronize through the same hub.
+The upstream reader is
 `src/daemon/paths.zig` (`configPath`, `readConfig`, `resolve`), shared by the
 daemon and note commands. Other configuration fields are preserved; symlinked
-configuration and a different hub URL are refused rather than adopted or
-overwritten. Restart an existing daemon explicitly after changing its hub;
-the scheduled path does not interrupt a running TUI.
+configuration, a different hub URL or a different configured identity are
+refused rather than adopted or overwritten. Only Funk's retired local URLs
+may migrate automatically. Quit the TUI and explicitly stop its background
+daemon and owned hub before the first authenticated installation; preserve
+both stores and reconnect the existing replica afterward. Direct loopback
+API requests then fail by design, so the TUI's daemon must use the HTTPS URL.
+Do not retain an unauthenticated desktop alias.
 
 Both data directories are Restic roots. Normal installation preserves content;
 the operator-requested fresh start is not repeated on convergence. Before a
@@ -200,7 +216,7 @@ any future Tailscale login or hostname configuration must remain machine-local.
 
 ## Retired Obsidian LiveSync and on-demand GitHub snapshots
 
-LiveSync was retired in favour of the desktop-only Omajot installation. Neither
+LiveSync was retired in favour of Omajot. Neither
 `./install` nor the scheduled path installs its plugin, CouchDB, or a sync
 endpoint. The desktop Obsidian application and `~/obsidian/work` remain available
 as source material until migration is separately requested.

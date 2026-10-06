@@ -17,9 +17,10 @@
     <string>8799</string>
     <string>--data</string>
     <string>__OMAJOT_DATA__</string>
-    <string>--no-auth</string>
+    <string>--login</string>
+    <string>__OMAJOT_LOGIN__</string>
     <string>--url</string>
-    <string>http://127.0.0.1:8799</string>
+    <string>__OMAJOT_URL__</string>
   </array>
   <key>EnvironmentVariables</key>
   <dict>

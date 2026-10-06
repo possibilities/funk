@@ -202,7 +202,7 @@ for plist in launchd/io.arthack.funk.*.plist* system/io.arthack.funk.*.plist; do
     [ "$(plist_buddy -c 'Print :FunkInstallerOwner' "$plist")" = "$label.v1" ] \
         || fail "$plist lacks its exact Funk ownership marker"
 done
-# The no-auth desktop app must remain loopback-only. This is a configuration
+# The identity-checked hub must remain loopback-only. This is a configuration
 # security contract, independent of the renderer and generic launchd ownership.
 /usr/bin/python3 - launchd/io.arthack.funk.omajot-hub.plist.in <<'PYTHON'
 import plistlib
@@ -210,11 +210,11 @@ import sys
 with open(sys.argv[1], 'rb') as handle:
     args = plistlib.load(handle)['ProgramArguments']
 assert args[1] == 'hub'
-assert '--no-auth' in args
+assert '--no-auth' not in args
+assert args[args.index('--login') + 1] == '__OMAJOT_LOGIN__'
 assert args[args.index('--bind') + 1] == '127.0.0.1'
 assert args[args.index('--port') + 1] == '8799'
-assert args[args.index('--url') + 1] == 'http://127.0.0.1:8799'
-assert '--login' not in args
+assert args[args.index('--url') + 1] == '__OMAJOT_URL__'
 PYTHON
 grep -F 'legacy_daemon_preloaded' system/install-hardening-root >/dev/null \
     || fail "hardening migration does not detect cached legacy jobs"
@@ -488,7 +488,7 @@ brew "poppler"
 brew "yq"
 # Encrypted comprehensive onsite and offsite account backups.
 brew "restic"
-# Omajot notes CLI and desktop-only local web app; remote access is operator-owned.
+# Omajot TUI and PWA; Funk supplies the private authenticated hub.
 brew "renerocksai/tap/omajot", trusted: true
 brew "ripgrep"
 brew "fzf"

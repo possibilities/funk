@@ -2,6 +2,10 @@
 
 Status: Accepted, 2026-10-04.
 
+The desktop-only access boundary and local client URL are superseded by
+[0015: Authenticated Omajot access for Android](0015-authenticated-omajot-access-for-android.md).
+The shared stores and one-time reset decision remain accepted.
+
 The operator found that the TUI showed earlier local Omajot notes while the web
 app did not, and requested that both show the same notebook, followed by an empty
 fresh start. The first-stage installation in [0013](0013-retire-livesync-and-install-omajot-locally.md)
