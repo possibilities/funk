@@ -34,6 +34,11 @@ AirPlay and Rapport's existing disabled preferences remain authored in
 `libexec/configure-macos`. An explicitly permitted reload can apply those
 preferences, but repeated process killing is not a durable network policy.
 
+Attribute an independently owned scratch development listener before touching
+it. The physical-network fence still applies, but its socket inventory is not
+authorization to restart another active task or rewrite its checkout. Report a
+remaining wildcard development bind separately from managed-service acceptance.
+
 ## One-time retirements, 2026-10-07
 
 The operator explicitly authorized remediation after the listener audit.
@@ -67,7 +72,7 @@ retired owners.
 - Recheck both IPv4 and IPv6 TCP listeners with `netstat -anv -p tcp`; use
   `lsof` to attribute user-owned processes. Kernel inspection is necessary
   because unprivileged `lsof` omits some system-owned listeners.
-- Application backends must be loopback-only, intentional private frontends
+- Managed application backends must be loopback-only, intentional private frontends
   must remain tailnet-only, and no retired public Funnel grant may return.
 - Agentbrain's unauthenticated health request must be rejected and its
   authenticated `agentbrain doctor --json` share-ingress check must pass.
