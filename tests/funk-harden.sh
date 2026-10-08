@@ -35,7 +35,9 @@ run_helper() {
     /bin/bash "$test_dir/helper" "$@"
 }
 
-printf 'anchor "com.arthack.funk.travel"\n' > "$test_dir/pf.conf"
+# Darwin lists normalization anchors before filter rules in both its dry parse
+# and effective `pfctl -sr` output. They cannot short-circuit the inbound fence.
+printf 'scrub-anchor "com.apple/*"\nanchor "com.arthack.funk.travel"\n' > "$test_dir/pf.conf"
 printf 'lo0 en0 utun0\n' > "$test_dir/interfaces"
 run_helper boot >/dev/null
 grep -Fx 'block drop in quick on en6 all' "$test_dir/anchor-rules" >/dev/null \

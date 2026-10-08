@@ -186,6 +186,9 @@ pf_conf_traverses_anchor() {
 effective_anchor_first() {
     local rules="$1"
     # A foreign quick pass ahead of Funk would bypass its inbound fence.
+    # Darwin's -sr also prints normalization rules before the filter rules.
+    # Scrub cannot accept a packet; ignore only that separate rule category.
+    rules=$(printf '%s\n' "$rules" | /usr/bin/awk '!/^(scrub-anchor|scrub|no scrub) /')
     [ "$(printf '%s\n' "$rules" | head -n 1)" = "anchor \"$anchor\" all" ] \
         && [ "$(printf '%s\n' "$rules" | grep -Fxc "anchor \"$anchor\" all")" -eq 1 ]
 }

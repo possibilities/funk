@@ -28,10 +28,11 @@ def record():
 
 def normalized(path):
     return "\n".join(
-        (line + " all" if line.startswith("anchor ") else
+        (line + " all fragment reassemble" if line.startswith("scrub-anchor ") else
+         line + " all" if line.startswith("anchor ") else
          line.replace("block in quick ", "block drop in quick "))
         for line in Path(path).read_text().splitlines()
-        if line.startswith(("pass ", "block ", "anchor "))
+        if line.startswith(("pass ", "block ", "anchor ", "scrub-anchor "))
     ) + "\n"
 
 
