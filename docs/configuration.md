@@ -105,20 +105,50 @@ upgrade.
 
 ## Firewall postures
 
-`funk install-hardening` installs the root-owned helper and boot service. Boot
-always applies `travel`, which blocks unsolicited inbound traffic on every
-physical interface while preserving loopback, outbound state, and Tailscale.
+`funk install-hardening` installs guarded root-owned copies of the helper and
+`io.arthack.funk.harden-boot` LaunchDaemon. It runs at load and every ten seconds,
+comparing the complete effective anchor with the selected policy before changing
+PF. A new kernel boot session always selects `travel`, which blocks unsolicited
+inbound traffic on physical interfaces while preserving loopback, outbound state,
+and Tailscale. Converged installation needs no authentication, writes no installed
+files and does not reload PF or restart the service.
+
+The policy reserves `en6` even when absent, and retains every previously observed
+`enN` in root-owned generated state under `/var/db/funk`. These named-interface
+rules fence known adapters as soon as they reattach. A genuinely unseen interface
+is fenced on the next successful reconciliation; ten seconds is the normal
+launchd interval, not a hard real-time guarantee during sleep or system load.
+macOS PF has no wildcard interface group for this policy, so this is not a claim
+of zero-window protection for arbitrary new hardware.
 
 At home, the operator may explicitly run `funk harden home`. That posture adds
 one IPv4 exception on `en6` for `192.168.50.0/24`, immediately before `en6`'s
 quick inbound block; every unrelated physical interface keeps the travel
 rules. The helper does not identify the network or switch posture on its own,
 and it refuses `home` if the trusted interface is unavailable or the fixed
-policy fails validation.
+policy fails validation. Reconciliation preserves that manual selection for the
+same boot, including while `en6` is detached; it never discovers home from network
+signals. A service reload or repeat installation does not reset the selection.
+An upgrade from the old helper has no current boot-session marker, so its first
+reconciliation safely selects travel.
 
 `funk harden status` reports the selected posture, trusted interface and
-subnet, and the effective rule shape for every physical interface. Run
-`funk harden travel` to restore the exact boot posture.
+subnet, effective rules for every physical interface, complete anchor match and
+main-ruleset traversal. Run `funk harden travel` to restore the boot posture.
+The sudoers actions remain exactly `status`, `travel` and `home`; launchd invokes
+the root-only `reconcile` action without granting it to the account.
+
+The installer deduplicates only Funk's exact traversal directives and places one
+before all other filter rules/anchors. Foreign PF bytes and their relative order
+are preserved; earlier foreign `quick` passes cannot bypass Funk's physical
+fence. Normal reconciliation reloads only Funk's anchor, and only on a mismatch.
+The main ruleset is reloaded only if effective Funk traversal is missing,
+duplicated or misordered, from the guarded, validated `/etc/pf.conf`. This can
+replace transient main-ruleset additions, so their owner must persist them in
+that file; unrelated anchors are never explicitly flushed or overwritten.
+Existing connection states are never flushed, including active remote sessions.
+See [0016: Boot-scoped firewall reconciliation](adr/0016-boot-scoped-firewall-reconciliation.md)
+and [0008: Explicit home firewall posture](adr/0008-explicit-home-firewall-posture.md).
 
 ## Harness preferences and guidance
 

@@ -11,6 +11,10 @@ pf_conf=/etc/pf.conf
 anchor_regex='^[[:space:]]*anchor[[:space:]]+"com\.arthack\.funk\.travel"[[:space:]]*(#.*)?$'
 state_dir=/var/db/funk
 posture_file="$state_dir/hardening-posture"
+boot_file="$state_dir/hardening-boot-session"
+interfaces_file="$state_dir/hardening-interfaces"
+lock_file=/var/run/funk-harden.lock
+lock_held=0
 home_interface=en6
 home_ipv4_subnet=192.168.50.0/24
 work_dir=
@@ -25,12 +29,15 @@ die() {
 }
 
 ensure_state_directory() {
-    local owner
-    local mode
-
     if [ ! -e "$state_dir" ]; then
         /usr/bin/install -d -o root -g wheel -m 0755 "$state_dir"
     fi
+    guard_state_directory
+}
+
+guard_state_directory() {
+    local owner
+    local mode
     [ -d "$state_dir" ] && [ ! -L "$state_dir" ] \
         || die "invalid state directory: $state_dir"
     owner=$(stat -f '%Su' "$state_dir")
@@ -38,17 +45,71 @@ ensure_state_directory() {
     [ "$owner" = root ] || die "$state_dir must be root-owned"
     [ $((8#$mode & 8#022)) -eq 0 ] \
         || die "$state_dir must not be group/world-writable"
-    [ ! -L "$posture_file" ] || die "refusing posture symlink: $posture_file"
+    guard_state_file "$posture_file"
+    guard_state_file "$boot_file"
+    guard_state_file "$interfaces_file"
+}
+
+guard_state_file() {
+    local file="$1"
+    [ ! -L "$file" ] || die "refusing state symlink: $file"
+    [ -e "$file" ] || return 0
+    [ -f "$file" ] || die "invalid state file: $file"
+    [ "$(stat -f '%Su' "$file")" = root ] || die "$file must be root-owned"
+    local mode
+    mode=$(stat -f '%Lp' "$file")
+    [ $((8#$mode & 8#022)) -eq 0 ] || die "$file must not be group/world-writable"
+}
+
+boot_session() {
+    /usr/sbin/sysctl -n kern.bootsessionuuid
+}
+
+acquire_lock() {
+    local attempt
+    [ ! -L "$lock_file" ] || die "refusing lock symlink: $lock_file"
+    for attempt in {1..50}; do
+        if /usr/bin/shlock -p "$$" -f "$lock_file"; then
+            lock_held=1
+            return 0
+        fi
+        /bin/sleep 0.1
+    done
+    die "another hardening action is still running after $attempt lock checks"
+}
+
+record_state() {
+    local file="$1"
+    local value="$2"
+    printf '%s\n' "$value" | cmp -s - "$file" && return 0
+    printf '%s\n' "$value" > "$work_dir/state" || return 1
+    /usr/bin/install -o root -g wheel -m 0644 "$work_dir/state" "$file"
 }
 
 physical_interfaces() {
     local interface
+    local interfaces
 
-    for interface in $("$ifconfig" -l); do
-        if printf '%s\n' "$interface" | grep -Eq '^en[0-9]+$'; then
+    interfaces=$("$ifconfig" -l) || die "could not enumerate physical interfaces"
+    for interface in $interfaces; do
+        if [[ "$interface" =~ ^en[0-9]+$ ]]; then
             printf '%s\n' "$interface"
         fi
     done
+}
+
+policy_interfaces() {
+    local interfaces
+    local interface
+    interfaces=$(physical_interfaces) || return 1
+    printf '%s\n%s\n' "$interfaces" "$home_interface"
+    if [ -e "$interfaces_file" ] || [ -L "$interfaces_file" ]; then
+        guard_state_file "$interfaces_file"
+        while IFS= read -r interface; do
+            [[ "$interface" =~ ^en[0-9]+$ ]] || die "invalid remembered interface: $interface"
+            printf '%s\n' "$interface"
+        done < "$interfaces_file"
+    fi
 }
 
 validate_home_policy() {
@@ -56,13 +117,12 @@ validate_home_policy() {
         || die "refusing unexpected home interface: $home_interface"
     [ "$home_ipv4_subnet" = 192.168.50.0/24 ] \
         || die "refusing unexpected home IPv4 subnet: $home_ipv4_subnet"
-    "$ifconfig" "$home_interface" >/dev/null 2>&1 \
-        || die "trusted home interface is unavailable: $home_interface"
 }
 
 render_rules() {
     local posture="$1"
     local interface
+    local interfaces
 
     case "$posture" in
         travel) ;;
@@ -79,6 +139,9 @@ render_rules() {
         'set block-policy drop' \
         'pass out all keep state'
 
+    # Reserve the fixed Ethernet interface even before its adapter attaches.
+    # PF retains named-interface rules and binds them when that interface appears.
+    interfaces=$(policy_interfaces | LC_ALL=C sort -u) || return 1
     while IFS= read -r interface; do
         [ -n "$interface" ] || continue
         printf '%s\n' "$interface" | grep -Eq '^en[0-9]+$' \
@@ -95,7 +158,7 @@ render_rules() {
                 "pass in quick on $interface inet from $home_ipv4_subnet to any"
         fi
         printf '%s\n' "block in quick on $interface all"
-    done < <(physical_interfaces)
+    done <<< "$interfaces"
 }
 
 render_travel_rules() {
@@ -108,24 +171,47 @@ render_home_rules() {
 
 validate_rules() {
     local rules_file="$1"
-    "$pfctl" -a "$anchor" -nf "$rules_file" >/dev/null
+    # pfctl prints its main-ruleset warning even for an anchor-only dry parse.
+    # Keep idle launchd logs quiet, but preserve diagnostics on any parse failure.
+    if ! "$pfctl" -a "$anchor" -nf "$rules_file" >/dev/null 2> "$work_dir/pf-errors"; then
+        cat "$work_dir/pf-errors" >&2
+        return 1
+    fi
 }
 
 pf_conf_traverses_anchor() {
     grep -Eq "$anchor_regex" "$1"
 }
 
+effective_anchor_first() {
+    local rules="$1"
+    # A foreign quick pass ahead of Funk would bypass its inbound fence.
+    [ "$(printf '%s\n' "$rules" | head -n 1)" = "anchor \"$anchor\" all" ] \
+        && [ "$(printf '%s\n' "$rules" | grep -Fxc "anchor \"$anchor\" all")" -eq 1 ]
+}
+
+canonical_rules() {
+    local output
+    if ! output=$("$pfctl" -n -v -a "$anchor" -f "$1" 2> "$work_dir/pf-errors"); then
+        cat "$work_dir/pf-errors" >&2
+        return 1
+    fi
+    printf '%s\n' "$output" | /usr/bin/awk '/^(pass|block) /'
+}
+
 with_rendered_rules() {
     local posture="$1"
     local callback="$2"
     local rules_file
+    local result=0
 
     work_dir=$(mktemp -d /private/tmp/funk-harden.XXXXXX)
     rules_file="$work_dir/$posture.pf"
-    render_rules "$posture" > "$rules_file"
-    "$callback" "$posture" "$rules_file"
+    render_rules "$posture" > "$rules_file" || die "could not render $posture rules"
+    "$callback" "$posture" "$rules_file" || result=$?
     rm -rf "$work_dir"
     work_dir=
+    return "$result"
 }
 
 validate_posture() {
@@ -139,25 +225,70 @@ validate_posture() {
 apply_posture() {
     local posture="$1"
     local rules_file="$2"
+    local main_rules
+    local active_rules
+    local expected_rules
+    local info
+    local session
 
+    ensure_state_directory
+    session=$(boot_session) || die "could not read the boot session"
+    [ -n "$session" ] || die "empty boot session"
     validate_rules "$rules_file" || die "generated $posture rules failed PF validation"
     validate_expected_policy "$posture" "$(<"$rules_file")"
     pf_conf_traverses_anchor "$pf_conf" \
         || die "$pf_conf does not traverse the $anchor anchor"
 
-    "$pfctl" -f "$pf_conf" >/dev/null \
-        || die "could not reload $pf_conf"
-    "$pfctl" -e >/dev/null 2>&1 || true
-    "$pfctl" -s info 2>/dev/null | grep -Eq '^Status:[[:space:]]+Enabled' \
-        || die "PF is not enabled"
-    "$pfctl" -a "$anchor" -f "$rules_file" \
-        || die "could not load the travel anchor"
+    main_rules=$("$pfctl" -sr 2>/dev/null) || die "could not read the main PF rules"
+    if ! effective_anchor_first "$main_rules"; then
+        guard_state_file "$pf_conf"
+        main_rules=$("$pfctl" -n -v -f "$pf_conf" | /usr/bin/awk '/^(anchor|pass|block) /') \
+            || die "could not validate $pf_conf"
+        effective_anchor_first "$main_rules" \
+            || die "$pf_conf must put Funk before other filter rules; run funk install-hardening"
+        "$pfctl" -f "$pf_conf" >/dev/null || die "could not reload $pf_conf"
+        main_rules=$("$pfctl" -sr 2>/dev/null) || die "could not read the main PF rules"
+        effective_anchor_first "$main_rules" || die "Funk is not the first effective PF anchor"
+        log "restored main PF anchor traversal"
+    fi
+    expected_rules=$(canonical_rules "$rules_file") || die "could not canonicalize $posture rules"
+    active_rules=$("$pfctl" -a "$anchor" -sr 2>/dev/null) || die "could not read $anchor rules"
+    if [ "$active_rules" != "$expected_rules" ]; then
+        "$pfctl" -a "$anchor" -f "$rules_file" || die "could not load $anchor"
+        active_rules=$("$pfctl" -a "$anchor" -sr 2>/dev/null) || die "could not read $anchor rules"
+        [ "$active_rules" = "$expected_rules" ] || die "loaded $anchor rules do not match $posture"
+        log "$posture anchor reconciled for: $(physical_interfaces | tr '\n' ' ')"
+    fi
+    info=$("$pfctl" -s info 2>/dev/null) || die "could not read PF status"
+    if ! printf '%s\n' "$info" | grep -Eq '^Status:[[:space:]]+Enabled'; then
+        "$pfctl" -e >/dev/null 2>&1 || true
+        "$pfctl" -s info 2>/dev/null | grep -Eq '^Status:[[:space:]]+Enabled' \
+            || die "PF is not enabled"
+        log "enabled PF"
+    fi
 
+    # Record travel before the new session: a partial write cannot resurrect
+    # a previous boot's home permission.
+    record_state "$posture_file" "$posture" || die "could not record the posture"
+    record_state "$boot_file" "$session" || die "could not record the boot session"
+    record_state "$interfaces_file" "$(/usr/bin/awk '/^block in quick on en[0-9]+ all$/ { print $5 }' "$rules_file")" \
+        || die "could not remember the physical interfaces"
+}
+
+reconcile() {
+    local session
+    local posture=travel
     ensure_state_directory
-    printf '%s\n' "$posture" > "$posture_file"
-    /usr/sbin/chown root:wheel "$posture_file"
-    /bin/chmod 0644 "$posture_file"
-    log "$posture posture applied to: $(physical_interfaces | tr '\n' ' ')"
+    session=$(boot_session) || die "could not read the boot session"
+    if [ -f "$boot_file" ] && [ "$(cat "$boot_file")" = "$session" ] \
+        && [ -f "$posture_file" ]; then
+        case "$(cat "$posture_file")" in
+            home) posture=home ;;
+            travel) ;;
+            *) log "invalid posture marker; falling back to travel" ;;
+        esac
+    fi
+    with_rendered_rules "$posture" apply_posture
 }
 
 line_number() {
@@ -183,7 +314,6 @@ validate_expected_policy() {
     local interface
     local allow_line
     local block_line
-    local home_interface_found=0
 
     case "$posture" in
         travel|home) ;;
@@ -192,9 +322,6 @@ validate_expected_policy() {
 
     while IFS= read -r interface; do
         [ -n "$interface" ] || continue
-        if [ "$interface" = "$home_interface" ]; then
-            home_interface_found=1
-        fi
         block_line=$(block_line_number "$rules" "$interface")
         [ -n "$block_line" ] \
             || die "$posture rules do not block inbound on $interface"
@@ -207,11 +334,14 @@ validate_expected_policy() {
         elif [ -n "$allow_line" ]; then
             die "$posture rules unexpectedly trust $home_ipv4_subnet on $interface"
         fi
-    done < <(physical_interfaces)
+    done < <(policy_interfaces | LC_ALL=C sort -u)
+}
 
-    if [ "$posture" = home ] && [ "$home_interface_found" -ne 1 ]; then
-        die "trusted home interface is unavailable: $home_interface"
-    fi
+check_active_policy() {
+    local rules_file="$2"
+    local expected
+    expected=$(canonical_rules "$rules_file") || return 1
+    [ "$("$pfctl" -a "$anchor" -sr 2>/dev/null)" = "$expected" ]
 }
 
 status() {
@@ -226,7 +356,8 @@ status() {
 
     info=$("$pfctl" -s info 2>/dev/null) || die "could not read PF status"
     rules=$("$pfctl" -a "$anchor" -sr 2>/dev/null) || die "could not read $anchor rules"
-    [ -f "$posture_file" ] && posture=$(head -n 1 "$posture_file")
+    guard_state_directory
+    [ -f "$posture_file" ] && posture=$(cat "$posture_file")
 
     if printf '%s\n' "$info" | grep -Eq '^Status:[[:space:]]+Enabled'; then
         printf 'PF: enabled\n'
@@ -242,6 +373,14 @@ status() {
         travel|home) ;;
         *) failed=1 ;;
     esac
+    if [ ! -f "$boot_file" ] || [ "$(cat "$boot_file")" != "$(boot_session)" ]; then
+        printf 'Boot session: stale or missing; reconciliation will select travel\n'
+        failed=1
+    fi
+    if ! effective_anchor_first "$("$pfctl" -sr 2>/dev/null)"; then
+        printf 'Main PF traversal: Funk is not first\n'
+        failed=1
+    fi
 
     printf 'Physical interfaces:\n'
     while IFS= read -r interface; do
@@ -270,14 +409,20 @@ status() {
     done < <(physical_interfaces)
 
     if [ "$posture" = home ] && [ "$home_interface_found" -ne 1 ]; then
-        printf '  %s: trusted home interface unavailable\n' "$home_interface"
-        failed=1
+        printf '  %s: trusted home interface detached; permission retained for this boot\n' "$home_interface"
     fi
+
+    case "$posture" in
+        travel|home)
+            if ! with_rendered_rules "$posture" check_active_policy; then
+                printf 'Effective anchor: does not match the complete selected policy\n'
+                failed=1
+            fi
+            ;;
+    esac
 
     return "$failed"
 }
-
-[ "${BASH_SOURCE[0]}" = "$0" ] || return 0
 
 [ "$#" -eq 1 ] || die "expected exactly one action"
 
@@ -291,17 +436,29 @@ if [ "$1" = render-home ]; then
 fi
 
 [ "$(id -u)" -eq 0 ] || die "must run as root"
-trap '[ -n "$work_dir" ] && rm -rf "$work_dir"' EXIT
+cleanup() {
+    [ -z "$work_dir" ] || rm -rf "$work_dir"
+    [ "$lock_held" -eq 0 ] || rm -f "$lock_file"
+}
+trap cleanup EXIT
 
 case "$1" in
     status)
         status
         ;;
     travel|boot)
+        acquire_lock
         with_rendered_rules travel apply_posture
         ;;
     home)
+        acquire_lock
+        "$ifconfig" "$home_interface" >/dev/null 2>&1 \
+            || die "trusted home interface is unavailable: $home_interface"
         with_rendered_rules home apply_posture
+        ;;
+    reconcile)
+        acquire_lock
+        reconcile
         ;;
     validate)
         with_rendered_rules travel validate_posture
