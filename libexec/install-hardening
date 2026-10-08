@@ -19,12 +19,46 @@ fi
 
 funk_root=${FUNK_ROOT:?FUNK_ROOT is not set}
 installer="$funk_root/system/install-hardening-root"
+helper=/usr/local/libexec/funk-harden
+daemon_label=io.arthack.funk.harden-boot
+daemon="/Library/LaunchDaemons/$daemon_label.plist"
 
 if [ ! -x "$installer" ]; then
     printf 'funk install-hardening: root installer is missing or not executable: %s\n' "$installer" >&2
     exit 1
 fi
 
-printf 'This installs and immediately loads a root LaunchDaemon that applies\n'
-printf 'Funk'\''s travel firewall posture. sudo will prompt once for installation.\n'
+installed_copy_matches() {
+    local source="$1" target="$2" mode="$3"
+    [ -f "$target" ] && [ ! -L "$target" ] \
+        && [ "$(stat -f '%Su' "$target")" = root ] \
+        && [ "$(stat -f '%Lp' "$target")" = "$mode" ] \
+        && cmp -s "$source" "$target"
+}
+
+daemon_reconciles() {
+    /bin/launchctl print "system/$daemon_label" 2>/dev/null | /usr/bin/awk -v helper="$helper" '
+        $1 == "program" && $2 == "=" && $3 == helper { program = 1 }
+        $1 == "reconcile" && NF == 1 { action = 1 }
+        $1 == "run" && $2 == "interval" && $3 == "=" && $4 == 10 && $5 == "seconds" { interval = 1 }
+        END { exit !(program && action && interval) }
+    '
+}
+
+# A converged --with-hardening install must not ask for authentication. The
+# narrow read action also proves effective rules, not just installed bytes.
+if installed_copy_matches "$funk_root/system/funk-harden" "$helper" 755 \
+    && installed_copy_matches "$funk_root/system/$daemon_label.plist" "$daemon" 644 \
+    && [ ! -e /Library/LaunchDaemons/com.arthack.funk.harden-boot.plist ] \
+    && daemon_reconciles \
+    && /usr/bin/sudo -n -l "$helper" travel >/dev/null 2>&1 \
+    && /usr/bin/sudo -n -l "$helper" home >/dev/null 2>&1 \
+    && /usr/bin/sudo -n "$helper" status >/dev/null 2>&1; then
+    printf 'Funk hardening is already installed, loaded and effective\n'
+    exit 0
+fi
+
+printf 'This installs and immediately loads a root LaunchDaemon that reconciles\n'
+printf 'Funk'\''s firewall posture. A new boot selects travel; same-boot home is retained.\n'
+printf 'sudo will prompt once if installation needs to change.\n'
 exec /usr/bin/sudo "$installer" --user "$(id -un)" --source-root "$funk_root"

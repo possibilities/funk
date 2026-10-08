@@ -10,8 +10,6 @@ legacy_daemon_label=com.arthack.funk.harden-boot
 daemon_target="/Library/LaunchDaemons/$daemon_label.plist"
 legacy_daemon_target="/Library/LaunchDaemons/$legacy_daemon_label.plist"
 pf_conf=/etc/pf.conf
-anchor_line='anchor "com.arthack.funk.travel"'
-anchor_regex='^[[:space:]]*anchor[[:space:]]+"com\.arthack\.funk\.travel"[[:space:]]*(#.*)?$'
 
 die() {
     printf 'funk hardening installer: %s\n' "$*" >&2
@@ -31,8 +29,25 @@ guard_root_directory() {
     [ $((8#$mode & 8#022)) -eq 0 ] || die "$directory must not be group/world-writable"
 }
 
-pf_conf_traverses_anchor() {
-    grep -Eq "$anchor_regex" "$1"
+install_copy() {
+    local source="$1" target="$2" mode="$3"
+    if [ -e "$target" ] || [ -L "$target" ]; then
+        [ -f "$target" ] && [ ! -L "$target" ] || die "invalid target: $target"
+        [ "$(stat -f '%Su' "$target")" = root ] || die "$target must be root-owned"
+        if cmp -s "$source" "$target" && [ "$(stat -f '%Lp' "$target")" = "$mode" ]; then
+            return 0
+        fi
+    fi
+    /usr/bin/install -o root -g wheel -m "$mode" "$source" "$target"
+}
+
+daemon_reconciles() {
+    /bin/launchctl print "system/$daemon_label" 2>/dev/null | /usr/bin/awk -v helper="$helper_target" '
+        $1 == "program" && $2 == "=" && $3 == helper { program = 1 }
+        $1 == "reconcile" && NF == 1 { action = 1 }
+        $1 == "run" && $2 == "interval" && $3 == "=" && $4 == 10 && $5 == "seconds" { interval = 1 }
+        END { exit !(program && action && interval) }
+    '
 }
 
 target_user=
@@ -90,6 +105,8 @@ if [ -e "$daemon_target" ] || [ -L "$daemon_target" ]; then
     [ -f "$daemon_target" ] && [ ! -L "$daemon_target" ] \
         && [ "$(/usr/libexec/PlistBuddy -c 'Print :FunkInstallerOwner' "$daemon_target" 2>/dev/null || true)" = "$daemon_marker" ] \
         || die "refusing to replace a LaunchDaemon Funk does not own: $daemon_target"
+    [ "$(stat -f '%Su' "$daemon_target")" = root ] \
+        || die "$daemon_target must be root-owned"
 fi
 daemon_preloaded=0
 if /bin/launchctl print "system/$daemon_label" >/dev/null 2>&1; then
@@ -120,6 +137,10 @@ with open(source_path, "rb") as handle:
     source = plistlib.load(handle)
 legacy["Label"] = new_label
 source.pop("FunkInstallerOwner", None)
+# The legacy boot-only service predates automatic reconciliation. Match that
+# complete historical contract rather than claiming every old-label plist.
+source.pop("StartInterval", None)
+source["ProgramArguments"][-1] = "boot"
 raise SystemExit(0 if legacy == source else 1)
 PYTHON
 fi
@@ -139,12 +160,31 @@ pf_mode=$(stat -f '%Lp' "$pf_conf")
 
 tmpdir=$(mktemp -d /private/tmp/funk-hardening-install.XXXXXX)
 
-if ! pf_conf_traverses_anchor "$pf_conf"; then
-    pf_candidate="$tmpdir/pf.conf"
-    cp "$pf_conf" "$pf_candidate"
-    printf '\n# Funk fail-closed travel posture\n%s\n' "$anchor_line" >> "$pf_candidate"
-    /sbin/pfctl -nf "$pf_candidate" >/dev/null \
-        || die "updated $pf_conf failed PF validation"
+pf_candidate="$tmpdir/pf.conf"
+# Own only the exact Funk traversal directives. Keep every foreign byte and
+# put our quick physical-interface fence ahead of foreign filter rules.
+/usr/bin/python3 - "$pf_conf" "$pf_candidate" <<'PYTHON'
+from pathlib import Path
+import re
+import sys
+
+source, target = map(Path, sys.argv[1:])
+own = re.compile(rb'^\s*anchor\s+"com\.arthack\.funk\.travel"\s*(#.*)?$')
+filter_rule = re.compile(rb'^\s*(anchor|pass|block|antispoof|match)\b')
+lines = [line for line in source.read_bytes().splitlines(keepends=True)
+         if not own.fullmatch(line.rstrip(b'\r\n'))]
+position = next((index for index, line in enumerate(lines)
+                 if filter_rule.match(line)), len(lines))
+directive = b'anchor "com.arthack.funk.travel"\n'
+if position and not lines[position - 1].endswith(b'\n'):
+    directive = b'\n' + directive
+lines.insert(position, directive)
+target.write_bytes(b''.join(lines))
+PYTHON
+/sbin/pfctl -nf "$pf_candidate" >/dev/null \
+    || die "updated $pf_conf failed PF validation"
+
+if ! cmp -s "$pf_candidate" "$pf_conf"; then
 
     if [ ! -e /etc/pf.conf.pre-funk ]; then
         /usr/bin/install -o root -g wheel -m "$pf_mode" "$pf_conf" /etc/pf.conf.pre-funk
@@ -152,7 +192,7 @@ if ! pf_conf_traverses_anchor "$pf_conf"; then
     /usr/bin/install -o root -g wheel -m "$pf_mode" "$pf_candidate" "$pf_conf"
 fi
 
-/usr/bin/install -o root -g wheel -m 0755 "$helper_source" "$helper_target"
+install_copy "$helper_source" "$helper_target" 755
 
 sudoers_candidate="$tmpdir/sudoers"
 printf '%s ALL=(root) NOPASSWD: %s status\n' "$target_user" "$helper_target" > "$sudoers_candidate"
@@ -162,18 +202,29 @@ printf '%s ALL=(root) NOPASSWD: %s home\n' "$target_user" "$helper_target" >> "$
 /usr/sbin/visudo -cf "$sudoers_candidate" >/dev/null \
     || die "generated sudoers rules failed validation"
 sudoers_target="/etc/sudoers.d/funk-harden-$target_uid"
-/usr/bin/install -o root -g wheel -m 0440 "$sudoers_candidate" "$sudoers_target"
+install_copy "$sudoers_candidate" "$sudoers_target" 440
 
 if [ ! -e /Library/Logs/Funk ]; then
     /usr/bin/install -d -o root -g wheel -m 0755 /Library/Logs/Funk
 fi
 guard_root_directory /Library/Logs/Funk
+# The new helper checks effective traversal and reloads the main rules only
+# when that attachment is missing/misordered. Otherwise this changes our anchor
+# only, preserving any home selection made during the current boot.
+"$helper_target" reconcile
+if [ "$daemon_preloaded" -eq 1 ] && [ "$legacy_daemon_preloaded" -eq 0 ] \
+    && [ ! -e "$legacy_daemon_target" ] && cmp -s "$daemon_source" "$daemon_target" \
+    && [ "$(stat -f '%Su' "$daemon_target")" = root ] \
+    && [ "$(stat -f '%Lp' "$daemon_target")" = 644 ] && daemon_reconciles; then
+    printf '%s is already installed and loaded\n' "$daemon_label"
+    exit 0
+fi
 daemon_backup=
 if [ -f "$daemon_target" ]; then
     daemon_backup="$tmpdir/daemon.plist"
     cp -p "$daemon_target" "$daemon_backup"
 fi
-/usr/bin/install -o root -g wheel -m 0644 "$daemon_source" "$daemon_target"
+install_copy "$daemon_source" "$daemon_target" 644
 current_was_loaded=0
 legacy_was_loaded=0
 rollback_daemon() {
@@ -204,10 +255,15 @@ if ! /bin/launchctl bootstrap system "$daemon_target"; then
     rollback_daemon
     die "failed to load $daemon_label; restored the previous service"
 fi
+if ! daemon_reconciles; then
+    /bin/launchctl bootout "system/$daemon_label" >/dev/null 2>&1 || true
+    rollback_daemon
+    die "launchd did not import reconciliation; restored the previous service"
+fi
 if [ -f "$legacy_daemon_target" ]; then
     rm "$legacy_daemon_target"
     printf 'Replaced %s with %s\n' "$legacy_daemon_label" "$daemon_label"
 fi
 
 printf 'Installed and loaded %s\n' "$daemon_label"
-printf 'Installed narrow sudoers rules for %s: status and travel only\n' "$target_user"
+printf 'Installed narrow sudoers rules for %s: status, travel and home only\n' "$target_user"

@@ -1,0 +1,137 @@
+#!/usr/bin/env python3
+"""Disposable OS boundary for the real hardening CLI; never touches live PF."""
+import os
+import json
+from pathlib import Path
+import plistlib
+import subprocess
+import sys
+
+root = Path(os.environ["FUNK_TEST_HARDEN_DIR"])
+name = Path(sys.argv[0]).name
+args = sys.argv[1:]
+
+
+def read(name, default=""):
+    path = root / name
+    return path.read_text() if path.exists() else default
+
+
+def write(name, text):
+    (root / name).write_text(text)
+
+
+def record():
+    with (root / "changes").open("a") as handle:
+        handle.write(name + " " + " ".join(args) + "\n")
+
+
+def normalized(path):
+    return "\n".join(
+        (line + " all" if line.startswith("anchor ") else
+         line.replace("block in quick ", "block drop in quick "))
+        for line in Path(path).read_text().splitlines()
+        if line.startswith(("pass ", "block ", "anchor "))
+    ) + "\n"
+
+
+if name == "id":
+    if args == ["-un"]:
+        print("operator")
+    else:
+        print("0" if len(args) == 1 and not os.environ.get("FUNK_TEST_HARDEN_USER") else "501")
+elif name == "stat":
+    print("root" if args[1] == "%Su" else format(Path(args[-1]).stat().st_mode & 0o777, "o"))
+elif name == "ifconfig":
+    interfaces = read("interfaces", "lo0 en0 utun0\n").split()
+    if args == ["-l"]:
+        print(" ".join(interfaces))
+    elif args[0] not in interfaces:
+        sys.exit(1)
+elif name == "sysctl":
+    print(read("boot", "boot-one\n").strip())
+elif name == "shlock":
+    path = Path(args[args.index("-f") + 1])
+    if path.exists():
+        sys.exit(1)
+    path.write_text(args[args.index("-p") + 1])
+elif name in ("chmod", "chown"):
+    if str(Path(args[-1])).startswith(str(root) + "/"):
+        record()
+    if name == "chmod":
+        Path(args[-1]).chmod(int(args[0], 8))
+elif name == "install":
+    record()
+    if Path(args[-1]).name == os.environ.get("FUNK_TEST_HARDEN_INSTALL_FAIL"):
+        sys.exit(1)
+    if "-d" in args:
+        Path(args[-1]).mkdir(parents=True, exist_ok=True)
+    else:
+        Path(args[-1]).write_bytes(Path(args[-2]).read_bytes())
+        Path(args[-1]).chmod(int(args[args.index("-m") + 1], 8))
+elif name == "pfctl":
+    if args == ["-s", "info"]:
+        print("Status: " + read("pf-enabled", "Enabled").strip())
+    elif "-sr" in args:
+        print(read("anchor-rules" if "-a" in args else "main-rules"), end="")
+    elif "-nf" in args or "-n" in args:
+        if "-v" in args:
+            print(normalized(args[-1]), end="")
+    elif args == ["-e"]:
+        record()
+        write("pf-enabled", "Enabled")
+    elif "-f" in args:
+        record()
+        write("anchor-rules" if "-a" in args else "main-rules", normalized(args[-1]))
+    else:
+        sys.exit("unexpected pfctl arguments: " + repr(args))
+elif name == "launchctl":
+    label = args[-1].split("/")[-1]
+    if args[0] == "bootstrap":
+        with open(args[-1], "rb") as handle:
+            job = plistlib.load(handle)
+            label = job["Label"]
+    marker = root / ("loaded-" + label)
+    if args[0] == "print":
+        if not marker.exists():
+            sys.exit(1)
+        job = json.loads(marker.read_text())
+        helper, action = job["ProgramArguments"]
+        # Model launchd's cached definition, not the current plist on disk.
+        print(f"program = {root}/libexec/funk-harden\narguments = {{\n {helper}\n {action}\n}}")
+        if "StartInterval" in job:
+            print(f"run interval = {job['StartInterval']} seconds")
+        sys.exit(0)
+    record()
+    if args[0] == "bootstrap":
+        marker.write_text(json.dumps(job))
+    elif args[0] == "bootout":
+        marker.unlink()
+    else:
+        sys.exit("unexpected launchctl arguments: " + repr(args))
+elif name in ("plutil", "PlistBuddy"):
+    with open(args[-1], "rb") as handle:
+        job = plistlib.load(handle)
+    if name == "PlistBuddy":
+        key = args[args.index("-c") + 1].split(":")[-1]
+        if key not in job:
+            sys.exit(1)
+        print(job[key])
+elif name == "visudo":
+    pass
+elif name == "uname":
+    print("Darwin")
+elif name == "sudo":
+    if args[:2] == ["-n", "-l"]:
+        command = " ".join(args[2:])
+        policy = read("sudoers.d/funk-harden-501")
+        sys.exit(0 if "NOPASSWD: " + command + "\n" in policy else 1)
+    if args[0] == "-n":
+        args = args[1:]
+    else:
+        record()
+    env = dict(os.environ)
+    env.pop("FUNK_TEST_HARDEN_USER", None)
+    sys.exit(subprocess.call(args, env=env))
+else:
+    sys.exit("unexpected fixture command: " + name)
