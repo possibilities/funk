@@ -74,13 +74,18 @@ and a real directory to hold the untracked one.
 
 ## Unprivileged convergence helpers
 
-`funk install-home-awake` follows the same rule. It compares the installed root
-helper's digest and its granted sudo invocations first, and elevates only when
-they differ from this checkout. It extends the rule to the login keychain by
-probing the stored item attribute-only, without `-w`, so the lookup never
-reaches the item's data and never raises a dialog, and by reporting the verdict
-`home-awake` last recorded instead of reading the secret. The prompt belongs to
-`home-awake --authorize`, which a human runs on purpose.
+`funk install-home-awake` compares the installed root helper and its two
+sleep-only sudo invocations before elevating. The recurring job manages
+caffeinate and sleep while wired to the recorded home network; macOS owns
+password policy independently. Neither the installer nor the job accesses the
+login keychain. Legacy stored credentials and saved delays are left untouched.
+
+Removing the old override does not enable a disabled password requirement.
+Set System Settings → Lock Screen → “Require password after screen saver begins
+or display is turned off” to Immediately, completing any macOS authentication
+prompt directly. Verify with `/usr/sbin/sysadminctl -screenLock status` in the
+actual user session; a sandbox can return a different result. No sleep, lock,
+or wake cycle is needed to check the configured policy.
 
 A step that cannot converge is reported rather than failed.
 `funk ssh-tailnet-config` exits `EX_TEMPFAIL` when Tailscale cannot answer,

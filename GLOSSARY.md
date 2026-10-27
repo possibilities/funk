@@ -38,12 +38,6 @@ the generator has, so it is also the only thing it may overwrite or prune;
 everything else in that directory belongs to the operator.
 _Avoid_: managed host, stowed host, tailnet config, hardcoded hosts.
 
-**Keychain hold** — the recorded verdict that stops the unattended path
-re-reading an item whose access no human has approved, so a refusal costs one
-dialog rather than one every thirty seconds. Cleared by
-`home-awake --authorize`.
-_Avoid_: locked out, denied, blocked.
-
 **Chuchu Lab theme deployment** — The explicit `funk chuchu-theme` action that
 copies Funk's canonical Signal Room asset into the Chuchu checkout, rebuilds
 and reinstalls the debuggable Lab package with its data retained, selects the

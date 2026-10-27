@@ -68,18 +68,10 @@ guard_root_directory /etc/sudoers.d
 tmpdir=$(mktemp -d /private/tmp/funk-home-awake-install.XXXXXX)
 trap 'rm -rf "$tmpdir"' EXIT
 
-/usr/bin/install -o root -g wheel -m 0755 "$helper_source" "$helper_target"
-
-# Each granted invocation is spelled out. The delay form needs a numeric
-# argument, so it is the one wildcard, and the helper refuses anything that is
-# not a plain number of seconds inside a day.
 sudoers_candidate="$tmpdir/sudoers"
 {
     printf '%s ALL=(root) NOPASSWD: %s sleep 0\n' "$target_user" "$helper_target"
     printf '%s ALL=(root) NOPASSWD: %s sleep 1\n' "$target_user" "$helper_target"
-    printf '%s ALL=(root) NOPASSWD: %s screenlock off\n' "$target_user" "$helper_target"
-    printf '%s ALL=(root) NOPASSWD: %s screenlock immediate\n' "$target_user" "$helper_target"
-    printf '%s ALL=(root) NOPASSWD: %s screenlock [0-9]*\n' "$target_user" "$helper_target"
 } > "$sudoers_candidate"
 /bin/chmod 0440 "$sudoers_candidate"
 /usr/sbin/visudo -cf "$sudoers_candidate" >/dev/null \
@@ -87,5 +79,8 @@ sudoers_candidate="$tmpdir/sudoers"
 /usr/bin/install -o root -g wheel -m 0440 "$sudoers_candidate" \
     "/etc/sudoers.d/funk-home-awake-$target_uid"
 
+# Publish the helper last so its digest confirms the narrowed rules were installed.
+/usr/bin/install -o root -g wheel -m 0755 "$helper_source" "$helper_target"
+
 printf 'Installed %s for %s.\n' "$helper_target" "$target_user"
-printf 'Granted sleep and screen-lock invocations only; no other command was authorized.\n'
+printf 'Granted the two sleep invocations only; no other command was authorized.\n'

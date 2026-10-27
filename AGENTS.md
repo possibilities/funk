@@ -68,16 +68,9 @@ a root execution path into this user-writable checkout.
 An unattended agent that needs root gets a purpose-built helper, not a
 passwordless rule on a general-purpose system binary. `system/funk-home-awake`
 is the model: sudoers names that helper with an enumerated argument list, and
-the helper validates every argument before touching `pmset` or `sysadminctl`.
+the helper validates every argument before touching `pmset`.
 `tests/validate.sh` pins the granted list, so widening it is a deliberate,
 reviewable change rather than a side effect.
-
-A keychain item's access list is the same argument in another form.
-`bin/.local/bin/home-awake` stores the login password with `-T ""` and has a
-human approve the first read, rather than granting `/usr/bin/security` — a
-general-purpose binary any process can invoke — a standing read at creation
-time. `tests/validate.sh` asserts both the flag and the absence of that grant,
-so restoring it is not a convenience fix either.
 
 ## Validation
 
