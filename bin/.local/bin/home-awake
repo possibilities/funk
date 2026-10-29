@@ -141,7 +141,10 @@ interface_router() {
 }
 
 arp_hardware_address() {
-    arp -n "$1" 2>/dev/null | awk '{ print $4 }'
+    local router="$1"
+    local interface="$2"
+
+    arp -n -i "$interface" "$router" 2>/dev/null | awk '$3 == "at" { print $4; exit }'
 }
 
 # An address that has aged out of the cache reads as incomplete, which is not
@@ -149,12 +152,13 @@ arp_hardware_address() {
 # still unreadable after that is treated as unknown, and unknown is untrusted.
 router_hardware_address() {
     local router="$1"
+    local interface="$2"
     local address
 
-    address=$(normalize_mac "$(arp_hardware_address "$router")" 2>/dev/null) || address=
+    address=$(normalize_mac "$(arp_hardware_address "$router" "$interface")" 2>/dev/null) || address=
     if [ -z "$address" ]; then
         ping -c 1 -t 1 "$router" >/dev/null 2>&1 || true
-        address=$(normalize_mac "$(arp_hardware_address "$router")" 2>/dev/null) || address=
+        address=$(normalize_mac "$(arp_hardware_address "$router" "$interface")" 2>/dev/null) || address=
     fi
     [ -n "$address" ] || return 1
     printf '%s\n' "$address"
@@ -169,7 +173,7 @@ home_interface() {
     while IFS= read -r interface; do
         [ -n "$interface" ] || continue
         router=$(interface_router "$interface") || continue
-        address=$(router_hardware_address "$router") || continue
+        address=$(router_hardware_address "$router" "$interface") || continue
         if [ "$address" = "$router_mac" ]; then
             printf '%s\n' "$interface"
             return 0
@@ -265,7 +269,7 @@ learn_network() {
         || die "no active wired interface; plug into the home network first"
     router=$(interface_router "$interface") \
         || die "$interface has no router; wait for it to finish configuring"
-    address=$(router_hardware_address "$router") \
+    address=$(router_hardware_address "$router" "$interface") \
         || die "the router at $router did not answer; retry once the link is up"
     [ -n "$label" ] || label="$router"
 

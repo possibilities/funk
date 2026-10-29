@@ -109,6 +109,33 @@ FUNK_TEST_HA_ETHERNET=0 FUNK_TEST_HA_AC=1 run_ha
 [ ! -e "$caffeinate_marker" ] \
     || fail "the home router over Wi-Fi was treated as a wired connection"
 
+# Wi-Fi and Ethernet can share a subnet and router. An unscoped ARP lookup
+# returns one row per interface; the wired lookup must still identify home.
+reset_state
+FUNK_TEST_HA_ETHERNET=1 FUNK_TEST_HA_AC=1 FUNK_TEST_HA_DUAL_INTERFACE=1 run_ha
+[ -e "$caffeinate_marker" ] \
+    || fail "the home router on both Wi-Fi and Ethernet was treated as away"
+[ "$(cat "$sleep_file")" = 1 ] \
+    || fail "a shared Wi-Fi/Ethernet router on AC power did not suppress sleep"
+
+# The retry after probing must use the same interface scope.
+reset_state
+rm -f "$arp_cold_file"
+FUNK_TEST_HA_ETHERNET=1 FUNK_TEST_HA_AC=1 FUNK_TEST_HA_DUAL_INTERFACE=1 run_ha
+[ -e "$caffeinate_marker" ] \
+    || fail "a cold cache with a shared Wi-Fi/Ethernet router was treated as away"
+grep -F 'ping-stub' "$log" >/dev/null \
+    || fail "a shared Wi-Fi/Ethernet router with a cold cache was not probed"
+
+# Learning must record a single address even when both interfaces use it.
+reset_state
+rm -f "$config_file"
+FUNK_TEST_HA_ETHERNET=1 FUNK_TEST_HA_DUAL_INTERFACE=1 run_ha --learn-network >/dev/null
+grep -Fx "router_mac=$home_router" "$config_file" >/dev/null \
+    || fail "--learn-network did not record the shared Wi-Fi/Ethernet router"
+[ "$(wc -l <"$config_file" | tr -d ' ')" = 3 ] \
+    || fail "--learn-network recorded multiple hardware addresses"
+
 # Hardware addresses are compared after normalization, so case and dropped
 # leading zeros on either side still describe the same router.
 reset_state

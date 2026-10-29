@@ -3,14 +3,23 @@
 set -euo pipefail
 
 [ "${1:-}" = -n ] || exit 1
-router=${2:-}
+shift
+interface=
+if [ "${1:-}" = -i ]; then
+    interface=${2:?missing interface}
+    shift 2
+fi
+router=${1:-}
 
 address=${FUNK_TEST_HA_ROUTER_MAC-00:00:5e:00:53:0a}
+interfaces=${interface:-en5}
+if [ -z "$interface" ] && [ "${FUNK_TEST_HA_DUAL_INTERFACE:-0}" -eq 1 ]; then
+    interfaces='en0 en5'
+fi
 
 # An address that has aged out reads as incomplete until something probes it.
 if [ -n "${FUNK_TEST_HA_ARP_COLD_FILE:-}" ] && [ ! -e "${FUNK_TEST_HA_ARP_COLD_FILE}" ]; then
-    printf '? (%s) at (incomplete) on en5 ifscope [ethernet]\n' "$router"
-    exit 0
+    address='(incomplete)'
 fi
 
 if [ -z "$address" ]; then
@@ -18,4 +27,6 @@ if [ -z "$address" ]; then
     exit 1
 fi
 
-printf '? (%s) at %s on en5 ifscope [ethernet]\n' "$router" "$address"
+for interface in $interfaces; do
+    printf '? (%s) at %s on %s ifscope [ethernet]\n' "$router" "$address" "$interface"
+done
